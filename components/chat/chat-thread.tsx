@@ -9,9 +9,15 @@ interface ChatThreadProps {
   messages: ChatMessage[]
   loading?: boolean
   currentUser?: string
+  onCreateTask?: (message: ChatMessage) => void
 }
 
-export function ChatThread({ messages, loading = false, currentUser = "dan" }: ChatThreadProps) {
+export function ChatThread({ 
+  messages, 
+  loading = false, 
+  currentUser = "dan",
+  onCreateTask,
+}: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -61,6 +67,7 @@ export function ChatThread({ messages, loading = false, currentUser = "dan" }: C
               message={message}
               isOwnMessage={message.author === currentUser}
               showAuthor={msgIndex === 0}
+              onCreateTask={onCreateTask}
             />
           ))}
         </div>
