@@ -47,6 +47,20 @@
 }
 
 :root {
+  /* Custom Trap theme (light fallback) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f4f4f5;
+  --bg-tertiary: #e4e4e7;
+  --border: #e4e4e7;
+  --text-primary: #09090b;
+  --text-secondary: #71717a;
+  --text-muted: #a1a1aa;
+  --accent-blue: #3b82f6;
+  --accent-green: #22c55e;
+  --accent-yellow: #eab308;
+  --accent-red: #ef4444;
+  --accent-purple: #a855f7;
+
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.129 0.042 264.695);
@@ -82,6 +96,20 @@
 }
 
 .dark {
+  /* Custom Trap theme */
+  --bg-primary: #0a0a0b;
+  --bg-secondary: #141415;
+  --bg-tertiary: #1c1c1e;
+  --border: #2a2a2c;
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #52525b;
+  --accent-blue: #3b82f6;
+  --accent-green: #22c55e;
+  --accent-yellow: #eab308;
+  --accent-red: #ef4444;
+  --accent-purple: #a855f7;
+
   --background: oklch(0.129 0.042 264.695);
   --foreground: oklch(0.984 0.003 247.858);
   --card: oklch(0.208 0.042 265.755);
