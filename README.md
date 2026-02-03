@@ -60,9 +60,40 @@ The built-in OpenClaw UI is functional but minimal. Discord is great for chat bu
 
 ```bash
 cd /home/dan/src/trap
-npm install
+npm install  # Automatically sets up pre-commit hooks
 npm run dev
 ```
+
+### Development Setup
+
+Pre-commit hooks are automatically installed when you run `npm install`. These hooks ensure code quality by:
+
+- **Linting:** ESLint runs on staged JavaScript/TypeScript files
+- **Type checking:** TypeScript compiler checks for type errors
+- **Fail fast:** Commits are blocked if lint or type errors are found
+
+#### Manual Commands
+
+```bash
+# Run linting manually
+npm run lint
+
+# Run type checking manually
+npm run type-check
+
+# Build the project
+npm run build
+
+# Bypass hooks if needed (emergency only)
+git commit --no-verify
+```
+
+#### Hook Behavior
+
+- ✅ Clean commits go through quickly
+- ❌ Commits with lint errors are rejected with helpful messages
+- ❌ Commits with type errors are rejected with TypeScript diagnostics
+- 🛠️ Use `--no-verify` flag to bypass hooks in emergencies
 
 ## Status
 
