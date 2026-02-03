@@ -1,5 +1,7 @@
 # 🦞 The Trap
 
+[![CI](https://github.com/dbachelder/the-trap/actions/workflows/ci.yml/badge.svg)](https://github.com/dbachelder/the-trap/actions/workflows/ci.yml)
+
 A custom dashboard and control center for OpenClaw. Built for visibility, control, and sanity.
 
 ## Why
