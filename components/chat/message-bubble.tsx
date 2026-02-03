@@ -2,11 +2,13 @@
 
 import type { ChatMessage } from "@/lib/db/types"
 import { formatDistanceToNow } from "date-fns"
+import { MessageActions } from "./message-actions"
 
 interface MessageBubbleProps {
   message: ChatMessage
   isOwnMessage?: boolean
   showAuthor?: boolean
+  onCreateTask?: (message: ChatMessage) => void
 }
 
 const AUTHOR_COLORS: Record<string, string> = {
@@ -25,12 +27,17 @@ const AUTHOR_NAMES: Record<string, string> = {
   dan: "Dan",
 }
 
-export function MessageBubble({ message, isOwnMessage = false, showAuthor = true }: MessageBubbleProps) {
+export function MessageBubble({ 
+  message, 
+  isOwnMessage = false, 
+  showAuthor = true,
+  onCreateTask,
+}: MessageBubbleProps) {
   const authorColor = AUTHOR_COLORS[message.author] || "#52525b"
   const authorName = AUTHOR_NAMES[message.author] || message.author
 
   return (
-    <div className={`flex gap-3 ${isOwnMessage ? "flex-row-reverse" : ""}`}>
+    <div className={`group flex gap-3 ${isOwnMessage ? "flex-row-reverse" : ""}`}>
       {/* Avatar */}
       {showAuthor && (
         <div 
@@ -44,7 +51,7 @@ export function MessageBubble({ message, isOwnMessage = false, showAuthor = true
       
       {/* Message content */}
       <div className={`flex-1 max-w-[80%] ${isOwnMessage ? "text-right" : ""}`}>
-        {/* Author + time */}
+        {/* Author + time + actions */}
         {showAuthor && (
           <div className={`flex items-center gap-2 mb-1 ${isOwnMessage ? "flex-row-reverse" : ""}`}>
             <span className="text-sm font-medium text-[var(--text-primary)]">
@@ -53,6 +60,14 @@ export function MessageBubble({ message, isOwnMessage = false, showAuthor = true
             <span className="text-xs text-[var(--text-muted)]">
               {formatDistanceToNow(message.created_at, { addSuffix: true })}
             </span>
+            
+            {/* Actions */}
+            {onCreateTask && (
+              <MessageActions 
+                message={message} 
+                onCreateTask={onCreateTask}
+              />
+            )}
           </div>
         )}
         
