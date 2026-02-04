@@ -5,48 +5,13 @@
  * Manage and monitor AI agents
  */
 
-import { Bot, Plus, Activity, Zap, Clock } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Bot, Plus, Activity, Zap, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-
-type AgentStatus = 'active' | 'idle' | 'offline';
-
-interface Agent {
-  id: string;
-  name: string;
-  status: AgentStatus;
-  type: string;
-  uptime: string;
-  tasks: number;
-}
-
-// Placeholder data - will be replaced with real data later
-const PLACEHOLDER_AGENTS: Agent[] = [
-  {
-    id: '1',
-    name: 'Ada',
-    status: 'active',
-    type: 'General Assistant',
-    uptime: '24h 15m',
-    tasks: 142,
-  },
-  {
-    id: '2', 
-    name: 'Kimi',
-    status: 'active',
-    type: 'Coding Agent',
-    uptime: '12h 30m',
-    tasks: 89,
-  },
-  {
-    id: '3',
-    name: 'Researcher Bot',
-    status: 'idle',
-    type: 'Research Assistant',
-    uptime: '2h 45m',
-    tasks: 23,
-  },
-];
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
+import { Agent, AgentStatus } from '@/lib/types';
 
 function AgentCard({ agent }: { agent: Agent }) {
   const statusColors = {
@@ -61,6 +26,14 @@ function AgentCard({ agent }: { agent: Agent }) {
     offline: 'destructive' as const,
   };
 
+  const formatDate = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString();
+    } catch {
+      return 'Unknown';
+    }
+  };
+
   return (
     <div className="rounded-lg border bg-card p-6">
       <div className="flex items-start justify-between mb-4">
@@ -70,7 +43,7 @@ function AgentCard({ agent }: { agent: Agent }) {
           </div>
           <div>
             <h3 className="font-semibold">{agent.name}</h3>
-            <p className="text-sm text-muted-foreground">{agent.type}</p>
+            <p className="text-sm text-muted-foreground">{agent.description || 'AI Agent'}</p>
           </div>
         </div>
         <Badge variant={statusVariants[agent.status]}>
@@ -81,14 +54,18 @@ function AgentCard({ agent }: { agent: Agent }) {
         </Badge>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 text-sm">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Clock className="h-4 w-4" />
-          <span>Uptime: {agent.uptime}</span>
-        </div>
+      <div className="space-y-2 text-sm">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Zap className="h-4 w-4" />
-          <span>Tasks: {agent.tasks}</span>
+          <span>Model: {agent.model}</span>
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Activity className="h-4 w-4" />
+          <span>Sessions: {agent.sessionCount}</span>
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Clock className="h-4 w-4" />
+          <span>Created: {formatDate(agent.createdAt)}</span>
         </div>
       </div>
 
@@ -97,7 +74,7 @@ function AgentCard({ agent }: { agent: Agent }) {
           Configure
         </Button>
         <Button variant="outline" size="sm" className="flex-1">
-          View Logs
+          View Sessions
         </Button>
       </div>
     </div>
@@ -105,6 +82,35 @@ function AgentCard({ agent }: { agent: Agent }) {
 }
 
 export default function AgentsPage() {
+  const { listAgents, connected, connecting } = useOpenClawRpc();
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchAgents = async () => {
+    try {
+      setError(null);
+      setLoading(true);
+      const response = await listAgents();
+      setAgents(response.agents);
+    } catch (err) {
+      console.error('Failed to fetch agents:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch agents');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (connected) {
+      fetchAgents();
+    }
+  }, [connected]);
+
+  const activeAgents = agents.filter(a => a.status === 'active');
+  const idleAgents = agents.filter(a => a.status === 'idle');
+  const totalSessions = agents.reduce((acc, agent) => acc + agent.sessionCount, 0);
+
   return (
     <div className="container mx-auto py-8 px-4">
       {/* Header */}
@@ -120,6 +126,14 @@ export default function AgentsPage() {
         </div>
         
         <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            onClick={fetchAgents}
+            disabled={loading || connecting}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <Button>
             <Plus className="h-4 w-4 mr-2" />
             Add Agent
@@ -127,49 +141,105 @@ export default function AgentsPage() {
         </div>
       </div>
 
+      {/* Connection Status */}
+      {connecting && (
+        <Alert className="mb-8">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <AlertDescription>
+            Connecting to OpenClaw...
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {!connected && !connecting && (
+        <Alert className="mb-8" variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Not connected to OpenClaw. Unable to fetch agent data.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Error Alert */}
+      {error && (
+        <Alert className="mb-8" variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
         <div className="rounded-lg border bg-card p-4">
           <div className="text-sm font-medium text-muted-foreground">Total Agents</div>
-          <div className="text-2xl font-bold mt-1">{PLACEHOLDER_AGENTS.length}</div>
+          <div className="text-2xl font-bold mt-1">{agents.length}</div>
         </div>
         
         <div className="rounded-lg border bg-card p-4">
           <div className="text-sm font-medium text-muted-foreground">Active</div>
           <div className="text-2xl font-bold mt-1 text-green-600">
-            {PLACEHOLDER_AGENTS.filter(a => a.status === 'active').length}
+            {activeAgents.length}
           </div>
         </div>
         
         <div className="rounded-lg border bg-card p-4">
           <div className="text-sm font-medium text-muted-foreground">Idle</div>
           <div className="text-2xl font-bold mt-1 text-yellow-600">
-            {PLACEHOLDER_AGENTS.filter(a => a.status === 'idle').length}
+            {idleAgents.length}
           </div>
         </div>
 
         <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm font-medium text-muted-foreground">Total Tasks</div>
+          <div className="text-sm font-medium text-muted-foreground">Total Sessions</div>
           <div className="text-2xl font-bold mt-1">
-            {PLACEHOLDER_AGENTS.reduce((acc, agent) => acc + agent.tasks, 0)}
+            {totalSessions}
           </div>
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && connected && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <span className="ml-2">Loading agents...</span>
+        </div>
+      )}
+
       {/* Agents Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {PLACEHOLDER_AGENTS.map((agent) => (
-          <AgentCard key={agent.id} agent={agent} />
-        ))}
-      </div>
+      {!loading && agents.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {agents.map((agent) => (
+            <AgentCard key={agent.id} agent={agent} />
+          ))}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && agents.length === 0 && connected && !error && (
+        <div className="text-center py-12">
+          <Bot className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No agents found</h3>
+          <p className="text-muted-foreground mb-4">
+            Get started by adding your first AI agent
+          </p>
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Agent
+          </Button>
+        </div>
+      )}
 
       {/* Footer info */}
-      <div className="mt-8 text-center">
-        <div className="text-sm text-muted-foreground">
-          <Activity className="h-4 w-4 inline mr-1" />
-          Real-time agent monitoring coming soon
+      {agents.length > 0 && (
+        <div className="mt-8 text-center">
+          <div className="text-sm text-muted-foreground">
+            <Activity className="h-4 w-4 inline mr-1" />
+            Real-time agent monitoring via OpenClaw RPC
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
