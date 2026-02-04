@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { X, Trash2, Clock, Calendar, MessageSquare } from "lucide-react"
+import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTaskStore } from "@/lib/stores/task-store"
 import { CommentThread } from "./comment-thread"
 import { CommentInput } from "./comment-input"
-import type { Task, TaskStatus, TaskPriority, Comment } from "@/lib/db/types"
+import type { Task, TaskStatus, TaskPriority, Comment, DispatchStatus } from "@/lib/db/types"
 
 interface TaskModalProps {
   task: Task | null
@@ -53,6 +53,10 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   const [comments, setComments] = useState<Comment[]>([])
   const [loadingComments, setLoadingComments] = useState(false)
   
+  // Dispatch state
+  const [dispatchStatus, setDispatchStatus] = useState<DispatchStatus | null>(null)
+  const [dispatching, setDispatching] = useState(false)
+  
   const updateTask = useTaskStore((s) => s.updateTask)
   const deleteTask = useTaskStore((s) => s.deleteTask)
 
@@ -68,6 +72,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
       const taskTags = task.tags ? JSON.parse(task.tags) as string[] : []
       setTags(taskTags.join(", "))
       setShowDeleteConfirm(false)
+      setDispatchStatus(task.dispatch_status)
       
       // Fetch comments
       fetchComments(task.id)
@@ -155,6 +160,46 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
     await deleteTask(task.id)
     onDelete?.(task.id)
     onOpenChange(false)
+  }
+
+  const handleDispatch = async () => {
+    if (!task || !assignee) return
+    
+    setDispatching(true)
+    try {
+      const response = await fetch(`/api/tasks/${task.id}/dispatch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          agentId: assignee,
+          requestedBy: "dan",
+        }),
+      })
+      
+      if (response.ok) {
+        setDispatchStatus("pending")
+        
+        // Add a comment noting the dispatch
+        await fetch(`/api/tasks/${task.id}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: `Task dispatched to ${AGENT_OPTIONS.find(a => a.value === assignee)?.label || assignee}`,
+            type: "status_change",
+            author: "dan",
+            author_type: "human",
+          }),
+        })
+        
+        // Refresh comments
+        fetchComments(task.id)
+      } else {
+        const data = await response.json()
+        console.error("Dispatch failed:", data.error)
+      }
+    } finally {
+      setDispatching(false)
+    }
   }
 
   const formatDate = (timestamp: number) => {
@@ -299,6 +344,44 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                   ))}
                 </select>
               </div>
+              
+              {/* Dispatch to Agent */}
+              {assignee && (
+                <div>
+                  <button
+                    onClick={handleDispatch}
+                    disabled={dispatching || dispatchStatus === "pending" || dispatchStatus === "active"}
+                    className="w-full flex items-center justify-center gap-2 bg-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/90 disabled:bg-[var(--bg-tertiary)] disabled:text-[var(--text-muted)] text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+                  >
+                    {dispatching ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Dispatching...
+                      </>
+                    ) : dispatchStatus === "pending" ? (
+                      <>
+                        <Clock className="h-4 w-4" />
+                        Pending Dispatch
+                      </>
+                    ) : dispatchStatus === "active" ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Agent Working
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        Dispatch to Agent
+                      </>
+                    )}
+                  </button>
+                  {dispatchStatus && (
+                    <p className="text-xs text-[var(--text-muted)] mt-1 text-center">
+                      Status: {dispatchStatus}
+                    </p>
+                  )}
+                </div>
+              )}
               
               {/* Tags */}
               <div>
