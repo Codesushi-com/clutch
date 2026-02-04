@@ -83,15 +83,20 @@ export default function SessionsPage() {
     }
   }, [connected, listSessions, setSessions, setLoading, setInitialized, setError]);
 
+  // Reset initialization on mount to ensure fresh data
+  useEffect(() => {
+    setInitialized(false);
+  }, [setInitialized]);
+
   // Load sessions when connected and set up auto-refresh
   useEffect(() => {
+    if (connected && !isInitialized) {
+      console.log("[SessionsPage] Connected, fetching sessions...");
+      fetchSessions(true);
+    }
+    
+    // Set up auto-refresh every 10 seconds when connected
     if (connected) {
-      // Initial load if not already initialized
-      if (!isInitialized) {
-        fetchSessions(true);
-      }
-      
-      // Set up auto-refresh every 10 seconds
       refreshIntervalRef.current = setInterval(() => {
         fetchSessions(false);
       }, 10000);
