@@ -2,6 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns"
 import { Avatar } from "@/components/ui/avatar"
+import { MarkdownContent } from "./markdown-content"
 
 interface StreamingMessageProps {
   author: string
@@ -63,12 +64,12 @@ export function StreamingMessage({
               : "bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-bl-md"
           }`}
         >
-          <p className="text-sm whitespace-pre-wrap break-words">
-            {content}
+          <div className="break-words">
+            <MarkdownContent content={content} />
             <span className="inline-block w-2 h-4 bg-current ml-1 animate-pulse opacity-70">
               |
             </span>
-          </p>
+          </div>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import type { ChatMessage } from "@/lib/db/types"
 import { formatDistanceToNow } from "date-fns"
 import { MessageActions } from "./message-actions"
 import { Avatar } from "@/components/ui/avatar"
+import { MarkdownContent } from "./markdown-content"
 
 interface MessageBubbleProps {
   message: ChatMessage
@@ -73,9 +74,10 @@ export function MessageBubble({
               : "bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-bl-md"
           }`}
         >
-          <p className="text-sm whitespace-pre-wrap break-words">
-            {message.content}
-          </p>
+          <MarkdownContent 
+            content={message.content}
+            className="break-words"
+          />
         </div>
       </div>
     </div>
