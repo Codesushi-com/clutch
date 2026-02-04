@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, use, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { Activity, RefreshCw, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
@@ -12,6 +13,7 @@ type PageProps = {
 
 export default function ProjectSessionsPage({ params }: PageProps) {
   const { slug } = use(params)
+  const router = useRouter()
   const { connected, connecting, listSessions } = useOpenClawRpc()
   const [sessions, setSessions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -102,26 +104,37 @@ export default function ProjectSessionsPage({ params }: PageProps) {
 
       {!loading && sessions.length > 0 && (
         <div className="space-y-2">
-          {sessions.map((session) => (
-            <div 
-              key={session.key || session.sessionId}
-              className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">
-                    {session.label || session.displayName || session.key}
+          {sessions.map((session, index) => {
+            const sessionKey = session.id || `session-${index}`
+            return (
+              <div 
+                key={sessionKey}
+                onClick={() => router.push(`/projects/${slug}/sessions/${encodeURIComponent(sessionKey)}`)}
+                className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    router.push(`/projects/${slug}/sessions/${encodeURIComponent(sessionKey)}`)
+                  }
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">
+                      {session.name || session.id}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {session.model || 'unknown model'} · {formatTokens(session.tokens?.total || 0)} tokens
+                    </div>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {session.model || 'unknown model'} · {formatTokens(session.tokens?.total || 0)} tokens
+                    {session.updatedAt ? formatDistanceToNow(new Date(session.updatedAt), { addSuffix: true }) : '—'}
                   </div>
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  {session.updatedAt ? formatDistanceToNow(new Date(session.updatedAt), { addSuffix: true }) : '—'}
-                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
