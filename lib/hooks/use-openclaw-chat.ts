@@ -212,12 +212,18 @@ export function useOpenClawChat({
         idempotencyKey,
       }) as { runId: string; status: string }
       
+      // Trigger typing indicator when server acknowledges with "started"
+      if (result.status === "started") {
+        activeRunId.current = result.runId
+        onTypingStart?.()
+      }
+      
       return result.runId
     } catch (error) {
       setSending(false)
       throw error
     }
-  }, [connected, sessionKey, rpc])
+  }, [connected, sessionKey, rpc, onTypingStart])
 
   // Connect on mount
   useEffect(() => {

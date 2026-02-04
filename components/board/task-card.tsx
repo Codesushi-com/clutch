@@ -17,7 +17,19 @@ const PRIORITY_COLORS: Record<string, string> = {
 }
 
 export function TaskCard({ task, index, onClick }: TaskCardProps) {
-  const tags = task.tags ? JSON.parse(task.tags) as string[] : []
+  const tags = (() => {
+    if (!task.tags) return []
+    try {
+      const parsed = JSON.parse(task.tags)
+      // Handle double-encoded JSON strings
+      if (typeof parsed === 'string') {
+        return JSON.parse(parsed) as string[]
+      }
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  })()
   
   return (
     <Draggable draggableId={task.id} index={index}>

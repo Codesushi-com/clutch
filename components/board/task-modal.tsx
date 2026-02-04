@@ -69,7 +69,14 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
       setPriority(task.priority)
       setAssignee(task.assignee || "")
       setRequiresHumanReview(!!task.requires_human_review)
-      const taskTags = task.tags ? JSON.parse(task.tags) as string[] : []
+      const taskTags = (() => {
+        if (!task.tags) return []
+        try {
+          const parsed = JSON.parse(task.tags)
+          if (typeof parsed === 'string') return JSON.parse(parsed) as string[]
+          return Array.isArray(parsed) ? parsed : []
+        } catch { return [] }
+      })()
       setTags(taskTags.join(", "))
       setShowDeleteConfirm(false)
       setDispatchStatus(task.dispatch_status)

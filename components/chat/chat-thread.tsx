@@ -23,10 +23,10 @@ export function ChatThread({
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom on new messages or typing indicator
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages.length])
+  }, [messages.length, typingAuthors.length])
 
   if (loading) {
     return (

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, use, useCallback } from "react"
+import { useEffect, useState, use, useCallback, useRef } from "react"
 import { MessageSquare, Wifi, WifiOff } from "lucide-react"
 import { useChatStore } from "@/lib/stores/chat-store"
 import { useChatEvents } from "@/lib/hooks/use-chat-events"
@@ -33,9 +33,28 @@ export default function ChatPage({ params }: PageProps) {
     setTyping,
   } = useChatStore()
 
+  // Track runIds originated from this chat (declared early for use in callback)
+  const pendingRunIds = useRef<Set<string>>(new Set())
+
   // OpenClaw WebSocket connection for main session
-  const handleOpenClawMessage = useCallback((msg: { role: string; content: string | Array<{ type: string; text?: string }> }) => {
+  const handleOpenClawMessage = useCallback((msg: { role: string; content: string | Array<{ type: string; text?: string }> }, runId: string) => {
     if (!activeChat) return
+    
+    // Only save responses to messages THIS chat originated
+    if (!pendingRunIds.current.has(runId)) {
+      console.log("[Chat] Ignoring message for runId not from this chat:", runId)
+      return
+    }
+    pendingRunIds.current.delete(runId)
+    
+    // Dedupe across tabs: only one tab should save each message
+    const lockKey = `openclaw-msg-${runId}`
+    if (localStorage.getItem(lockKey)) {
+      console.log("[Chat] Skipping duplicate message save for runId:", runId)
+      return
+    }
+    localStorage.setItem(lockKey, Date.now().toString())
+    setTimeout(() => localStorage.removeItem(lockKey), 30000)
     
     // Extract text from content
     const text = typeof msg.content === "string" 
@@ -118,7 +137,10 @@ export default function ChatPage({ params }: PageProps) {
     // Send to OpenClaw main session via WebSocket
     if (openClawConnected) {
       try {
-        await sendToOpenClaw(content, activeChat.id)
+        const runId = await sendToOpenClaw(content, activeChat.id)
+        pendingRunIds.current.add(runId)
+        // Clean up after 5 minutes
+        setTimeout(() => pendingRunIds.current.delete(runId), 5 * 60 * 1000)
       } catch (error) {
         console.error("[Chat] Failed to send to OpenClaw:", error)
       }

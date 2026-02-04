@@ -12,11 +12,19 @@
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
-const TRAP_API_URL = process.env.TRAP_API_URL || "http://localhost:3002";
+function getTrapUrl(api: OpenClawPluginApi): string {
+  return api.config.env?.TRAP_URL || api.config.env?.TRAP_API_URL || "http://localhost:3002";
+}
 
-async function sendToTrap(chatId: string, content: string, mediaUrl?: string): Promise<{ ok: boolean; messageId?: string; error?: string }> {
+async function sendToTrap(
+  api: OpenClawPluginApi,
+  chatId: string,
+  content: string,
+  mediaUrl?: string
+): Promise<{ ok: boolean; messageId?: string; error?: string }> {
+  const trapUrl = getTrapUrl(api);
   try {
-    const response = await fetch(`${TRAP_API_URL}/api/chats/${chatId}/messages`, {
+    const response = await fetch(`${trapUrl}/api/chats/${chatId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -71,8 +79,9 @@ export default function register(api: OpenClawPluginApi) {
             return { ok: false, error: "No chat ID (to) provided" };
           }
 
+          const trapUrl = getTrapUrl(api);
           try {
-            const response = await fetch(`${TRAP_API_URL}/api/chats/${to}/typing`, {
+            const response = await fetch(`${trapUrl}/api/chats/${to}/typing`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ typing: isTyping, author: "ada" }),
@@ -102,7 +111,7 @@ export default function register(api: OpenClawPluginApi) {
           }
 
           api.logger.info(`Trap: sending text to chat ${to}`);
-          const result = await sendToTrap(to, text);
+          const result = await sendToTrap(api, to, text);
           
           if (!result.ok) {
             api.logger.warn(`Trap: failed to send - ${result.error}`);
@@ -124,7 +133,7 @@ export default function register(api: OpenClawPluginApi) {
           }
 
           api.logger.info(`Trap: sending media to chat ${to}`);
-          const result = await sendToTrap(to, text || "📎 Attachment", mediaUrl);
+          const result = await sendToTrap(api, to, text || "📎 Attachment", mediaUrl);
           
           if (!result.ok) {
             api.logger.warn(`Trap: failed to send media - ${result.error}`);
