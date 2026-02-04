@@ -1,8 +1,10 @@
 "use client"
 
-import { useEffect, useState, use } from "react"
-import { MessageSquare } from "lucide-react"
+import { useEffect, useState, use, useCallback } from "react"
+import { MessageSquare, Wifi, WifiOff } from "lucide-react"
 import { useChatStore } from "@/lib/stores/chat-store"
+import { useChatEvents } from "@/lib/hooks/use-chat-events"
+import { useOpenClawChat } from "@/lib/hooks/use-openclaw-chat"
 import { ChatSidebar } from "@/components/chat/chat-sidebar"
 import { ChatThread } from "@/components/chat/chat-thread"
 import { ChatInput } from "@/components/chat/chat-input"
@@ -23,10 +25,69 @@ export default function ChatPage({ params }: PageProps) {
     activeChat, 
     messages, 
     loadingMessages,
+    typingAuthors,
     fetchChats, 
-    sendMessage,
+    sendMessage: sendMessageToDb,
     setActiveChat,
+    receiveMessage,
+    setTyping,
   } = useChatStore()
+
+  // OpenClaw WebSocket connection for main session
+  const handleOpenClawMessage = useCallback((msg: { role: string; content: string | Array<{ type: string; text?: string }> }) => {
+    if (!activeChat) return
+    
+    // Extract text from content
+    const text = typeof msg.content === "string" 
+      ? msg.content 
+      : msg.content.find(c => c.type === "text")?.text || ""
+    
+    // Save Ada's response to local DB
+    fetch(`/api/chats/${activeChat.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: text, author: "ada" }),
+    }).catch(console.error)
+  }, [activeChat])
+
+  const handleOpenClawTypingStart = useCallback(() => {
+    if (activeChat) {
+      setTyping(activeChat.id, "ada", true)
+    }
+  }, [activeChat, setTyping])
+
+  const handleOpenClawTypingEnd = useCallback(() => {
+    if (activeChat) {
+      setTyping(activeChat.id, "ada", false)
+    }
+  }, [activeChat, setTyping])
+
+  const { connected: openClawConnected, sending: openClawSending, sendMessage: sendToOpenClaw } = useOpenClawChat({
+    sessionKey: "main",
+    onMessage: handleOpenClawMessage,
+    onTypingStart: handleOpenClawTypingStart,
+    onTypingEnd: handleOpenClawTypingEnd,
+  })
+
+  // SSE subscription for real-time local updates
+  const handleNewMessage = useCallback((message: ChatMessage) => {
+    if (activeChat) {
+      receiveMessage(activeChat.id, message)
+    }
+  }, [activeChat, receiveMessage])
+
+  const handleTyping = useCallback((author: string, typing: boolean) => {
+    if (activeChat) {
+      setTyping(activeChat.id, author, typing)
+    }
+  }, [activeChat, setTyping])
+
+  useChatEvents({
+    chatId: activeChat?.id || "",
+    onMessage: handleNewMessage,
+    onTyping: handleTyping,
+    enabled: Boolean(activeChat),
+  })
 
   // Fetch project to get ID, then fetch chats
   useEffect(() => {
@@ -50,7 +111,18 @@ export default function ChatPage({ params }: PageProps) {
 
   const handleSendMessage = async (content: string) => {
     if (!activeChat) return
-    await sendMessage(activeChat.id, content)
+    
+    // Save user message to local DB
+    await sendMessageToDb(activeChat.id, content, "dan")
+    
+    // Send to OpenClaw main session via WebSocket
+    if (openClawConnected) {
+      try {
+        await sendToOpenClaw(content, activeChat.id)
+      } catch (error) {
+        console.error("[Chat] Failed to send to OpenClaw:", error)
+      }
+    }
   }
 
   const handleCreateTask = (message: ChatMessage) => {
@@ -60,7 +132,7 @@ export default function ChatPage({ params }: PageProps) {
   const handleTaskCreated = async (taskId: string) => {
     // Optionally post a message linking to the task
     if (activeChat) {
-      await sendMessage(
+      await sendMessageToDb(
         activeChat.id, 
         `📋 Created task from this conversation. Check the board for details.`,
         "dan"
@@ -81,15 +153,30 @@ export default function ChatPage({ params }: PageProps) {
           {activeChat ? (
             <>
               {/* Chat header */}
-              <div className="px-4 py-3 border-b border-[var(--border)]">
-                <h2 className="font-medium text-[var(--text-primary)]">
-                  {activeChat.title}
-                </h2>
-                {activeChat.participants && (
-                  <p className="text-xs text-[var(--text-muted)]">
-                    {JSON.parse(activeChat.participants as string).join(", ")}
-                  </p>
-                )}
+              <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+                <div>
+                  <h2 className="font-medium text-[var(--text-primary)]">
+                    {activeChat.title}
+                  </h2>
+                  {activeChat.participants && (
+                    <p className="text-xs text-[var(--text-muted)]">
+                      {JSON.parse(activeChat.participants as string).join(", ")}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  {openClawConnected ? (
+                    <span className="flex items-center gap-1 text-green-500">
+                      <Wifi className="h-3 w-3" />
+                      Connected
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-yellow-500">
+                      <WifiOff className="h-3 w-3" />
+                      Connecting...
+                    </span>
+                  )}
+                </div>
               </div>
               
               {/* Messages */}
@@ -97,6 +184,7 @@ export default function ChatPage({ params }: PageProps) {
                 messages={currentMessages} 
                 loading={loadingMessages}
                 onCreateTask={handleCreateTask}
+                typingAuthors={typingAuthors[activeChat.id] || []}
               />
               
               {/* Input */}

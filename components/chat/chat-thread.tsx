@@ -10,6 +10,7 @@ interface ChatThreadProps {
   loading?: boolean
   currentUser?: string
   onCreateTask?: (message: ChatMessage) => void
+  typingAuthors?: string[]
 }
 
 export function ChatThread({ 
@@ -17,6 +18,7 @@ export function ChatThread({
   loading = false, 
   currentUser = "dan",
   onCreateTask,
+  typingAuthors = [],
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -72,6 +74,21 @@ export function ChatThread({
           ))}
         </div>
       ))}
+      
+      {/* Typing indicator */}
+      {typingAuthors.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2">
+          <div className="flex gap-1">
+            <span className="w-2 h-2 bg-[var(--text-muted)] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+            <span className="w-2 h-2 bg-[var(--text-muted)] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+            <span className="w-2 h-2 bg-[var(--text-muted)] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+          </div>
+          <span className="text-sm text-[var(--text-muted)]">
+            {typingAuthors.join(", ")} {typingAuthors.length === 1 ? "is" : "are"} typing...
+          </span>
+        </div>
+      )}
+      
       <div ref={bottomRef} />
     </div>
   )

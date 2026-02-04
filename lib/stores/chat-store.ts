@@ -17,6 +17,7 @@ interface ChatState {
   loadingMessages: boolean
   error: string | null
   currentProjectId: string | null
+  typingAuthors: Record<string, string[]> // chatId -> authors currently typing
   
   // Actions
   fetchChats: (projectId: string) => Promise<void>
@@ -27,6 +28,10 @@ interface ChatState {
   fetchMessages: (chatId: string) => Promise<void>
   sendMessage: (chatId: string, content: string, author?: string) => Promise<ChatMessage>
   loadMoreMessages: (chatId: string) => Promise<boolean>
+  
+  // SSE event handlers
+  receiveMessage: (chatId: string, message: ChatMessage) => void
+  setTyping: (chatId: string, author: string, typing: boolean) => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -37,6 +42,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadingMessages: false,
   error: null,
   currentProjectId: null,
+  typingAuthors: {},
 
   fetchChats: async (projectId) => {
     set({ loading: true, error: null, currentProjectId: projectId })
@@ -130,26 +136,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
     
     const data = await response.json()
     
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [chatId]: [...(state.messages[chatId] || []), data.message],
-      },
-      // Update lastMessage on the chat
-      chats: state.chats.map((c) =>
-        c.id === chatId
-          ? {
-              ...c,
-              lastMessage: {
-                content: data.message.content,
-                author: data.message.author,
-                created_at: data.message.created_at,
-              },
-              updated_at: data.message.created_at,
-            }
-          : c
-      ),
-    }))
+    set((state) => {
+      const existing = state.messages[chatId] || []
+      
+      // Check if message already exists (SSE might have added it first)
+      if (existing.some((m) => m.id === data.message.id)) {
+        return state
+      }
+      
+      return {
+        messages: {
+          ...state.messages,
+          [chatId]: [...existing, data.message],
+        },
+        // Update lastMessage on the chat
+        chats: state.chats.map((c) =>
+          c.id === chatId
+            ? {
+                ...c,
+                lastMessage: {
+                  content: data.message.content,
+                  author: data.message.author,
+                  created_at: data.message.created_at,
+                },
+                updated_at: data.message.created_at,
+              }
+            : c
+        ),
+      }
+    })
     
     return data.message
   },
@@ -178,5 +193,68 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
     
     return data.hasMore
+  },
+
+  // Receive a message from SSE (avoid duplicates)
+  receiveMessage: (chatId, message) => {
+    set((state) => {
+      const existing = state.messages[chatId] || []
+      
+      // Check if message already exists (by id)
+      if (existing.some((m) => m.id === message.id)) {
+        return state
+      }
+      
+      return {
+        messages: {
+          ...state.messages,
+          [chatId]: [...existing, message],
+        },
+        // Update lastMessage on the chat
+        chats: state.chats.map((c) =>
+          c.id === chatId
+            ? {
+                ...c,
+                lastMessage: {
+                  content: message.content,
+                  author: message.author,
+                  created_at: message.created_at,
+                },
+                updated_at: message.created_at,
+              }
+            : c
+        ),
+        // Clear typing indicator for this author
+        typingAuthors: {
+          ...state.typingAuthors,
+          [chatId]: (state.typingAuthors[chatId] || []).filter((a) => a !== message.author),
+        },
+      }
+    })
+  },
+
+  // Handle typing indicator from SSE
+  setTyping: (chatId, author, typing) => {
+    set((state) => {
+      const current = state.typingAuthors[chatId] || []
+      
+      if (typing && !current.includes(author)) {
+        return {
+          typingAuthors: {
+            ...state.typingAuthors,
+            [chatId]: [...current, author],
+          },
+        }
+      } else if (!typing && current.includes(author)) {
+        return {
+          typingAuthors: {
+            ...state.typingAuthors,
+            [chatId]: current.filter((a) => a !== author),
+          },
+        }
+      }
+      
+      return state
+    })
   },
 }))

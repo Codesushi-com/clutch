@@ -20,7 +20,20 @@ interface WebSocketContextValue {
 
 const WebSocketContext = createContext<WebSocketContextValue | null>(null);
 
-const WS_URL = process.env.NEXT_PUBLIC_OPENCLAW_WS_URL || '';
+// Dynamic WebSocket URL based on page protocol
+// HTTPS pages must use WSS through nginx proxy, HTTP can use WS directly
+function getWebSocketUrl(): string {
+  if (typeof window === 'undefined') return '';
+  
+  // When on HTTPS, use the same-origin WSS proxy
+  if (window.location.protocol === 'https:') {
+    return `wss://${window.location.host}/openclaw-ws`;
+  }
+  
+  // When on HTTP (dev), use direct connection
+  return process.env.NEXT_PUBLIC_OPENCLAW_WS_URL || '';
+}
+
 const RECONNECT_DELAY = 1000;
 const MAX_RECONNECT_DELAY = 30000;
 const PING_INTERVAL = 30000;
@@ -30,7 +43,13 @@ interface WebSocketProviderProps {
   url?: string;
 }
 
-export function WebSocketProvider({ children, url = WS_URL }: WebSocketProviderProps) {
+export function WebSocketProvider({ children, url }: WebSocketProviderProps) {
+  // Compute URL on client side only
+  const [wsUrl, setWsUrl] = useState<string>('');
+  
+  useEffect(() => {
+    setWsUrl(url || getWebSocketUrl());
+  }, [url]);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
   
@@ -54,7 +73,7 @@ export function WebSocketProvider({ children, url = WS_URL }: WebSocketProviderP
 
   const connect = useCallback(() => {
     // Skip connection if no URL configured
-    if (!url) {
+    if (!wsUrl) {
       console.log('[WebSocket] No URL configured, skipping connection');
       setStatus('disconnected');
       return;
@@ -65,9 +84,10 @@ export function WebSocketProvider({ children, url = WS_URL }: WebSocketProviderP
     }
 
     setStatus((prev) => (prev === 'disconnected' ? 'connecting' : 'reconnecting'));
+    console.log('[WebSocket] Connecting to', wsUrl);
 
     try {
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -131,7 +151,7 @@ export function WebSocketProvider({ children, url = WS_URL }: WebSocketProviderP
       console.error('[WebSocket] Failed to connect:', err);
       setStatus('disconnected');
     }
-  }, [url, handleWebSocketEvent, clearTimers]);
+  }, [wsUrl, handleWebSocketEvent, clearTimers]);
 
   // Store connect function in ref for access in onclose handler
   connectRef.current = connect;

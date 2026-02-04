@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: [
     "http://192.168.7.200:3002",
     "http://localhost:3002",
+    "https://ada.codesushi.com",
   ],
 };
 

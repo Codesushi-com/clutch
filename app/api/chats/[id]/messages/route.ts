@@ -1,8 +1,65 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import type { ChatMessage } from "@/lib/db/types"
+import { broadcastToChat } from "@/lib/sse/connections"
 
 type RouteParams = { params: Promise<{ id: string }> }
+
+const OPENCLAW_HOOKS_URL = process.env.OPENCLAW_HOOKS_URL || "http://localhost:18789/hooks"
+const OPENCLAW_HOOKS_TOKEN = process.env.OPENCLAW_HOOKS_TOKEN || ""
+
+// Forward message to OpenClaw for agent processing
+async function forwardToOpenClaw(chatId: string, message: string, author: string) {
+  if (!OPENCLAW_HOOKS_TOKEN) {
+    console.warn("[Chat] No OPENCLAW_HOOKS_TOKEN configured, skipping forward")
+    return
+  }
+  
+  // Show Ada typing immediately
+  broadcastToChat(chatId, {
+    type: "typing",
+    data: { chatId, author: "ada", typing: true },
+  })
+  
+  try {
+    const response = await fetch(`${OPENCLAW_HOOKS_URL}/agent`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENCLAW_HOOKS_TOKEN}`,
+      },
+      body: JSON.stringify({
+        message: `[Trap Chat from ${author}]\n\n${message}`,
+        name: "Trap",
+        sessionKey: "main",
+        wakeMode: "now",
+        deliver: true,
+        channel: "trap",
+        to: chatId,
+      }),
+    })
+    
+    if (!response.ok) {
+      const error = await response.text()
+      console.error("[Chat] Failed to forward to OpenClaw:", response.status, error)
+      // Clear typing on error
+      broadcastToChat(chatId, {
+        type: "typing",
+        data: { chatId, author: "ada", typing: false },
+      })
+    } else {
+      const data = await response.json()
+      console.log("[Chat] Forwarded to OpenClaw, runId:", data.runId)
+    }
+  } catch (error) {
+    console.error("[Chat] Error forwarding to OpenClaw:", error)
+    // Clear typing on error
+    broadcastToChat(chatId, {
+      type: "typing",
+      data: { chatId, author: "ada", typing: false },
+    })
+  }
+}
 
 // GET /api/chats/[id]/messages — Get messages (paginated)
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -97,6 +154,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   // Update chat's updated_at
   db.prepare("UPDATE chats SET updated_at = ? WHERE id = ?").run(now, id)
+
+  // Broadcast new message to SSE subscribers
+  broadcastToChat(id, {
+    type: "message",
+    data: message,
+  })
+
+  // Note: OpenClaw forwarding now happens via WebSocket in the chat UI
+  // The hooks-based forwarding is disabled
+  // if (author !== "ada") {
+  //   forwardToOpenClaw(id, content, author).catch(console.error)
+  // }
 
   return NextResponse.json({ message }, { status: 201 })
 }
