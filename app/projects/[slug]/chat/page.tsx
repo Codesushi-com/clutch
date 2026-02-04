@@ -47,14 +47,14 @@ export default function ChatPage({ params }: PageProps) {
     streamingMessages,
     loadingMessages,
     typingIndicators,
-    fetchChats, 
+    fetchChats,
+    refreshMessages,
     sendMessage: sendMessageToDb,
     setActiveChat,
     receiveMessage,
     setTyping,
     startStreamingMessage,
     appendToStreamingMessage,
-    finalizeStreamingMessage,
     clearStreamingMessage,
   } = useChatStore()
 
@@ -253,10 +253,20 @@ export default function ChatPage({ params }: PageProps) {
     }
   }, [activeChat, setTyping])
 
+  // Refetch messages when tab becomes visible (after being hidden)
+  const handleRefreshMessages = useCallback(() => {
+    if (activeChat) {
+      console.log("[Chat] Refetching messages due to tab visibility change")
+      // Seamlessly refresh messages without loading state
+      refreshMessages(activeChat.id)
+    }
+  }, [activeChat, refreshMessages])
+
   useChatEvents({
     chatId: activeChat?.id || "",
     onMessage: handleNewMessage,
     onTyping: handleTyping,
+    onRefreshMessages: handleRefreshMessages,
     enabled: Boolean(activeChat),
   })
 

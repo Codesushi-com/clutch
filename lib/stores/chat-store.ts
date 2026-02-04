@@ -36,6 +36,7 @@ interface ChatState {
   deleteChat: (chatId: string) => Promise<void>
   
   fetchMessages: (chatId: string) => Promise<void>
+  refreshMessages: (chatId: string) => Promise<void> // Same as fetchMessages but without loading state
   sendMessage: (chatId: string, content: string, author?: string) => Promise<ChatMessage>
   loadMoreMessages: (chatId: string) => Promise<boolean>
   
@@ -167,6 +168,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({
       messages: { ...state.messages, [chatId]: data.messages },
       loadingMessages: false,
+    }))
+  },
+
+  refreshMessages: async (chatId) => {
+    // Same as fetchMessages but without loading state for seamless refresh
+    const response = await fetch(`/api/chats/${chatId}/messages`)
+    
+    if (!response.ok) {
+      return
+    }
+    
+    const data = await response.json()
+    
+    set((state) => ({
+      messages: { ...state.messages, [chatId]: data.messages },
     }))
   },
 

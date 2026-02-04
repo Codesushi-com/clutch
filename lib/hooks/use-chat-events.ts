@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useCallback } from "react"
+import { usePageVisibility } from "./use-page-visibility"
 import type { ChatMessage } from "@/lib/db/types"
 
 type UseChatEventsOptions = {
@@ -8,6 +9,7 @@ type UseChatEventsOptions = {
   onMessage?: (message: ChatMessage) => void
   onTyping?: (author: string, typing: boolean) => void
   onConnect?: () => void
+  onRefreshMessages?: () => void
   enabled?: boolean
 }
 
@@ -16,11 +18,13 @@ export function useChatEvents({
   onMessage,
   onTyping,
   onConnect,
+  onRefreshMessages,
   enabled = true,
 }: UseChatEventsOptions) {
   const eventSourceRef = useRef<EventSource | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectAttemptsRef = useRef(0)
+  const wasDisconnectedRef = useRef(false)
   const maxReconnectAttempts = 10
   const baseReconnectDelay = 1000
 
@@ -38,6 +42,14 @@ export function useChatEvents({
 
     eventSource.addEventListener("connected", () => {
       console.log("[ChatEvents] Connected to", chatId)
+      
+      // If we were previously disconnected, refetch messages to catch up
+      if (wasDisconnectedRef.current) {
+        console.log("[ChatEvents] Refetching messages after reconnection")
+        onRefreshMessages?.()
+        wasDisconnectedRef.current = false
+      }
+      
       reconnectAttemptsRef.current = 0
       onConnect?.()
     })
@@ -65,6 +77,7 @@ export function useChatEvents({
       console.log("[ChatEvents] Connection error, will reconnect...", error)
       eventSource.close()
       eventSourceRef.current = null
+      wasDisconnectedRef.current = true
       
       // Attempt to reconnect with exponential backoff
       if (reconnectAttemptsRef.current < maxReconnectAttempts) {
@@ -83,7 +96,7 @@ export function useChatEvents({
         console.error("[ChatEvents] Max reconnect attempts reached")
       }
     }
-  }, [chatId, enabled, onMessage, onTyping, onConnect])
+  }, [chatId, enabled, onMessage, onTyping, onConnect, onRefreshMessages])
 
   useEffect(() => {
     connect()
@@ -100,7 +113,48 @@ export function useChatEvents({
     }
   }, [connect])
 
+  // Handle page visibility changes to refetch messages when tab becomes visible
+  const { isVisible, onVisible } = usePageVisibility()
+  const lastVisibilityTimeRef = useRef<number>(0)
+  const wasHiddenRef = useRef(false)
+
+  // Initialize timestamp ref on mount
+  useEffect(() => {
+    lastVisibilityTimeRef.current = Date.now()
+  }, [])
+
+  useEffect(() => {
+    const handleTabVisible = () => {
+      // Only refetch if we were actually hidden for more than a few seconds
+      const now = Date.now()
+      const timeSinceLastCheck = now - lastVisibilityTimeRef.current
+      
+      console.log("[ChatEvents] Tab became visible, was hidden:", wasHiddenRef.current, "time since:", timeSinceLastCheck)
+      
+      if (wasHiddenRef.current && timeSinceLastCheck > 3000) {
+        console.log("[ChatEvents] Refetching messages after tab switch")
+        onRefreshMessages?.()
+      }
+      
+      wasHiddenRef.current = false
+      lastVisibilityTimeRef.current = now
+    }
+
+    const cleanup = onVisible(handleTabVisible)
+    return cleanup
+  }, [onVisible, onRefreshMessages])
+
+  // Track when tab becomes hidden
+  useEffect(() => {
+    if (!isVisible) {
+      console.log("[ChatEvents] Tab became hidden")
+      wasHiddenRef.current = true
+      lastVisibilityTimeRef.current = Date.now()
+    }
+  }, [isVisible])
+
   return {
     reconnect: connect,
+    isVisible,
   }
 }
