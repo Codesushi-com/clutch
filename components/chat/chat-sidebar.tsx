@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Plus, MessageSquare, Trash2, X, ChevronDown, ChevronRight, ListTodo, ExternalLink } from "lucide-react"
+import { Plus, MessageSquare, Trash2, X, ChevronDown, ChevronRight, ListTodo, ExternalLink, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
@@ -48,21 +48,27 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
     { label: "Up Next", status: "ready", tasks: [], expanded: true },
   ])
   const [loadingTasks, setLoadingTasks] = useState(true)
+  
+  // Recently shipped state
+  const [recentlyShipped, setRecentlyShipped] = useState<Task[]>([])
+  const [recentlyShippedExpanded, setRecentlyShippedExpanded] = useState(true)
 
   // Fetch work queue tasks
   const fetchWorkQueue = useCallback(async () => {
     try {
-      // Fetch tasks for each status
-      const [reviewRes, inProgressRes, readyRes] = await Promise.all([
+      // Fetch tasks for each status (including done for recently shipped)
+      const [reviewRes, inProgressRes, readyRes, doneRes] = await Promise.all([
         fetch(`/api/tasks?projectId=${projectId}&status=review`),
         fetch(`/api/tasks?projectId=${projectId}&status=in_progress`),
         fetch(`/api/tasks?projectId=${projectId}&status=ready`),
+        fetch(`/api/tasks?projectId=${projectId}&status=done&limit=3`),
       ])
 
-      const [reviewData, inProgressData, readyData] = await Promise.all([
+      const [reviewData, inProgressData, readyData, doneData] = await Promise.all([
         reviewRes.json(),
         inProgressRes.json(),
         readyRes.json(),
+        doneRes.json(),
       ])
 
       setWorkQueueSections(prev => prev.map(section => {
@@ -78,6 +84,9 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
         }
         return section
       }))
+      
+      // Set recently shipped tasks
+      setRecentlyShipped(doneData.tasks || [])
     } catch (error) {
       console.error("Failed to fetch work queue:", error)
     } finally {
@@ -162,6 +171,23 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   const truncateTitle = (title: string, maxLength: number = 30) => {
     if (title.length <= maxLength) return title
     return title.substring(0, maxLength) + "..."
+  }
+
+  const formatRelativeTime = (timestamp: number | null) => {
+    if (!timestamp) return "recently"
+    
+    const now = Date.now()
+    const diffMs = now - timestamp
+    const diffMinutes = Math.floor(diffMs / (1000 * 60))
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    
+    if (diffMinutes < 1) return "just now"
+    if (diffMinutes < 60) return `${diffMinutes}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays === 1) return "yesterday"
+    if (diffDays < 7) return `${diffDays}d ago`
+    return new Date(timestamp).toLocaleDateString([], { month: "short", day: "numeric" })
   }
 
   // Mobile backdrop
@@ -400,6 +426,50 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
               </div>
             )
           })
+        )}
+        
+        {/* Recently Shipped section */}
+        {recentlyShipped.length > 0 && (
+          <>
+            {/* Section header */}
+            <div className="p-3 border-t border-[var(--border)] bg-[var(--bg-secondary)]/30">
+              <button
+                onClick={() => setRecentlyShippedExpanded(!recentlyShippedExpanded)}
+                className="w-full flex items-center gap-2"
+              >
+                {recentlyShippedExpanded ? (
+                  <ChevronDown className="h-3 w-3 text-[var(--text-muted)]" />
+                ) : (
+                  <ChevronRight className="h-3 w-3 text-[var(--text-muted)]" />
+                )}
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <span className="font-medium text-[var(--text-primary)] text-sm">Recently Shipped</span>
+              </button>
+            </div>
+            
+            {/* Recently shipped tasks */}
+            {recentlyShippedExpanded && (
+              <div className="border-b border-[var(--border)]">
+                {recentlyShipped.map((task) => (
+                  <Link
+                    key={task.id}
+                    href={projectSlug ? `/projects/${projectSlug}/board?task=${task.id}` : '#'}
+                    className="flex items-start gap-2 px-3 py-2 hover:bg-[var(--bg-tertiary)] transition-colors group"
+                  >
+                    <CheckCircle2 className="h-3 w-3 text-green-500 mt-1 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-[var(--text-primary)] group-hover:text-[var(--accent-blue)] truncate">
+                        {truncateTitle(task.title)}
+                      </p>
+                      <span className="text-xs text-[var(--text-muted)]">
+                        {formatRelativeTime(task.completed_at)}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

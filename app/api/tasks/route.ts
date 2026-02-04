@@ -3,14 +3,15 @@ import { db } from "@/lib/db"
 import { wsManager } from "@/lib/websocket/server"
 import type { Task } from "@/lib/db/types"
 
-// GET /api/tasks?projectId=xxx&status=xxx — List with filters
+// GET /api/tasks?projectId=xxx&status=xxx&limit=n — List with filters
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const projectId = searchParams.get("projectId")
   const status = searchParams.get("status")
+  const limit = searchParams.get("limit")
   
   let query = "SELECT * FROM tasks WHERE 1=1"
-  const params: (string | null)[] = []
+  const params: (string | number | null)[] = []
   
   if (projectId) {
     query += " AND project_id = ?"
@@ -22,7 +23,22 @@ export async function GET(request: NextRequest) {
     params.push(status)
   }
   
-  query += " ORDER BY position ASC, created_at ASC"
+  // For done tasks, sort by completion time (most recent first)
+  // For other statuses, sort by position
+  if (status === "done") {
+    query += " ORDER BY completed_at DESC, updated_at DESC"
+  } else {
+    query += " ORDER BY position ASC, created_at ASC"
+  }
+  
+  // Apply limit if specified
+  if (limit) {
+    const limitNum = parseInt(limit, 10)
+    if (!isNaN(limitNum) && limitNum > 0) {
+      query += " LIMIT ?"
+      params.push(limitNum)
+    }
+  }
   
   const tasks = db.prepare(query).all(...params) as Task[]
 
