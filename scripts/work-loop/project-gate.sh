@@ -85,6 +85,16 @@ TASK_TEMPLATE="$SCRIPT_DIR/process-task.md"
 task_description=$(sqlite3 "$TRAP_DB" "SELECT description FROM tasks WHERE id = '$task_id'" 2>/dev/null || echo "")
 task_priority=$(sqlite3 "$TRAP_DB" "SELECT priority FROM tasks WHERE id = '$task_id'" 2>/dev/null || echo "medium")
 
+# Fetch full project context from API (includes AGENTS.md, README.md, etc.)
+project_context_formatted=""
+context_response=$(curl -s "${API_BASE}/api/projects/${PROJECT_ID}/context" 2>/dev/null || echo "{}")
+if echo "$context_response" | grep -q '"formatted"'; then
+    # Extract the formatted context using jq (fallback to basic info if jq unavailable)
+    if command -v jq &> /dev/null; then
+        project_context_formatted=$(echo "$context_response" | jq -r '.formatted // empty')
+    fi
+fi
+
 # Generate the work instructions by replacing placeholders
 work_instructions=$(cat "$TASK_TEMPLATE" | \
   sed "s/{project_name}/$project_name/g" | \
@@ -93,7 +103,20 @@ work_instructions=$(cat "$TASK_TEMPLATE" | \
   sed "s/{project_slug}/$PROJECT_ID/g" | \
   sed "s/{task_id}/$task_id/g" | \
   sed "s/{task_title}/$task_title/g" | \
-  sed "s/{task_description}/$task_description/g" | \
   sed "s/{task_priority}/$task_priority/g")
+
+# Replace task description (may contain special characters, use awk)
+work_instructions=$(echo "$work_instructions" | awk -v desc="$task_description" '{gsub(/{task_description}/, desc); print}')
+
+# Append full project context if available
+if [[ -n "$project_context_formatted" ]]; then
+    work_instructions="${work_instructions}
+
+---
+
+# Project Context (Cascaded)
+
+${project_context_formatted}"
+fi
 
 echo "$work_instructions"

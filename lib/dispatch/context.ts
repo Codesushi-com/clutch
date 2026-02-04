@@ -1,9 +1,13 @@
 import { db } from "@/lib/db"
 import type { Task, Project, Comment } from "@/lib/db/types"
 import { getAgent } from "@/lib/agents"
+import { buildProjectContext, formatProjectContext } from "@/lib/project-context"
 
 /**
  * Build context for spawning an agent session
+ * 
+ * This cascades project context (working directory, GitHub repo, key files like
+ * AGENTS.md, README.md) into the task context that agents receive.
  */
 export function buildTaskContext(task: Task, project: Project, agentId: string): string {
   const agent = getAgent(agentId)
@@ -24,6 +28,10 @@ export function buildTaskContext(task: Task, project: Project, agentId: string):
     urgent: "🚨 Urgent",
   }
   
+  // Build the project context from local files (AGENTS.md, README.md, etc.)
+  const projectContext = buildProjectContext(project)
+  const formattedProjectContext = formatProjectContext(projectContext)
+  
   let context = `# Task Assignment
 
 ## Task
@@ -32,7 +40,8 @@ export function buildTaskContext(task: Task, project: Project, agentId: string):
 - **Priority**: ${priorityLabels[task.priority] || task.priority}
 - **Status**: ${task.status}
 - **Project**: ${project.name}
-${project.repo_url ? `- **Repository**: ${project.repo_url}` : ""}
+${project.github_repo ? `- **Repository**: ${project.github_repo}` : project.repo_url ? `- **Repository**: ${project.repo_url}` : ""}
+${project.local_path ? `- **Working Directory**: \`${project.local_path}\`` : ""}
 
 ## Description
 ${task.description || "_No description provided_"}
@@ -49,22 +58,27 @@ ${task.description || "_No description provided_"}
     })
   }
 
-  // Add project context placeholder
-  // TODO: Load actual project context files (STANDARDS.md, etc.)
-  context += `\n## Project Context
+  // Add cascaded project context (includes key files like AGENTS.md, README.md)
+  if (projectContext.files.length > 0 || projectContext.workingDirectory) {
+    context += `\n---\n\n${formattedProjectContext}\n`
+  } else {
+    // Fallback to basic project info if no files found
+    context += `\n## Project Context
 Project: ${project.name}
 ${project.description ? `\n${project.description}` : ""}
 `
+  }
 
   // Add instructions based on agent role
   context += `\n## Instructions
 You are **${agentName}** working on this task.
 
-1. Complete the task as described
-2. If you need clarification, post a comment with type "request_input"
-3. When done, post a comment with type "completion" and summary
-4. For code changes, create a PR and include the link in your completion comment
-5. Do NOT merge PRs - leave them open for review
+1. **Work in the project directory**: \`cd ${project.local_path || "."}\`
+2. Complete the task as described
+3. If you need clarification, post a comment with type "request_input"
+4. When done, post a comment with type "completion" and summary
+5. For code changes, create a PR and include the link in your completion comment
+6. Do NOT merge PRs - leave them open for review
 
 Work systematically. Start by understanding the task, then plan your approach, then execute.
 `

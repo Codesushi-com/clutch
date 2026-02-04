@@ -2,17 +2,17 @@
 
 You are processing a task from the automated work loop for project **{project_name}**.
 
-## Project Context
-- **Name:** {project_name}
-- **Local Path:** {local_path}
-- **GitHub Repo:** {github_repo}
-- **Slug:** {project_slug}
-
 ## Task Details
 - **ID:** {task_id}
 - **Title:** {task_title}
-- **Description:** {task_description}
 - **Priority:** {task_priority}
+- **Project:** {project_name}
+- **Working Directory:** `{local_path}`
+- **GitHub Repo:** {github_repo}
+
+## Description
+
+{task_description}
 
 ## Instructions
 
@@ -31,8 +31,8 @@ You are processing a task from the automated work loop for project **{project_na
 3. **Implement the task:**
    - Read the task description carefully
    - Understand what needs to be built/fixed
+   - Follow project conventions (see Project Files section below)
    - Write clean, working code
-   - Follow project conventions
    - Test your changes
 
 4. **Create a pull request:**
@@ -86,7 +86,7 @@ If you encounter issues:
 ## Success Criteria
 
 - Task implementation matches the description
-- Code follows project standards
+- Code follows project standards (check AGENTS.md if present)
 - Tests pass (if applicable)  
 - PR is created and linked
 - Task status updated to in_review
