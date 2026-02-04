@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useCallback } from "react"
 import { MessageSquare } from "lucide-react"
 import { MessageBubble } from "./message-bubble"
 import { StreamingMessage } from "./streaming-message"
+import { useChatStore } from "@/lib/stores/chat-store"
 import type { ChatMessage } from "@/lib/db/types"
 
 interface TypingIndicator {
@@ -18,6 +19,7 @@ interface StreamingMessage {
 }
 
 interface ChatThreadProps {
+  chatId: string
   messages: ChatMessage[]
   streamingMessage?: StreamingMessage | null
   loading?: boolean
@@ -27,6 +29,7 @@ interface ChatThreadProps {
 }
 
 export function ChatThread({ 
+  chatId,
   messages, 
   streamingMessage = null,
   loading = false, 
@@ -36,11 +39,83 @@ export function ChatThread({
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const { setScrollPosition, getScrollPosition } = useChatStore()
+  const lastChatIdRef = useRef<string>(chatId)
+  const isAutoScrollingRef = useRef(false)
+  const restoredScrollPositionRef = useRef(false)
 
-  // Scroll to bottom on new messages, streaming content, or typing indicator
+  // Check if user is near bottom of chat (within 100px)
+  const isNearBottom = useCallback(() => {
+    if (!containerRef.current) return true
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current
+    return scrollHeight - scrollTop - clientHeight < 100
+  }, [])
+
+  // Save scroll position to store (debounced to avoid excessive saves)
+  const saveScrollPosition = useCallback(() => {
+    if (!containerRef.current || isAutoScrollingRef.current) return
+    
+    const { scrollTop } = containerRef.current
+    setScrollPosition(chatId, scrollTop)
+  }, [chatId, setScrollPosition])
+
+  // Restore scroll position when switching chats
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages.length, streamingMessage?.content, typingIndicators.length])
+    if (lastChatIdRef.current !== chatId) {
+      // Chat switched - restore scroll position
+      lastChatIdRef.current = chatId
+      restoredScrollPositionRef.current = false
+      
+      // Use setTimeout to ensure DOM is updated
+      setTimeout(() => {
+        if (!containerRef.current) return
+        
+        const savedPosition = getScrollPosition(chatId)
+        if (savedPosition > 0) {
+          isAutoScrollingRef.current = true
+          containerRef.current.scrollTop = savedPosition
+          restoredScrollPositionRef.current = true
+          
+          // Clear auto-scroll flag after a short delay
+          setTimeout(() => {
+            isAutoScrollingRef.current = false
+          }, 100)
+        }
+      }, 50)
+    }
+  }, [chatId, getScrollPosition])
+
+  // Auto-scroll to bottom for new messages (only if near bottom or haven't restored position)
+  useEffect(() => {
+    if (!restoredScrollPositionRef.current || isNearBottom()) {
+      isAutoScrollingRef.current = true
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+      
+      // Clear auto-scroll flag after animation
+      setTimeout(() => {
+        isAutoScrollingRef.current = false
+      }, 500)
+    }
+  }, [messages.length, streamingMessage?.content, typingIndicators.length, isNearBottom])
+
+  // Set up scroll event listener for saving position
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    let timeoutId: NodeJS.Timeout
+    const handleScroll = () => {
+      // Debounce scroll position saving
+      clearTimeout(timeoutId)
+      timeoutId = setTimeout(saveScrollPosition, 150)
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+      clearTimeout(timeoutId)
+    }
+  }, [saveScrollPosition])
 
   if (loading) {
     return (

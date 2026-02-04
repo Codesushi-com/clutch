@@ -334,6 +334,7 @@ export default function ChatPage({ params }: PageProps) {
               
               {/* Messages */}
               <ChatThread 
+                chatId={activeChat.id}
                 messages={currentMessages} 
                 streamingMessage={activeChat ? streamingMessages[activeChat.id] || null : null}
                 loading={loadingMessages}

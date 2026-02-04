@@ -21,6 +21,7 @@ interface ChatState {
   activeChat: ChatWithLastMessage | null
   messages: Record<string, ChatMessage[]>
   streamingMessages: Record<string, StreamingMessage> // chatId -> streaming message
+  scrollPositions: Record<string, number> // chatId -> scroll position
   loading: boolean
   loadingMessages: boolean
   error: string | null
@@ -47,6 +48,10 @@ interface ChatState {
   appendToStreamingMessage: (chatId: string, delta: string) => void
   finalizeStreamingMessage: (chatId: string, finalMessage?: ChatMessage) => void
   clearStreamingMessage: (chatId: string) => void
+  
+  // Scroll position tracking
+  setScrollPosition: (chatId: string, position: number) => void
+  getScrollPosition: (chatId: string) => number
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -54,6 +59,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeChat: null,
   messages: {},
   streamingMessages: {},
+  scrollPositions: {},
   loading: false,
   loadingMessages: false,
   error: null,
@@ -384,5 +390,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingMessages: newStreamingMessages,
       }
     })
+  },
+
+  // Store scroll position for a chat
+  setScrollPosition: (chatId, position) => {
+    set((state) => ({
+      scrollPositions: {
+        ...state.scrollPositions,
+        [chatId]: position,
+      },
+    }))
+  },
+
+  // Get scroll position for a chat (returns 0 if not set)
+  getScrollPosition: (chatId) => {
+    return get().scrollPositions[chatId] || 0
   },
 }))
