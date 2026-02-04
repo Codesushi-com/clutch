@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import type { Task, TaskStatus } from "@/lib/db/types"
+import { wsManager } from "@/lib/websocket/server"
+import type { Task } from "@/lib/db/types"
 
 // POST /api/tasks/reorder — Reorder tasks within a column
 export async function POST(request: NextRequest) {
@@ -60,6 +61,15 @@ export async function POST(request: NextRequest) {
         updateStmt.run(index, now, task.id)
       })
     })()
+
+    // Get the updated task to broadcast via WebSocket
+    const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(task_id) as Task
+    if (updatedTask) {
+      wsManager.broadcastToProject(project_id, {
+        type: 'task:updated',
+        data: updatedTask
+      })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

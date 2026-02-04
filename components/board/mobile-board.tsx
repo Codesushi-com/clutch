@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
-import { Plus, ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react"
+import { Plus, ChevronLeft, ChevronRight, Eye, EyeOff, Wifi, WifiOff } from "lucide-react"
 import type { Task, TaskStatus } from "@/lib/db/types"
 import { Column } from "./column"
 
@@ -14,6 +14,8 @@ interface MobileBoardProps {
   onDragEnd: (result: DropResult) => void
   showDone?: boolean
   onToggleShowDone?: () => void
+  wsConnected?: boolean
+  subscribers?: string[]
 }
 
 export function MobileBoard({ 
@@ -23,7 +25,9 @@ export function MobileBoard({
   onAddTask,
   onDragEnd,
   showDone = false,
-  onToggleShowDone
+  onToggleShowDone,
+  wsConnected = false,
+  subscribers = []
 }: MobileBoardProps) {
   const [activeColumnIndex, setActiveColumnIndex] = useState(0)
   const activeColumn = columns[activeColumnIndex]
@@ -132,9 +136,27 @@ export function MobileBoard({
     <div className="space-y-4" data-mobile-board>
       {/* Board Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-[var(--text-primary)]">
-          Board
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-semibold text-[var(--text-primary)]">
+            Board
+          </h2>
+          {/* WebSocket connection status for mobile */}
+          <div className="flex items-center gap-1" title={wsConnected ? "Connected - real-time updates active" : "Disconnected - changes may not appear immediately"}>
+            {wsConnected ? (
+              <Wifi className="h-3 w-3 text-green-500" />
+            ) : (
+              <WifiOff className="h-3 w-3 text-red-500" />
+            )}
+            <span className="text-xs text-[var(--text-secondary)]">
+              {wsConnected ? 'Live' : 'Off'}
+            </span>
+            {subscribers.length > 0 && (
+              <span className="text-xs text-[var(--text-secondary)]">
+                • {subscribers.length}
+              </span>
+            )}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           {/* Show Done toggle for mobile */}
           {onToggleShowDone && (

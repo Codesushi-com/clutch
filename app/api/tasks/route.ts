@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { wsManager } from "@/lib/websocket/server"
 import type { Task } from "@/lib/db/types"
 
 // GET /api/tasks?projectId=xxx&status=xxx — List with filters
@@ -104,6 +105,12 @@ export async function POST(request: NextRequest) {
       @position, @created_at, @updated_at, @completed_at
     )
   `).run(task)
+
+  // Emit WebSocket event for real-time updates
+  wsManager.broadcastToProject(project_id, {
+    type: 'task:created',
+    data: task
+  })
 
   return NextResponse.json({ task }, { status: 201 })
 }

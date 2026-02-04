@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { wsManager } from "@/lib/websocket/server"
 import type { Task, Comment } from "@/lib/db/types"
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -81,6 +82,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     WHERE id = @id
   `).run(updated)
 
+  // Emit WebSocket event for real-time updates
+  wsManager.broadcastToProject(updated.project_id, {
+    type: 'task:updated',
+    data: updated
+  })
+
+  // If status changed, also emit a move event for better UX
+  if (status && status !== existing.status) {
+    wsManager.broadcastToProject(updated.project_id, {
+      type: 'task:moved',
+      data: { id: updated.id, status: updated.status, projectId: updated.project_id }
+    })
+  }
+
   return NextResponse.json({ task: updated })
 }
 
@@ -88,7 +103,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   
-  const existing = db.prepare("SELECT id FROM tasks WHERE id = ?").get(id)
+  const existing = db.prepare("SELECT id, project_id FROM tasks WHERE id = ?").get(id) as { id: string; project_id: string } | undefined
   
   if (!existing) {
     return NextResponse.json(
@@ -98,6 +113,12 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   db.prepare("DELETE FROM tasks WHERE id = ?").run(id)
+
+  // Emit WebSocket event for real-time updates
+  wsManager.broadcastToProject(existing.project_id, {
+    type: 'task:deleted',
+    data: { id: existing.id, projectId: existing.project_id }
+  })
 
   return NextResponse.json({ success: true })
 }
