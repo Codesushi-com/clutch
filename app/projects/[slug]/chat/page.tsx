@@ -70,8 +70,11 @@ export default function ChatPage({ params }: PageProps) {
     }).catch(console.error)
   }, [activeChat])
 
-  const handleOpenClawTypingStart = useCallback(() => {
+  const handleOpenClawTypingStart = useCallback((runId: string) => {
     if (activeChat) {
+      // Track this runId so we accept the response
+      pendingRunIds.current.add(runId)
+      setTimeout(() => pendingRunIds.current.delete(runId), 5 * 60 * 1000)
       setTyping(activeChat.id, "ada", "thinking")
     }
   }, [activeChat, setTyping])
@@ -178,12 +181,10 @@ export default function ChatPage({ params }: PageProps) {
     await sendMessageToDb(activeChat.id, content, "dan")
     
     // Send to OpenClaw main session via WebSocket
+    // Note: runId tracking is handled in onTypingStart to avoid race conditions
     if (openClawConnected) {
       try {
-        const runId = await sendToOpenClaw(content, activeChat.id)
-        pendingRunIds.current.add(runId)
-        // Clean up after 5 minutes
-        setTimeout(() => pendingRunIds.current.delete(runId), 5 * 60 * 1000)
+        await sendToOpenClaw(content, activeChat.id)
       } catch (error) {
         console.error("[Chat] Failed to send to OpenClaw:", error)
       }

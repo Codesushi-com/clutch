@@ -48,7 +48,7 @@ type UseOpenClawChatOptions = {
   onDelta?: (delta: string, runId: string) => void
   onMessage?: (message: ChatMessage, runId: string) => void
   onError?: (error: string, runId: string) => void
-  onTypingStart?: () => void
+  onTypingStart?: (runId: string) => void
   onTypingEnd?: () => void
   enabled?: boolean
 }
@@ -160,7 +160,7 @@ export function useOpenClawChat({
           
           if (payload.state === "started") {
             activeRunId.current = payload.runId
-            onTypingStartRef.current?.()
+            onTypingStartRef.current?.(payload.runId)
           } else if (payload.state === "delta") {
             const text = typeof payload.message?.content === "string" 
               ? payload.message.content 
@@ -245,7 +245,7 @@ export function useOpenClawChat({
       
       if (result.status === "started") {
         activeRunId.current = result.runId
-        onTypingStartRef.current?.()
+        onTypingStartRef.current?.(result.runId)
       }
       
       return result.runId
