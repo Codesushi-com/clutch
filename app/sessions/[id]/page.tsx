@@ -7,9 +7,20 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, RotateCcw, Archive, AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSessionStore } from '@/lib/stores/session-store';
+import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
+import { SessionPreview } from '@/lib/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 export default function SessionDetailPage() {
   const params = useParams();
@@ -17,13 +28,85 @@ export default function SessionDetailPage() {
   const sessionId = params.id as string;
   
   const [isLoading, setIsLoading] = useState(true);
-  const session = useSessionStore((state) => state.getSessionById(sessionId));
+  const [sessionPreview, setSessionPreview] = useState<SessionPreview | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
+  const [isCompacting, setIsCompacting] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [notification, setNotification] = useState<{
+    message: string;
+    type: 'success' | 'error';
+  } | null>(null);
 
+  // Simple toast function
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 5000);
+  };
+  
+  const session = useSessionStore((state) => state.getSessionById(sessionId));
+  const { getSessionPreview, resetSession, compactSession, connected } = useOpenClawRpc();
+
+  // Load session preview data
   useEffect(() => {
-    // Simulate loading for demo
-    const timer = setTimeout(() => setIsLoading(false), 500);
-    return () => clearTimeout(timer);
-  }, []);
+    const loadSessionPreview = async () => {
+      if (!connected || !sessionId) return;
+      
+      try {
+        setIsLoading(true);
+        const preview = await getSessionPreview(sessionId);
+        setSessionPreview(preview);
+      } catch (error) {
+        console.error('Failed to load session preview:', error);
+        showToast("Failed to load session details", "error");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSessionPreview();
+  }, [sessionId, connected, getSessionPreview]);
+
+  // Handle session reset
+  const handleResetSession = async () => {
+    try {
+      setIsResetting(true);
+      setShowResetDialog(false);
+      await resetSession(sessionId);
+      showToast("Session has been reset successfully", "success");
+      // Reload session preview after reset
+      const preview = await getSessionPreview(sessionId);
+      setSessionPreview(preview);
+    } catch (error) {
+      console.error('Failed to reset session:', error);
+      showToast("Failed to reset session", "error");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  // Handle session compact
+  const handleCompactSession = async () => {
+    try {
+      setIsCompacting(true);
+      await compactSession(sessionId);
+      toast({
+        title: "Success",
+        description: "Session context has been compacted successfully",
+      });
+      // Reload session preview after compact
+      const preview = await getSessionPreview(sessionId);
+      setSessionPreview(preview);
+    } catch (error) {
+      console.error('Failed to compact session:', error);
+      toast({
+        title: "Error",
+        description: "Failed to compact session context",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCompacting(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -33,7 +116,7 @@ export default function SessionDetailPage() {
     );
   }
 
-  if (!session) {
+  if (!sessionPreview && !isLoading) {
     return (
       <div className="container mx-auto py-8 px-4">
         <Button variant="ghost" onClick={() => router.push('/sessions')} className="mb-4">
@@ -50,6 +133,8 @@ export default function SessionDetailPage() {
     );
   }
 
+  const displaySession = sessionPreview?.session || session;
+
   return (
     <div className="container mx-auto py-8 px-4">
       <Button variant="ghost" onClick={() => router.push('/sessions')} className="mb-4">
@@ -58,63 +143,191 @@ export default function SessionDetailPage() {
       </Button>
 
       <div className="rounded-lg border bg-card p-6">
-        <h1 className="text-2xl font-bold mb-4">{session.name}</h1>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div>
-            <div className="text-sm text-muted-foreground">ID</div>
-            <div className="font-mono text-sm">{session.id}</div>
+        <div className="flex justify-between items-start mb-4">
+          <h1 className="text-2xl font-bold">{displaySession?.name || sessionId}</h1>
+          
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCompactSession}
+              disabled={!connected || isCompacting}
+            >
+              {isCompacting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Archive className="h-4 w-4 mr-2" />
+              )}
+              Compact Context
+            </Button>
+            
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={!connected || isResetting}
+                >
+                  {isResetting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                  )}
+                  Reset Session
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Reset Session</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently clear all conversation history for this session. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleResetSession}>
+                    Reset Session
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Type</div>
-            <div className="capitalize">{session.type}</div>
-          </div>
+        </div>
+
+        {/* Session Metadata */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div>
             <div className="text-sm text-muted-foreground">Model</div>
-            <div>{session.model}</div>
+            <div className="font-medium">{displaySession?.model}</div>
           </div>
           <div>
-            <div className="text-sm text-muted-foreground">Status</div>
-            <div className="capitalize">{session.status}</div>
+            <div className="text-sm text-muted-foreground">Total Tokens</div>
+            <div className="font-medium">{displaySession?.tokens.total.toLocaleString()}</div>
           </div>
           <div>
-            <div className="text-sm text-muted-foreground">Created</div>
-            <div>{new Date(session.createdAt).toLocaleString()}</div>
+            <div className="text-sm text-muted-foreground">Context Usage</div>
+            <div className="font-medium">
+              {sessionPreview?.contextPercentage 
+                ? `${sessionPreview.contextPercentage.toFixed(1)}%`
+                : 'Loading...'}
+            </div>
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Last Updated</div>
-            <div>{new Date(session.updatedAt).toLocaleString()}</div>
+            <div className="font-medium">
+              {displaySession?.updatedAt 
+                ? new Date(displaySession.updatedAt).toLocaleString()
+                : 'Unknown'}
+            </div>
           </div>
         </div>
 
-        <div className="border-t pt-6">
-          <h2 className="text-lg font-semibold mb-4">Token Usage</h2>
+        {/* Additional Session Details */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div>
+            <div className="text-sm text-muted-foreground">Session ID</div>
+            <div className="font-mono text-sm">{sessionId}</div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Type</div>
+            <div className="capitalize">{displaySession?.type}</div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Status</div>
+            <div className="capitalize">{displaySession?.status}</div>
+          </div>
+        </div>
+
+        {/* Token Usage Breakdown */}
+        <div className="border-t pt-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Token Usage Breakdown</h2>
           <div className="grid grid-cols-3 gap-4">
             <div className="rounded-lg bg-muted p-4">
               <div className="text-sm text-muted-foreground">Input</div>
-              <div className="text-2xl font-bold">{session.tokens.input.toLocaleString()}</div>
+              <div className="text-2xl font-bold">{displaySession?.tokens.input.toLocaleString()}</div>
             </div>
             <div className="rounded-lg bg-muted p-4">
               <div className="text-sm text-muted-foreground">Output</div>
-              <div className="text-2xl font-bold">{session.tokens.output.toLocaleString()}</div>
+              <div className="text-2xl font-bold">{displaySession?.tokens.output.toLocaleString()}</div>
             </div>
             <div className="rounded-lg bg-muted p-4">
               <div className="text-sm text-muted-foreground">Total</div>
-              <div className="text-2xl font-bold">{session.tokens.total.toLocaleString()}</div>
+              <div className="text-2xl font-bold">{displaySession?.tokens.total.toLocaleString()}</div>
             </div>
           </div>
         </div>
 
-        {session.parentId && (
+        {/* Session History */}
+        <div className="border-t pt-6">
+          <h2 className="text-lg font-semibold mb-4">Conversation History</h2>
+          {sessionPreview?.messages ? (
+            <ScrollArea className="h-96 w-full rounded-md border">
+              <div className="p-4 space-y-4">
+                {sessionPreview.messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                        message.role === 'user'
+                          ? 'bg-primary text-primary-foreground'
+                          : message.role === 'assistant'
+                          ? 'bg-muted'
+                          : 'bg-secondary'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-medium capitalize">
+                          {message.role}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(message.timestamp).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                    </div>
+                  </div>
+                ))}
+                {sessionPreview.messages.length === 0 && (
+                  <div className="text-center text-muted-foreground py-8">
+                    No messages in this session yet.
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          ) : (
+            <div className="h-32 w-full rounded-md border flex items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" />
+              Loading conversation history...
+            </div>
+          )}
+        </div>
+
+        {/* Parent Session Link */}
+        {displaySession?.parentId && (
           <div className="border-t pt-6 mt-6">
             <div className="text-sm text-muted-foreground">Parent Session</div>
             <Button
               variant="link"
               className="p-0 h-auto font-mono"
-              onClick={() => router.push(`/sessions/${session.parentId}`)}
+              onClick={() => router.push(`/sessions/${displaySession.parentId}`)}
             >
-              {session.parentId}
+              {displaySession.parentId}
             </Button>
+          </div>
+        )}
+
+        {/* Connection Status Warning */}
+        {!connected && (
+          <div className="border-t pt-6 mt-6">
+            <div className="flex items-center gap-2 text-yellow-600">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">
+                Not connected to OpenClaw. Session actions are unavailable.
+              </span>
+            </div>
           </div>
         )}
       </div>

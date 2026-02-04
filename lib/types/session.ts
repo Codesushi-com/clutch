@@ -101,6 +101,20 @@ export type SessionEvent =
   | SessionCompletedEvent
   | SessionCancelledEvent;
 
+// Session preview with metadata and message history
+export interface SessionMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+}
+
+export interface SessionPreview {
+  session: Session;
+  messages: SessionMessage[];
+  contextPercentage: number;
+}
+
 // Legacy WebSocket message type for backward compatibility
 export interface WebSocketMessage {
   type: 'session.started' | 'session.updated' | 'session.completed' | 'session.cancelled' | 'ping' | 'pong';

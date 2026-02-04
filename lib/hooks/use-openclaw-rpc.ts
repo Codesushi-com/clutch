@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useRef, useEffect, useState } from "react"
-import { SessionListResponse, SessionListParams } from "@/lib/types"
+import { SessionListResponse, SessionListParams, SessionPreview } from "@/lib/types"
 
 // Dynamic WebSocket URL based on page protocol
 // HTTPS pages must use WSS through nginx proxy, HTTP can use WS directly
@@ -242,6 +242,21 @@ export function useOpenClawRpc() {
     return rpc<SessionListResponse>("sessions.list", (params || {}) as Record<string, unknown>)
   }, [rpc])
 
+  // Get session preview with history via RPC
+  const getSessionPreview = useCallback(async (sessionKey: string, limit?: number): Promise<SessionPreview> => {
+    return rpc<SessionPreview>("sessions.preview", { sessionKey, limit: limit || 50 })
+  }, [rpc])
+
+  // Reset session via RPC
+  const resetSession = useCallback(async (sessionKey: string): Promise<void> => {
+    return rpc("sessions.reset", { sessionKey })
+  }, [rpc])
+
+  // Compact session context via RPC
+  const compactSession = useCallback(async (sessionKey: string): Promise<void> => {
+    return rpc("sessions.compact", { sessionKey })
+  }, [rpc])
+
   // Connect on mount
   useEffect(() => {
     connect()
@@ -258,6 +273,9 @@ export function useOpenClawRpc() {
     disconnect,
     rpc,
     listSessions,
+    getSessionPreview,
+    resetSession,
+    compactSession,
   }
 }
 

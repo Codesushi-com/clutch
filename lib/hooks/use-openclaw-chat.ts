@@ -126,7 +126,15 @@ export function useOpenClawChat({
           return
         }
 
-        // Handle events (type: "event")
+        // Handle agent events (streaming deltas)
+        if (data.type === "event" && data.event === "agent") {
+          const payload = data.payload
+          if (payload.stream === "assistant" && payload.data?.delta) {
+            onDelta?.(payload.data.delta, payload.runId)
+          }
+        }
+        
+        // Handle chat events (started/final/error)
         if (data.type === "event" && data.event === "chat") {
           const payload = data.payload as ChatResponse
           
@@ -134,7 +142,7 @@ export function useOpenClawChat({
             activeRunId.current = payload.runId
             onTypingStart?.()
           } else if (payload.state === "delta") {
-            // Server sends message with accumulated text, not just delta
+            // Legacy delta handling (in case server uses this format)
             const text = typeof payload.message?.content === "string" 
               ? payload.message.content 
               : payload.message?.content?.[0]?.text || ""
