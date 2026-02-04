@@ -103,6 +103,23 @@ export interface Event {
   created_at: number
 }
 
+export type SignalKind = "question" | "blocker" | "alert" | "fyi"
+export type SignalSeverity = "normal" | "high" | "critical"
+
+export interface Signal {
+  id: string
+  task_id: string
+  session_key: string
+  agent_id: string
+  kind: SignalKind
+  severity: SignalSeverity
+  message: string
+  blocking: number // SQLite boolean (1/0)
+  responded_at: number | null
+  response: string | null
+  created_at: number
+}
+
 // Insert types (without id, with optional timestamps)
 export type ProjectInsert = Omit<Project, "id" | "created_at" | "updated_at"> & {
   id?: string
@@ -133,6 +150,11 @@ export type ChatMessageInsert = Omit<ChatMessage, "id" | "created_at"> & {
 }
 
 export type EventInsert = Omit<Event, "id" | "created_at"> & {
+  id?: string
+  created_at?: number
+}
+
+export type SignalInsert = Omit<Signal, "id" | "created_at"> & {
   id?: string
   created_at?: number
 }

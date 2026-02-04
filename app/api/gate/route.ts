@@ -11,6 +11,7 @@ interface GateStatus {
     reviewTasks: number
     pendingDispatch: number
     unreadEscalations: number
+    pendingSignals: number
   }
   tasks?: {
     ready: Array<{ id: string; title: string; priority: string }>
@@ -20,6 +21,7 @@ interface GateStatus {
     pendingDispatch: Array<{ id: string; title: string; assignee: string }>
   }
   escalations?: Array<{ id: string; severity: string; message: string; agent: string }>
+  signals?: Array<{ id: string; kind: string; severity: string; message: string; agent_id: string; task_id: string }>
   timestamp: number
 }
 
@@ -36,7 +38,8 @@ export async function GET() {
       (SELECT COUNT(*) FROM tasks WHERE status = 'in_progress' AND updated_at < ?) as stuck_tasks,
       (SELECT COUNT(*) FROM tasks WHERE status = 'review') as review_tasks,
       (SELECT COUNT(*) FROM tasks WHERE dispatch_status = 'pending') as pending_dispatch,
-      (SELECT COUNT(*) FROM notifications WHERE type = 'escalation' AND read = 0) as unread_escalations
+      (SELECT COUNT(*) FROM notifications WHERE type = 'escalation' AND read = 0) as unread_escalations,
+      (SELECT COUNT(*) FROM signals WHERE blocking = 1 AND responded_at IS NULL) as pending_signals
   `).get(twoHoursAgo) as {
     ready_tasks: number
     pending_inputs: number
@@ -44,6 +47,7 @@ export async function GET() {
     review_tasks: number
     pending_dispatch: number
     unread_escalations: number
+    pending_signals: number
   }
   
   // Build detailed response
@@ -57,6 +61,7 @@ export async function GET() {
       reviewTasks: counts.review_tasks,
       pendingDispatch: counts.pending_dispatch,
       unreadEscalations: counts.unread_escalations,
+      pendingSignals: counts.pending_signals,
     },
     timestamp: now,
   }
@@ -64,6 +69,9 @@ export async function GET() {
   // Build reasons list (priority order)
   const reasons: string[] = []
   
+  if (counts.pending_signals > 0) {
+    reasons.push(`${counts.pending_signals} pending agent signal(s)`)
+  }
   if (counts.unread_escalations > 0) {
     reasons.push(`${counts.unread_escalations} unread escalation(s)`)
   }
@@ -143,6 +151,18 @@ export async function GET() {
         LIMIT 10
       `).all() as GateStatus["escalations"]
     }
+    
+    // Fetch pending signals
+    if (counts.pending_signals > 0) {
+      status.signals = db.prepare(`
+        SELECT id, kind, severity, message, agent_id, task_id FROM signals
+        WHERE blocking = 1 AND responded_at IS NULL
+        ORDER BY 
+          CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 ELSE 3 END,
+          created_at DESC
+        LIMIT 10
+      `).all() as GateStatus["signals"]
+    }
   }
   
   // Log check (could be persisted to DB)
@@ -150,7 +170,8 @@ export async function GET() {
     `[gate_check] needsAttention=${status.needsAttention} ` +
     `ready=${counts.ready_tasks} pending=${counts.pending_inputs} ` +
     `dispatch=${counts.pending_dispatch} stuck=${counts.stuck_tasks} ` +
-    `review=${counts.review_tasks} escalations=${counts.unread_escalations}`
+    `review=${counts.review_tasks} escalations=${counts.unread_escalations} ` +
+    `signals=${counts.pending_signals}`
   )
   
   return NextResponse.json(status)
