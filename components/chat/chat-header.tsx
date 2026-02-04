@@ -94,7 +94,7 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
   }
 
   return (
-    <div className="border-b border-[var(--border)] p-4 flex items-center gap-3">
+    <div className="p-3 md:p-4 flex items-center gap-2 md:gap-3">
       {isEditing ? (
         <>
           <input
@@ -103,13 +103,13 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
             onKeyDown={handleKeyDown}
             autoFocus
             disabled={isUpdating}
-            className="flex-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded px-2 py-1 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] disabled:opacity-50"
+            className="flex-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded px-2 md:px-3 py-2 text-sm md:text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] disabled:opacity-50 touch-manipulation"
           />
           <Button
             size="sm"
             onClick={handleSave}
             disabled={isUpdating || !editTitle.trim()}
-            className="p-1 h-8 w-8"
+            className="p-1 h-8 w-8 md:h-auto md:w-auto min-h-[44px] md:min-h-0 touch-manipulation"
           >
             <Check className="h-4 w-4" />
           </Button>
@@ -118,7 +118,7 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
             variant="outline"
             onClick={handleCancel}
             disabled={isUpdating}
-            className="p-1 h-8 w-8"
+            className="p-1 h-8 w-8 md:h-auto md:w-auto min-h-[44px] md:min-h-0 touch-manipulation"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -126,18 +126,18 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
       ) : (
         <>
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <h1 className="text-lg font-semibold text-[var(--text-primary)] truncate">
+            <h1 className="text-base md:text-lg font-semibold text-[var(--text-primary)] truncate">
               {chat.title}
             </h1>
             {chat.session_key && sessionInfo && !loadingSession && (
-              <Link href={`/sessions/${chat.session_key}`}>
-                <Badge variant="outline" className="cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors">
+              <Link href={`/sessions/${chat.session_key}`} className="hidden md:inline">
+                <Badge variant="outline" className="cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors text-xs">
                   {sessionInfo.model} • {sessionInfo.contextPercent}%
                 </Badge>
               </Link>
             )}
             {chat.session_key && loadingSession && (
-              <Badge variant="outline" className="opacity-50">
+              <Badge variant="outline" className="opacity-50 text-xs hidden md:inline">
                 Loading...
               </Badge>
             )}
@@ -146,7 +146,7 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
             size="sm"
             variant="ghost"
             onClick={handleStartEdit}
-            className="p-1 h-8 w-8 hover:bg-[var(--bg-tertiary)]"
+            className="p-1 h-8 w-8 md:h-auto md:w-auto hover:bg-[var(--bg-tertiary)] min-h-[44px] md:min-h-0 touch-manipulation"
           >
             <Edit2 className="h-4 w-4" />
           </Button>

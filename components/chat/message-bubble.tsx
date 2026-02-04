@@ -45,7 +45,7 @@ export function MessageBubble({
       {!showAuthor && <div className="w-8 flex-shrink-0" />}
       
       {/* Message content */}
-      <div className={`flex-1 max-w-[80%] ${isOwnMessage ? "text-right" : ""}`}>
+      <div className={`flex-1 max-w-[90%] md:max-w-[80%] ${isOwnMessage ? "text-right" : ""}`}>
         {/* Author + time + actions */}
         {showAuthor && (
           <div className={`flex items-center gap-2 mb-1 ${isOwnMessage ? "flex-row-reverse" : ""}`}>
@@ -68,7 +68,7 @@ export function MessageBubble({
         
         {/* Bubble */}
         <div 
-          className={`inline-block px-4 py-2 rounded-2xl ${
+          className={`inline-block px-3 md:px-4 py-2 md:py-3 rounded-2xl text-sm md:text-base ${
             isOwnMessage
               ? "bg-[var(--accent-blue)] text-white rounded-br-md"
               : "bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-bl-md"

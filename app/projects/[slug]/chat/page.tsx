@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, use, useCallback } from "react"
-import { MessageSquare, Wifi, WifiOff, Bot, Clock, Cpu, Activity, Timer } from "lucide-react"
+import { MessageSquare, Wifi, WifiOff, Bot, Clock, Cpu, Activity, Timer, Menu } from "lucide-react"
 import { useChatStore } from "@/lib/stores/chat-store"
 import { useChatEvents } from "@/lib/hooks/use-chat-events"
 import { useOpenClawChat } from "@/lib/hooks/use-openclaw-chat"
@@ -14,6 +14,7 @@ import { ChatHeader } from "@/components/chat/chat-header"
 import { CreateTaskFromMessage } from "@/components/chat/create-task-from-message"
 import { StreamingToggle } from "@/components/chat/streaming-toggle"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
+import { Button } from "@/components/ui/button"
 import type { ChatMessage } from "@/lib/db/types"
 
 type PageProps = {
@@ -24,6 +25,19 @@ export default function ChatPage({ params }: PageProps) {
   const { slug } = use(params)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [createTaskMessage, setCreateTaskMessage] = useState<ChatMessage | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Detect mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024) // lg breakpoint
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   
   const { 
     chats, 
@@ -360,8 +374,15 @@ export default function ChatPage({ params }: PageProps) {
   return (
     <>
       <div className="flex h-[calc(100vh-140px)] bg-[var(--bg-primary)] rounded-lg border border-[var(--border)] overflow-hidden">
-        {/* Sidebar */}
-        {projectId && <ChatSidebar projectId={projectId} />}
+        {/* Sidebar - Desktop: always visible, Mobile: drawer */}
+        {projectId && (
+          <ChatSidebar 
+            projectId={projectId}
+            isOpen={isMobile ? sidebarOpen : true}
+            onClose={() => setSidebarOpen(false)}
+            isMobile={isMobile}
+          />
+        )}
         
         {/* Main chat area */}
         <div className="flex-1 flex flex-col">
@@ -369,7 +390,22 @@ export default function ChatPage({ params }: PageProps) {
             <>
               {/* Chat header */}
               <div className="border-b border-[var(--border)]">
-                <ChatHeader chat={activeChat} />
+                <div className="flex items-center">
+                  {/* Mobile menu button */}
+                  {isMobile && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSidebarOpen(true)}
+                      className="lg:hidden p-2 m-1"
+                    >
+                      <Menu className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <div className="flex-1">
+                    <ChatHeader chat={activeChat} />
+                  </div>
+                </div>
                 
                 {/* Status bar */}
                 <div className="px-4 py-2 border-t border-[var(--border)]/50 bg-[var(--bg-secondary)]/30">

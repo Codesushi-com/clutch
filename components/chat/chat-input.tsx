@@ -81,8 +81,8 @@ export function ChatInput({
   }
 
   return (
-    <div className="border-t border-[var(--border)] p-4">
-      <div className="flex gap-3 items-end">
+    <div className="border-t border-[var(--border)] p-3 md:p-4">
+      <div className="flex gap-2 md:gap-3 items-end">
         <div className="flex-1">
           <textarea
             ref={textareaRef}
@@ -92,7 +92,7 @@ export function ChatInput({
             placeholder={placeholder}
             disabled={disabled || sending}
             rows={1}
-            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-none"
+            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-3 md:px-4 py-3 text-sm md:text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-none touch-manipulation"
           />
         </div>
         
@@ -102,32 +102,32 @@ export function ChatInput({
             disabled={!onStop || stopping}
             size="lg"
             variant="destructive"
-            className="rounded-xl"
+            className="rounded-xl min-h-[44px] min-w-[44px] touch-manipulation"
             title="Stop response"
           >
-            <Square className="h-4 w-4" />
+            <Square className="h-4 w-4 md:h-5 md:w-5" />
           </Button>
         ) : (
           <Button
             onClick={handleSend}
             disabled={!content.trim() || sending || disabled}
             size="lg"
-            className="rounded-xl"
+            className="rounded-xl min-h-[44px] min-w-[44px] touch-manipulation"
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-4 w-4 md:h-5 md:w-5" />
           </Button>
         )}
       </div>
       
       {/* Context indicator */}
-      <div className="mt-3 mb-2">
+      <div className="mt-2 md:mt-3 mb-1 md:mb-2">
         <ContextIndicator 
           sessionKey="main"
           key={contextUpdateTrigger} // Force re-fetch when trigger updates
         />
       </div>
       
-      <p className="text-xs text-[var(--text-muted)]">
+      <p className="text-xs text-[var(--text-muted)] hidden md:block">
         Press Enter to send, Shift+Enter for newline
       </p>
     </div>

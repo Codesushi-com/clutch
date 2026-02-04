@@ -1,13 +1,15 @@
 "use client"
 
-import { useState } from "react"
-import { Plus, MessageSquare, Trash2 } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import { useState, useEffect } from "react"
+import { Plus, MessageSquare, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
 
 interface ChatSidebarProps {
   projectId: string
+  isOpen?: boolean
+  onClose?: () => void
+  isMobile?: boolean
 }
 
 const AUTHOR_COLORS: Record<string, string> = {
@@ -18,7 +20,7 @@ const AUTHOR_COLORS: Record<string, string> = {
   dan: "#ef4444",
 }
 
-export function ChatSidebar({ projectId }: ChatSidebarProps) {
+export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = false }: ChatSidebarProps) {
   const { chats, activeChat, setActiveChat, createChat, deleteChat, loading } = useChatStore()
   const [creating, setCreating] = useState(false)
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null)
@@ -43,6 +45,28 @@ export function ChatSidebar({ projectId }: ChatSidebarProps) {
     }
   }
 
+  const handleChatSelect = (chat: ChatWithLastMessage) => {
+    setActiveChat(chat)
+    // Close sidebar on mobile after selection
+    if (isMobile && onClose) {
+      onClose()
+    }
+  }
+
+  // Close sidebar on escape key (mobile)
+  useEffect(() => {
+    if (!isMobile || !isOpen) return
+    
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && onClose) {
+        onClose()
+      }
+    }
+    
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [isMobile, isOpen, onClose])
+
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp)
     const now = new Date()
@@ -59,11 +83,39 @@ export function ChatSidebar({ projectId }: ChatSidebarProps) {
     }
   }
 
-  return (
-    <div className="w-64 border-r border-[var(--border)] flex flex-col h-full">
+  // Mobile backdrop
+  const backdrop = isMobile && isOpen && onClose && (
+    <div 
+      className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+      onClick={onClose}
+    />
+  )
+
+  const sidebarContent = (
+    <div className={`
+      flex flex-col h-full
+      ${isMobile 
+        ? `fixed top-0 left-0 z-50 w-80 max-w-[85vw] bg-[var(--bg-primary)] border-r border-[var(--border)] transform transition-transform duration-300 ${
+            isOpen ? 'translate-x-0' : '-translate-x-full'
+          } lg:relative lg:w-64 lg:transform-none lg:transition-none lg:z-auto`
+        : 'w-64 border-r border-[var(--border)]'
+      }
+    `}>
       {/* Header */}
       <div className="p-3 border-b border-[var(--border)]">
-        <h2 className="font-medium text-[var(--text-primary)]">Chats</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-medium text-[var(--text-primary)]">Chats</h2>
+          {isMobile && onClose && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="p-1 h-auto lg:hidden"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
       
       {/* Chat list */}
@@ -95,8 +147,8 @@ export function ChatSidebar({ projectId }: ChatSidebarProps) {
                 <div className="flex items-start">
                   {/* Main chat area - clickable */}
                   <button
-                    onClick={() => setActiveChat(chat)}
-                    className="flex-1 text-left p-3 focus:outline-none"
+                    onClick={() => handleChatSelect(chat)}
+                    className="flex-1 text-left p-3 focus:outline-none min-h-[44px] touch-manipulation"
                   >
                     <div className="flex items-start gap-2">
                       {/* Status dot */}
@@ -183,5 +235,12 @@ export function ChatSidebar({ projectId }: ChatSidebarProps) {
         </Button>
       </div>
     </div>
+  )
+
+  return (
+    <>
+      {backdrop}
+      {sidebarContent}
+    </>
   )
 }
