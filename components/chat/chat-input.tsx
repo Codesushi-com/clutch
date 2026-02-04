@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ContextIndicator } from "@/components/chat/context-indicator"
 
 interface ChatInputProps {
   onSend: (content: string) => Promise<void>
@@ -17,6 +18,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const [content, setContent] = useState("")
   const [sending, setSending] = useState(false)
+  const [contextUpdateTrigger, setContextUpdateTrigger] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Auto-resize textarea
@@ -36,6 +38,8 @@ export function ChatInput({
     
     try {
       await onSend(message)
+      // Trigger context update after successful send
+      setContextUpdateTrigger(prev => prev + 1)
     } catch {
       // Restore content if send failed
       setContent(message)
@@ -84,7 +88,15 @@ export function ChatInput({
         </Button>
       </div>
       
-      <p className="text-xs text-[var(--text-muted)] mt-2">
+      {/* Context indicator */}
+      <div className="mt-3 mb-2">
+        <ContextIndicator 
+          sessionKey="main"
+          key={contextUpdateTrigger} // Force re-fetch when trigger updates
+        />
+      </div>
+      
+      <p className="text-xs text-[var(--text-muted)]">
         Press Enter to send, Shift+Enter for newline
       </p>
     </div>
