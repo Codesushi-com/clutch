@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Task, TaskStatus, Comment } from "@/lib/db/types"
+import type { Task, TaskStatus } from "@/lib/db/types"
 
 interface TaskState {
   tasks: Task[]
@@ -114,74 +114,77 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     
     const isSameColumn = task.status === status
     
-    // Optimistic update
+    // Simplified optimistic update - just move the task visually
+    // Server will be the source of truth for exact positions
+    const originalTasks = get().tasks
     set((state) => {
-      let updatedTasks = [...state.tasks]
-      
       if (isSameColumn && newIndex !== undefined) {
-        // Reordering within same column
-        const columnTasks = updatedTasks
+        // Reordering within same column - do a simple visual reorder
+        const columnTasks = state.tasks
           .filter(t => t.status === status)
           .sort((a, b) => a.position - b.position)
         
         const oldIndex = columnTasks.findIndex(t => t.id === id)
         if (oldIndex === -1) return state
         
-        // Remove from old position
+        // Simple array reorder for immediate visual feedback
         const [movedTask] = columnTasks.splice(oldIndex, 1)
-        // Insert at new position
         columnTasks.splice(newIndex, 0, movedTask)
         
-        // Update positions
-        columnTasks.forEach((t, idx) => {
-          const taskIndex = updatedTasks.findIndex(task => task.id === t.id)
-          if (taskIndex !== -1) {
-            updatedTasks[taskIndex] = { ...t, position: idx, updated_at: Date.now() }
-          }
-        })
+        // Replace tasks in the same column with reordered ones
+        const otherTasks = state.tasks.filter(t => t.status !== status)
+        return { tasks: [...otherTasks, ...columnTasks] }
       } else {
-        // Moving to different column
-        updatedTasks = updatedTasks.map((t) => 
-          t.id === id ? { ...t, status, updated_at: Date.now() } : t
-        )
+        // Moving to different column - just update status
+        return {
+          tasks: state.tasks.map((t) => 
+            t.id === id ? { ...t, status, updated_at: Date.now() } : t
+          )
+        }
       }
-      
-      return { tasks: updatedTasks }
     })
     
-    if (isSameColumn && newIndex !== undefined) {
-      // Call reorder API
-      const response = await fetch("/api/tasks/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: get().currentProjectId,
-          status,
-          task_id: id,
-          new_index: newIndex,
-        }),
-      })
-      
-      if (!response.ok) {
-        // Revert on failure
-        get().fetchTasks(get().currentProjectId!)
-        const data = await response.json()
-        throw new Error(data.error || "Failed to reorder task")
+    try {
+      if (isSameColumn && newIndex !== undefined) {
+        // Call reorder API
+        const response = await fetch("/api/tasks/reorder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_id: get().currentProjectId,
+            status,
+            task_id: id,
+            new_index: newIndex,
+          }),
+        })
+        
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Failed to reorder task")
+        }
+        
+        // Refresh tasks from server to get correct positions
+        await get().fetchTasks(get().currentProjectId!)
+      } else {
+        // Call move API (regular status update)
+        const response = await fetch(`/api/tasks/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        })
+        
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Failed to move task")
+        }
+        
+        // Refresh tasks from server to get updated positions for new column
+        await get().fetchTasks(get().currentProjectId!)
       }
-    } else {
-      // Call move API (regular status update)
-      const response = await fetch(`/api/tasks/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      })
-      
-      if (!response.ok) {
-        // Revert on failure
-        get().fetchTasks(get().currentProjectId!)
-        const data = await response.json()
-        throw new Error(data.error || "Failed to move task")
-      }
+    } catch (error) {
+      // Revert to original state on any failure
+      set({ tasks: originalTasks })
+      throw error
     }
   },
 
