@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS projects (
   color TEXT DEFAULT '#3b82f6',
   repo_url TEXT,
   context_path TEXT,
+  chat_layout TEXT DEFAULT 'slack',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

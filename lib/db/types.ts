@@ -8,6 +8,7 @@ export interface Project {
   color: string
   repo_url: string | null
   context_path: string | null
+  chat_layout: 'slack' | 'imessage'
   created_at: number
   updated_at: number
 }

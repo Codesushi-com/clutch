@@ -24,6 +24,7 @@ type PageProps = {
 export default function ChatPage({ params }: PageProps) {
   const { slug } = use(params)
   const [projectId, setProjectId] = useState<string | null>(null)
+  const [project, setProject] = useState<any>(null)
   const [createTaskMessage, setCreateTaskMessage] = useState<ChatMessage | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
@@ -259,12 +260,13 @@ export default function ChatPage({ params }: PageProps) {
     enabled: Boolean(activeChat),
   })
 
-  // Fetch project to get ID, then fetch chats
+  // Fetch project to get ID and settings, then fetch chats
   useEffect(() => {
     async function init() {
       const response = await fetch(`/api/projects/${slug}`)
       if (response.ok) {
         const data = await response.json()
+        setProject(data.project)
         setProjectId(data.project.id)
         await fetchChats(data.project.id)
       }
@@ -567,6 +569,7 @@ export default function ChatPage({ params }: PageProps) {
                 loading={loadingMessages}
                 onCreateTask={handleCreateTask}
                 typingIndicators={typingIndicators[activeChat.id] || []}
+                chatLayout={project?.chat_layout || 'slack'}
               />
               
               {/* Input */}

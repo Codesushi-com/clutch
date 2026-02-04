@@ -19,7 +19,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const body = await request.json()
   
-  const { name, slug, description, color, repo_url } = body
+  const { name, slug, description, color, repo_url, chat_layout } = body
   
   if (!name || !slug) {
     return NextResponse.json(
@@ -51,13 +51,14 @@ export async function POST(request: NextRequest) {
     color: color || "#3b82f6",
     repo_url: repo_url || null,
     context_path: null,
+    chat_layout: chat_layout || 'slack',
     created_at: now,
     updated_at: now,
   }
 
   db.prepare(`
-    INSERT INTO projects (id, slug, name, description, color, repo_url, context_path, created_at, updated_at)
-    VALUES (@id, @slug, @name, @description, @color, @repo_url, @context_path, @created_at, @updated_at)
+    INSERT INTO projects (id, slug, name, description, color, repo_url, context_path, chat_layout, created_at, updated_at)
+    VALUES (@id, @slug, @name, @description, @color, @repo_url, @context_path, @chat_layout, @created_at, @updated_at)
   `).run(project)
 
   // Create default "General" chat for the project

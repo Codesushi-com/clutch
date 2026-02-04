@@ -42,7 +42,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     )
   }
 
-  const { name, slug, description, color, repo_url, context_path } = body
+  const { name, slug, description, color, repo_url, context_path, chat_layout } = body
   
   // If changing slug, check uniqueness
   if (slug && slug !== existing.slug) {
@@ -66,6 +66,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     color: color ?? existing.color,
     repo_url: repo_url !== undefined ? repo_url : existing.repo_url,
     context_path: context_path !== undefined ? context_path : existing.context_path,
+    chat_layout: chat_layout ?? existing.chat_layout,
     updated_at: Date.now(),
   }
 
@@ -73,7 +74,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     UPDATE projects 
     SET name = @name, slug = @slug, description = @description, 
         color = @color, repo_url = @repo_url, context_path = @context_path,
-        updated_at = @updated_at
+        chat_layout = @chat_layout, updated_at = @updated_at
     WHERE id = @id
   `).run(updated)
 

@@ -21,6 +21,7 @@ export interface CreateProjectData {
   description?: string
   color?: string
   repo_url?: string
+  chat_layout?: 'slack' | 'imessage'
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({

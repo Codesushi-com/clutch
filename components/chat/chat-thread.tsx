@@ -26,6 +26,7 @@ interface ChatThreadProps {
   currentUser?: string
   onCreateTask?: (message: ChatMessage) => void
   typingIndicators?: TypingIndicator[]
+  chatLayout?: 'slack' | 'imessage'
 }
 
 export function ChatThread({ 
@@ -36,6 +37,7 @@ export function ChatThread({
   currentUser = "dan",
   onCreateTask,
   typingIndicators = [],
+  chatLayout = 'slack',
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -152,15 +154,20 @@ export function ChatThread({
     <div ref={containerRef} className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
       {groupedMessages.map((group, groupIndex) => (
         <div key={groupIndex} className="space-y-1">
-          {group.messages.map((message, msgIndex) => (
-            <MessageBubble
-              key={message.id}
-              message={message}
-              isOwnMessage={message.author === currentUser}
-              showAuthor={msgIndex === 0}
-              onCreateTask={onCreateTask}
-            />
-          ))}
+          {group.messages.map((message, msgIndex) => {
+            // Determine if this is the user's own message based on layout
+            const isOwnMessage = chatLayout === 'imessage' && message.author === currentUser
+            
+            return (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                isOwnMessage={isOwnMessage}
+                showAuthor={msgIndex === 0}
+                onCreateTask={onCreateTask}
+              />
+            )
+          })}
         </div>
       ))}
       
@@ -171,7 +178,7 @@ export function ChatThread({
             author={streamingMessage.author}
             content={streamingMessage.content}
             timestamp={streamingMessage.timestamp}
-            isOwnMessage={streamingMessage.author === currentUser}
+            isOwnMessage={chatLayout === 'imessage' && streamingMessage.author === currentUser}
           />
         </div>
       )}
