@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
-import { Plus, ChevronLeft, ChevronRight } from "lucide-react"
+import { Plus, ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react"
 import type { Task, TaskStatus } from "@/lib/db/types"
 import { Column } from "./column"
 
@@ -12,6 +12,8 @@ interface MobileBoardProps {
   onTaskClick: (task: Task) => void
   onAddTask: (status: TaskStatus) => void
   onDragEnd: (result: DropResult) => void
+  showDone?: boolean
+  onToggleShowDone?: () => void
 }
 
 export function MobileBoard({ 
@@ -19,7 +21,9 @@ export function MobileBoard({
   getTasksByStatus, 
   onTaskClick, 
   onAddTask,
-  onDragEnd 
+  onDragEnd,
+  showDone = false,
+  onToggleShowDone
 }: MobileBoardProps) {
   const [activeColumnIndex, setActiveColumnIndex] = useState(0)
   const activeColumn = columns[activeColumnIndex]
@@ -131,13 +135,27 @@ export function MobileBoard({
         <h2 className="text-xl font-semibold text-[var(--text-primary)]">
           Board
         </h2>
-        <button
-          onClick={() => onAddTask("backlog")}
-          className="flex items-center gap-2 px-3 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue)]/90 transition-colors font-medium text-sm"
-        >
-          <Plus className="h-4 w-4" />
-          New Ticket
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Show Done toggle for mobile */}
+          {onToggleShowDone && (
+            <button
+              onClick={onToggleShowDone}
+              className="flex items-center gap-1 px-2 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors text-xs"
+              title={showDone ? "Hide completed tasks" : "Show completed tasks"}
+            >
+              {showDone ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+              {showDone ? "Hide" : "Show"}
+            </button>
+          )}
+          
+          <button
+            onClick={() => onAddTask("backlog")}
+            className="flex items-center gap-2 px-3 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue)]/90 transition-colors font-medium text-sm"
+          >
+            <Plus className="h-4 w-4" />
+            New Ticket
+          </button>
+        </div>
       </div>
 
       {/* Column Navigation */}
