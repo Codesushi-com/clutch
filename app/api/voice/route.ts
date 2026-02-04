@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     // Read transcript (whisper outputs to input name + .txt)
     const whisperOutputPath = wavPath.replace(".wav", ".txt")
-    const transcript = await readFile(whisperOutputPath, "utf-8").catch(() => "")
+    transcript = await readFile(whisperOutputPath, "utf-8").catch(() => "")
     const cleanTranscript = transcript.trim() || "I didn't catch that"
 
     // Get response from Ada (simulate for prototype - use simple logic or call to main agent)

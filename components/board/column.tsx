@@ -13,6 +13,7 @@ interface ColumnProps {
   onAddTask?: () => void
   onTaskClick: (task: Task) => void
   showAddButton?: boolean
+  isMobile?: boolean
 }
 
 export function Column({ 
@@ -23,9 +24,14 @@ export function Column({
   onAddTask,
   onTaskClick,
   showAddButton = false,
+  isMobile = false,
 }: ColumnProps) {
   return (
-    <div className="flex flex-col bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] min-h-[500px] w-[280px] flex-shrink-0 lg:w-auto lg:min-w-0">
+    <div className={`flex flex-col bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] min-h-[500px] ${
+      isMobile 
+        ? "w-full" 
+        : "w-[280px] flex-shrink-0 lg:w-auto lg:min-w-0"
+    }`}>
       {/* Header */}
       <div className="p-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
@@ -60,6 +66,7 @@ export function Column({
                 task={task}
                 index={index}
                 onClick={() => onTaskClick(task)}
+                isMobile={isMobile}
               />
             ))}
             {provided.placeholder}

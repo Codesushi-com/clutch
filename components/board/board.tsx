@@ -5,6 +5,8 @@ import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
 import { Plus } from "lucide-react"
 import { useTaskStore } from "@/lib/stores/task-store"
 import { Column } from "./column"
+import { MobileBoard } from "./mobile-board"
+import { useMobileDetection } from "./use-mobile-detection"
 import type { Task, TaskStatus } from "@/lib/db/types"
 
 interface BoardProps {
@@ -23,6 +25,7 @@ const COLUMNS: { status: TaskStatus; title: string; color: string; showAdd: bool
 
 export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
   const { tasks, loading, error, fetchTasks, getTasksByStatus, moveTask } = useTaskStore()
+  const isMobile = useMobileDetection(768)
 
   useEffect(() => {
     fetchTasks(projectId)
@@ -74,6 +77,20 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
     )
   }
 
+  // Mobile view
+  if (isMobile) {
+    return (
+      <MobileBoard
+        columns={COLUMNS}
+        getTasksByStatus={getTasksByStatus}
+        onTaskClick={onTaskClick}
+        onAddTask={onAddTask}
+        onDragEnd={handleDragEnd}
+      />
+    )
+  }
+
+  // Desktop view
   return (
     <div className="space-y-6">
       {/* Board Header */}

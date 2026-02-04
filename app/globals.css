@@ -152,6 +152,16 @@
   }
 }
 
+/* Hide scrollbars for mobile column navigation */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}
+
 /* Highlight.js theme for syntax highlighting in dark theme */
 .hljs {
   color: #e3e3e3;

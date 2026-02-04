@@ -7,6 +7,7 @@ interface TaskCardProps {
   task: Task
   index: number
   onClick: () => void
+  isMobile?: boolean
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -16,7 +17,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   urgent: "#ef4444",
 }
 
-export function TaskCard({ task, index, onClick }: TaskCardProps) {
+export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardProps) {
   const tags = (() => {
     if (!task.tags) return []
     try {
@@ -39,7 +40,9 @@ export function TaskCard({ task, index, onClick }: TaskCardProps) {
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           onClick={onClick}
-          className={`bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg p-3 cursor-pointer transition-all ${
+          className={`bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg cursor-pointer transition-all ${
+            isMobile ? "p-4 touch-manipulation" : "p-3"
+          } ${
             snapshot.isDragging
               ? "shadow-2xl rotate-2 opacity-90 border-[var(--accent-blue)]"
               : "hover:border-[var(--accent-blue)]"
