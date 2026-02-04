@@ -126,8 +126,11 @@ export default function ChatPage({ params }: PageProps) {
     }
   }, [activeChat, setTyping, settings.streamingEnabled, streamingMessages, startStreamingMessage, appendToStreamingMessage])
 
+  // Generate session key based on active chat
+  const sessionKey = activeChat ? `trap:${activeChat.id}` : "main"
+
   const { connected: openClawConnected, sending: openClawSending, sendMessage: sendToOpenClaw, abortChat } = useOpenClawChat({
-    sessionKey: "main",
+    sessionKey,
     onMessage: handleOpenClawMessage,
     onDelta: handleOpenClawDelta,
     onTypingStart: handleOpenClawTypingStart,
@@ -223,10 +226,10 @@ export default function ChatPage({ params }: PageProps) {
         await fetch(`/api/chats/${activeChat.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_key: "main" }),
+          body: JSON.stringify({ session_key: sessionKey }),
         })
         // Update local state
-        setActiveChat({ ...activeChat, session_key: "main" })
+        setActiveChat({ ...activeChat, session_key: sessionKey })
       } catch (error) {
         console.error("[Chat] Failed to store session key:", error)
       }
@@ -295,12 +298,15 @@ export default function ChatPage({ params }: PageProps) {
                 {/* Status bar */}
                 <div className="px-4 py-2 border-t border-[var(--border)]/50 bg-[var(--bg-secondary)]/30">
                   <div className="flex items-center justify-between text-xs">
-                    <div>
+                    <div className="flex items-center gap-4">
                       {activeChat.participants && (
                         <span className="text-[var(--text-muted)]">
                           Participants: {JSON.parse(activeChat.participants as string).join(", ")}
                         </span>
                       )}
+                      <span className="text-[var(--text-muted)]">
+                        Session: <span className="font-mono text-blue-400">{sessionKey}</span>
+                      </span>
                     </div>
                     <div className="flex items-center gap-3">
                       <StreamingToggle 
