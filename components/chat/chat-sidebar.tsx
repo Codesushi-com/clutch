@@ -144,46 +144,46 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
                     : "hover:bg-[var(--bg-tertiary)]"
                 }`}
               >
-                <div className="flex items-start">
+                <div className="flex items-start gap-2 p-3">
+                  {/* Status dot */}
+                  <div 
+                    className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                    style={{ backgroundColor: authorColor }}
+                  />
+                  
                   {/* Main chat area - clickable */}
                   <button
                     onClick={() => handleChatSelect(chat)}
-                    className="flex-1 text-left p-3 focus:outline-none min-h-[44px] touch-manipulation"
+                    className="flex-1 text-left focus:outline-none min-h-[40px] touch-manipulation min-w-0"
                   >
-                    <div className="flex items-start gap-2">
-                      {/* Status dot */}
-                      <div 
-                        className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                        style={{ backgroundColor: authorColor }}
-                      />
-                      
-                      <div className="flex-1 min-w-0">
-                        {/* Title + time */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`text-sm font-medium truncate ${
-                            isActive ? "text-[var(--accent-blue)]" : "text-[var(--text-primary)]"
-                          }`}>
-                            {chat.title}
-                          </span>
-                          {chat.lastMessage && (
-                            <span className="text-xs text-[var(--text-muted)] flex-shrink-0">
-                              {formatTime(chat.lastMessage.created_at)}
-                            </span>
-                          )}
-                        </div>
-                        
-                        {/* Last message preview */}
-                        {chat.lastMessage && (
-                          <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
-                            {chat.lastMessage.author}: {chat.lastMessage.content}
-                          </p>
-                        )}
+                    <div className="min-w-0">
+                      {/* Title */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`text-sm font-medium truncate ${
+                          isActive ? "text-[var(--accent-blue)]" : "text-[var(--text-primary)]"
+                        }`}>
+                          {chat.title}
+                        </span>
                       </div>
+                      
+                      {/* Last message preview */}
+                      {chat.lastMessage && (
+                        <p className="text-xs text-[var(--text-muted)] truncate mt-0.5 max-w-full">
+                          {chat.lastMessage.author}: {chat.lastMessage.content}
+                        </p>
+                      )}
                     </div>
                   </button>
                   
-                  {/* Delete area */}
-                  <div className="p-2 flex items-center">
+                  {/* Timestamp - always visible */}
+                  {chat.lastMessage && (
+                    <div className="flex-shrink-0 text-xs text-[var(--text-muted)] pt-0.5">
+                      {formatTime(chat.lastMessage.created_at)}
+                    </div>
+                  )}
+                  
+                  {/* Delete area - always visible */}
+                  <div className="flex-shrink-0 flex items-center">
                     {!isDeleting ? (
                       <button
                         onClick={() => setDeletingChatId(chat.id)}
@@ -194,7 +194,7 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
                       </button>
                     ) : (
                       <div className="flex items-center gap-1">
-                        <span className="text-xs text-red-500 mr-2">Delete?</span>
+                        <span className="text-xs text-red-500 mr-2 whitespace-nowrap">Delete?</span>
                         <Button
                           size="sm"
                           variant="destructive"
