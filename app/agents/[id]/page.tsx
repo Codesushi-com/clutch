@@ -7,12 +7,13 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Bot, Loader2, AlertCircle, Activity, Zap, Clock, MessageSquare, Settings, BarChart3, X, Info, Heart } from 'lucide-react';
+import { ArrowLeft, Bot, Loader2, AlertCircle, Activity, Zap, Clock, MessageSquare, Settings, BarChart3, X, Info, Heart, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
 import { AgentDetail, AgentStatus } from '@/lib/types';
 import { MarkdownEditor } from '@/components/editors/markdown-editor';
+import { FileTree } from '@/components/editors/file-tree';
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -21,16 +22,30 @@ export default function AgentDetailPage() {
   
   const [isLoading, setIsLoading] = useState(true);
   const [agent, setAgent] = useState<AgentDetail | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'soul'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'soul' | 'memory'>('overview');
   const [soulContent, setSoulContent] = useState<string>('');
   const [soulExists, setSoulExists] = useState(false);
   const [soulLoading, setSoulLoading] = useState(false);
+  const [memoryFiles, setMemoryFiles] = useState<Array<{ name: string; path: string; isDirectory: boolean }>>([]);
+  const [selectedMemoryFile, setSelectedMemoryFile] = useState<string>('');
+  const [memoryContent, setMemoryContent] = useState<string>('');
+  const [memoryExists, setMemoryExists] = useState(false);
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [notification, setNotification] = useState<{
     message: string;
     type: 'success' | 'error';
   } | null>(null);
 
-  const { getAgent, getAgentSoul, updateAgentSoul, connected } = useOpenClawRpc();
+  const { 
+    getAgent, 
+    getAgentSoul, 
+    updateAgentSoul, 
+    getAgentMemoryFiles,
+    getAgentMemoryFile,
+    updateAgentMemoryFile,
+    connected 
+  } = useOpenClawRpc();
 
   // Simple toast function
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
@@ -75,6 +90,96 @@ export default function AgentDetailPage() {
     }
   };
 
+  // Load memory files list
+  const loadMemoryFiles = useCallback(async () => {
+    if (!connected || !agentId) return;
+    
+    try {
+      setFilesLoading(true);
+      const response = await getAgentMemoryFiles(agentId);
+      setMemoryFiles(response.files);
+      
+      // Auto-select MEMORY.md if it exists and no file is selected
+      if (!selectedMemoryFile && response.files.length > 0) {
+        const memoryMd = response.files.find(f => f.name === 'MEMORY.md');
+        if (memoryMd) {
+          setSelectedMemoryFile(memoryMd.path);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load memory files:', error);
+      showToast("Failed to load memory files", "error");
+      setMemoryFiles([]);
+    } finally {
+      setFilesLoading(false);
+    }
+  }, [connected, agentId, getAgentMemoryFiles, showToast, selectedMemoryFile]);
+
+  // Load memory file content
+  const loadMemoryFileContent = useCallback(async (filePath: string) => {
+    if (!connected || !agentId || !filePath) return;
+    
+    try {
+      setMemoryLoading(true);
+      const response = await getAgentMemoryFile(agentId, filePath);
+      setMemoryContent(response.content || '');
+      setMemoryExists(response.exists);
+    } catch (error) {
+      console.error('Failed to load memory file content:', error);
+      showToast("Failed to load memory file content", "error");
+      setMemoryContent('');
+      setMemoryExists(false);
+    } finally {
+      setMemoryLoading(false);
+    }
+  }, [connected, agentId, getAgentMemoryFile, showToast]);
+
+  // Save memory file content
+  const saveMemoryContent = async (content: string) => {
+    if (!connected || !agentId || !selectedMemoryFile) {
+      throw new Error('Not connected to OpenClaw or no file selected');
+    }
+    
+    try {
+      await updateAgentMemoryFile(agentId, selectedMemoryFile, content);
+      setMemoryContent(content);
+      setMemoryExists(true);
+      showToast("Memory file saved successfully");
+      
+      // Reload files list to update any new files
+      await loadMemoryFiles();
+    } catch (error) {
+      console.error('Failed to save memory content:', error);
+      showToast("Failed to save memory content", "error");
+      throw error;
+    }
+  };
+
+  // Handle memory file selection
+  const handleMemoryFileSelect = (filePath: string) => {
+    setSelectedMemoryFile(filePath);
+    loadMemoryFileContent(filePath);
+  };
+
+  // Handle create new memory file
+  const handleCreateMemoryFile = async (filePath: string) => {
+    try {
+      // Create empty file
+      await updateAgentMemoryFile(agentId!, filePath, '');
+      
+      // Reload files and select the new file
+      await loadMemoryFiles();
+      setSelectedMemoryFile(filePath);
+      setMemoryContent('');
+      setMemoryExists(true);
+      
+      showToast("Memory file created successfully");
+    } catch (error) {
+      console.error('Failed to create memory file:', error);
+      showToast("Failed to create memory file", "error");
+    }
+  };
+
   // Load agent data
   useEffect(() => {
     const loadAgent = async () => {
@@ -101,6 +206,20 @@ export default function AgentDetailPage() {
       loadSoulContent();
     }
   }, [activeTab, connected, agentId, soulLoading, loadSoulContent]);
+
+  // Load memory files when switching to memory tab
+  useEffect(() => {
+    if (activeTab === 'memory' && connected && agentId && !filesLoading) {
+      loadMemoryFiles();
+    }
+  }, [activeTab, connected, agentId, filesLoading, loadMemoryFiles]);
+
+  // Load memory file content when file is selected
+  useEffect(() => {
+    if (selectedMemoryFile && activeTab === 'memory' && connected && agentId && !memoryLoading) {
+      loadMemoryFileContent(selectedMemoryFile);
+    }
+  }, [selectedMemoryFile, activeTab, connected, agentId, memoryLoading, loadMemoryFileContent]);
 
   // Status colors and variants
   const statusColors = {
@@ -219,10 +338,22 @@ export default function AgentDetailPage() {
             Soul
             {soulExists && <Badge variant="secondary" className="ml-2 text-xs">SOUL.md</Badge>}
           </button>
+          <button
+            onClick={() => setActiveTab('memory')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+              activeTab === 'memory'
+                ? 'border-primary text-primary bg-muted/50'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground'
+            }`}
+          >
+            <Brain className="h-4 w-4 mr-2 inline" />
+            Memory
+            {memoryFiles.length > 0 && <Badge variant="secondary" className="ml-2 text-xs">{memoryFiles.length}</Badge>}
+          </button>
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'overview' ? (
+        {activeTab === 'overview' && (
           <div>
             {/* Overview content - original agent details */}
 
@@ -400,7 +531,9 @@ export default function AgentDetailPage() {
               </div>
             )}
           </div>
-        ) : (
+        )}
+        
+        {activeTab === 'soul' && (
           /* Soul Tab */
           <div>
             {soulLoading ? (
@@ -464,6 +597,110 @@ export default function AgentDetailPage() {
                     </p>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+        
+        {activeTab === 'memory' && (
+          /* Memory Tab */
+          <div>
+            {filesLoading ? (
+              <div className="flex items-center justify-center min-h-[400px]">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <span className="ml-2 text-muted-foreground">Loading memory files...</span>
+              </div>
+            ) : (
+              <div>
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                    <Brain className="h-5 w-5" />
+                    Agent Memory
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    Memory files store the agent&apos;s knowledge, experiences, and learned information. 
+                    MEMORY.md is the main file, while memory/*.md are additional topic-specific files.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* File Tree */}
+                  <div className="lg:col-span-1">
+                    <div className="border rounded-lg p-4">
+                      <h3 className="font-medium mb-3">Memory Files</h3>
+                      <FileTree
+                        files={memoryFiles}
+                        selectedFile={selectedMemoryFile}
+                        onFileSelect={handleMemoryFileSelect}
+                        onCreateFile={connected ? handleCreateMemoryFile : undefined}
+                        loading={filesLoading}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Editor */}
+                  <div className="lg:col-span-2">
+                    {selectedMemoryFile ? (
+                      <div>
+                        <div className="mb-4">
+                          <h3 className="font-medium mb-1">Editing: {selectedMemoryFile}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            {memoryExists ? 'File exists' : 'New file - will be created on save'}
+                          </p>
+                        </div>
+
+                        {memoryLoading ? (
+                          <div className="flex items-center justify-center min-h-[400px] border rounded-lg">
+                            <Loader2 className="h-8 w-8 animate-spin" />
+                            <span className="ml-2 text-muted-foreground">Loading file content...</span>
+                          </div>
+                        ) : (
+                          <MarkdownEditor
+                            initialContent={memoryContent}
+                            onSave={saveMemoryContent}
+                            placeholder={selectedMemoryFile === 'MEMORY.md' 
+                              ? "# MEMORY.md\n\nLong-term notes and curated knowledge. Updated as I learn.\n\n---\n\n## Notes\n\n[Your memories and learnings here...]"
+                              : "# " + selectedMemoryFile.replace('memory/', '').replace('.md', '') + "\n\n[Topic-specific memories and notes here...]"
+                            }
+                            saveButtonText="Save Memory"
+                            readOnly={!connected}
+                          />
+                        )}
+
+                        {!connected && (
+                          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <p className="text-sm text-yellow-800">
+                              <AlertCircle className="h-4 w-4 inline mr-2" />
+                              Not connected to OpenClaw. Memory editing is read-only.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center min-h-[400px] border rounded-lg bg-muted/20">
+                        <div className="text-center">
+                          <Brain className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                          <h3 className="font-medium mb-2">No file selected</h3>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            {memoryFiles.length > 0 
+                              ? "Select a memory file from the list to edit it"
+                              : "Create your first memory file to get started"
+                            }
+                          </p>
+                          {memoryFiles.length === 0 && connected && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleCreateMemoryFile('MEMORY.md')}
+                              disabled={!connected}
+                            >
+                              Create MEMORY.md
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>

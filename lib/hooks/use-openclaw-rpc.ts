@@ -44,12 +44,27 @@ export function useOpenClawRpc() {
 
   // Get agent's soul file content
   const getAgentSoul = useCallback(async (agentId: string) => {
-    return rpc<{ content: string; exists: boolean }>("agents.getSoul", { id: agentId });
+    return rpc<{ content: string; exists: boolean }>("agent.soul.get", { id: agentId });
   }, [rpc]);
 
   // Update agent's soul file content
   const updateAgentSoul = useCallback(async (agentId: string, content: string) => {
-    return rpc<void>("agents.updateSoul", { id: agentId, content });
+    return rpc<void>("agent.soul.update", { id: agentId, content });
+  }, [rpc]);
+
+  // Get agent's memory files list
+  const getAgentMemoryFiles = useCallback(async (agentId: string) => {
+    return rpc<{ files: Array<{ name: string; path: string; isDirectory: boolean }> }>("agent.memory.list", { id: agentId });
+  }, [rpc]);
+
+  // Get agent's memory file content
+  const getAgentMemoryFile = useCallback(async (agentId: string, filePath: string) => {
+    return rpc<{ content: string; exists: boolean }>("agent.memory.get", { id: agentId, path: filePath });
+  }, [rpc]);
+
+  // Update agent's memory file content
+  const updateAgentMemoryFile = useCallback(async (agentId: string, filePath: string, content: string) => {
+    return rpc<void>("agent.memory.update", { id: agentId, path: filePath, content });
   }, [rpc]);
 
   return {
@@ -73,6 +88,9 @@ export function useOpenClawRpc() {
     cancelSession,
     getAgentSoul,
     updateAgentSoul,
+    getAgentMemoryFiles,
+    getAgentMemoryFile,
+    updateAgentMemoryFile,
   };
 }
 
