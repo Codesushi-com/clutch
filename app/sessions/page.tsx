@@ -133,7 +133,8 @@ export default function SessionsPage() {
   };
 
   const handleRowClick = (sessionId: string) => {
-    router.push(`/sessions/${sessionId}`);
+    const encodedSessionId = encodeURIComponent(sessionId);
+    router.push(`/sessions/${encodedSessionId}`);
   };
 
   // Count sessions by status  

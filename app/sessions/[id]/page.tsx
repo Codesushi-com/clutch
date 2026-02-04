@@ -25,7 +25,7 @@ import {
 export default function SessionDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const sessionId = params.id as string;
+  const sessionId = decodeURIComponent(params.id as string);
   
   const [isLoading, setIsLoading] = useState(true);
   const [sessionPreview, setSessionPreview] = useState<SessionPreview | null>(null);
@@ -343,7 +343,7 @@ export default function SessionDetailPage() {
             <Button
               variant="link"
               className="p-0 h-auto font-mono"
-              onClick={() => router.push(`/sessions/${displaySession.parentId}`)}
+              onClick={() => router.push(`/sessions/${encodeURIComponent(displaySession.parentId!)}`)}
             >
               {displaySession.parentId}
             </Button>
