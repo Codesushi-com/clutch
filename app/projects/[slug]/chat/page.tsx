@@ -21,10 +21,21 @@ type PageProps = {
   params: Promise<{ slug: string }>
 }
 
+interface ProjectInfo {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  local_path: string | null
+  github_repo: string | null
+  chat_layout?: 'slack' | 'imessage'
+}
+
 export default function ChatPage({ params }: PageProps) {
   const { slug } = use(params)
   const [projectId, setProjectId] = useState<string | null>(null)
-  const [project, setProject] = useState<{ id: string; chat_layout?: 'slack' | 'imessage' } | null>(null)
+  const [project, setProject] = useState<ProjectInfo | null>(null)
+  const [projectContext, setProjectContext] = useState<string | null>(null)
   const [createTaskMessage, setCreateTaskMessage] = useState<ChatMessage | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
@@ -118,8 +129,9 @@ export default function ChatPage({ params }: PageProps) {
     }
   }, [activeChat, setTyping, settings.streamingEnabled, streamingMessages, startStreamingMessage, appendToStreamingMessage])
 
-  // Generate session key based on active chat
-  const sessionKey = activeChat ? `trap:${activeChat.id}` : "main"
+  // Generate session key based on project and active chat
+  // Format: trap:{projectSlug}:{chatId} - includes project for context
+  const sessionKey = activeChat ? `trap:${slug}:${activeChat.id}` : "main"
 
   const { connected: openClawConnected, sendMessage: sendToOpenClaw, abortChat } = useOpenClawChat({
     sessionKey,
@@ -298,7 +310,7 @@ export default function ChatPage({ params }: PageProps) {
     enabled: Boolean(activeChat),
   })
 
-  // Fetch project to get ID and settings, then fetch chats
+  // Fetch project to get ID, settings, and context, then fetch chats
   useEffect(() => {
     async function init() {
       const response = await fetch(`/api/projects/${slug}`)
@@ -307,6 +319,17 @@ export default function ChatPage({ params }: PageProps) {
         setProject(data.project)
         setProjectId(data.project.id)
         await fetchChats(data.project.id)
+        
+        // Fetch project context for AI sessions
+        try {
+          const contextResponse = await fetch(`/api/projects/${slug}/context`)
+          if (contextResponse.ok) {
+            const contextData = await contextResponse.json()
+            setProjectContext(contextData.formatted || null)
+          }
+        } catch (error) {
+          console.error("[Chat] Failed to fetch project context:", error)
+        }
       }
     }
     init()
@@ -324,8 +347,11 @@ export default function ChatPage({ params }: PageProps) {
     
     console.log("[Chat] handleSendMessage called, openClawConnected:", openClawConnected)
     
+    // Check if this is the first message (session not yet established)
+    const isFirstMessage = !activeChat.session_key
+    
     // Store session key if this is the first message and we don't have one yet
-    if (!activeChat.session_key) {
+    if (isFirstMessage) {
       try {
         await fetch(`/api/chats/${activeChat.id}`, {
           method: "PATCH",
@@ -349,12 +375,20 @@ export default function ChatPage({ params }: PageProps) {
     // Save user message to local DB
     await sendMessageToDb(activeChat.id, messageContent, "dan")
     
+    // Build the message to send to OpenClaw
+    // For first message, include project context to establish session scope
+    let openClawMessage = messageContent
+    if (isFirstMessage && projectContext) {
+      openClawMessage = `[Project Context]\n\n${projectContext}\n\n---\n\n[User Message]\n\n${messageContent}`
+      console.log("[Chat] Including project context for first message")
+    }
+    
     // Send to OpenClaw main session via WebSocket
     // Note: runId tracking is handled in onTypingStart to avoid race conditions
     if (openClawConnected) {
       try {
         console.log("[Chat] Calling sendToOpenClaw with chatId:", activeChat.id)
-        const runId = await sendToOpenClaw(messageContent, activeChat.id)
+        const runId = await sendToOpenClaw(openClawMessage, activeChat.id)
         console.log("[Chat] sendToOpenClaw returned runId:", runId)
       } catch (error) {
         console.error("[Chat] Failed to send to OpenClaw:", error)
