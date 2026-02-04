@@ -89,20 +89,13 @@ export default function SessionDetailPage() {
     try {
       setIsCompacting(true);
       await compactSession(sessionId);
-      toast({
-        title: "Success",
-        description: "Session context has been compacted successfully",
-      });
+      showToast("Session context has been compacted successfully", "success");
       // Reload session preview after compact
       const preview = await getSessionPreview(sessionId);
       setSessionPreview(preview);
     } catch (error) {
       console.error('Failed to compact session:', error);
-      toast({
-        title: "Error",
-        description: "Failed to compact session context",
-        variant: "destructive",
-      });
+      showToast("Failed to compact session context", "error");
     } finally {
       setIsCompacting(false);
     }
@@ -162,8 +155,8 @@ export default function SessionDetailPage() {
               Compact Context
             </Button>
             
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
+            <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+              <DialogTrigger asChild>
                 <Button
                   variant="destructive"
                   size="sm"
@@ -176,22 +169,24 @@ export default function SessionDetailPage() {
                   )}
                   Reset Session
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Reset Session</AlertDialogTitle>
-                  <AlertDialogDescription>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Reset Session</DialogTitle>
+                  <DialogDescription>
                     This will permanently clear all conversation history for this session. This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleResetSession}>
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowResetDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button variant="destructive" onClick={handleResetSession}>
                     Reset Session
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
@@ -262,7 +257,7 @@ export default function SessionDetailPage() {
         <div className="border-t pt-6">
           <h2 className="text-lg font-semibold mb-4">Conversation History</h2>
           {sessionPreview?.messages ? (
-            <ScrollArea className="h-96 w-full rounded-md border">
+            <div className="h-96 w-full rounded-md border overflow-y-auto">
               <div className="p-4 space-y-4">
                 {sessionPreview.messages.map((message) => (
                   <div
@@ -296,7 +291,7 @@ export default function SessionDetailPage() {
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           ) : (
             <div className="h-32 w-full rounded-md border flex items-center justify-center">
               <Loader2 className="h-6 w-6 animate-spin mr-2" />
@@ -331,6 +326,29 @@ export default function SessionDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <div
+            className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg ${
+              notification.type === 'success'
+                ? 'bg-green-500 text-white'
+                : 'bg-red-500 text-white'
+            }`}
+          >
+            <span className="text-sm">{notification.message}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto p-0 text-white hover:text-gray-200"
+              onClick={() => setNotification(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
