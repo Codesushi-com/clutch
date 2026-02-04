@@ -142,9 +142,9 @@ export default function AgentsPage() {
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button>
+          <Button onClick={() => router.push('/agents/new')}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Agent
+            New Agent
           </Button>
         </div>
       </div>
@@ -232,9 +232,9 @@ export default function AgentsPage() {
           <p className="text-muted-foreground mb-4">
             Get started by adding your first AI agent
           </p>
-          <Button>
+          <Button onClick={() => router.push('/agents/new')}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Agent
+            New Agent
           </Button>
         </div>
       )}

@@ -67,6 +67,16 @@ export function useOpenClawRpc() {
     return rpc<void>("agent.memory.update", { id: agentId, path: filePath, content });
   }, [rpc]);
 
+  // Create new agent
+  const createAgent = useCallback(async (params: {
+    name: string;
+    description?: string;
+    model?: string;
+    soul?: string;
+  }) => {
+    return rpc<{ agent: AgentDetail }>("agents.create", params);
+  }, [rpc]);
+
   return {
     connected: status === 'connected',
     connecting: status === 'connecting' || status === 'reconnecting',
@@ -91,6 +101,7 @@ export function useOpenClawRpc() {
     getAgentMemoryFiles,
     getAgentMemoryFile,
     updateAgentMemoryFile,
+    createAgent,
   };
 }
 
