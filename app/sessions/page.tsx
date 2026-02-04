@@ -138,7 +138,7 @@ export default function SessionsPage() {
 
   // Count sessions by status  
   const runningCount = sessions.filter((s) => s.status === 'running').length;
-  const totalTokens = sessions.reduce((acc, s) => acc + (s.totalTokens || s.tokens?.total || 0), 0);
+  const totalTokens = sessions.reduce((acc, s) => acc + (s.tokens?.total || 0), 0);
 
   return (
     <div className="container mx-auto py-8 px-4">

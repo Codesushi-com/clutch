@@ -149,7 +149,7 @@ const columns: ColumnDef<SessionRowData>[] = [
     accessorKey: 'totalTokens',
     header: ({ column }) => <SortHeader column={column}>Tokens</SortHeader>,
     cell: ({ row }) => {
-      const tokens = row.original.totalTokens || row.original.tokens?.total || 0;
+      const tokens = row.original.tokens?.total || 0;
       return (
         <div className="flex flex-col">
           <span className="tabular-nums">{formatTokens(tokens)}</span>

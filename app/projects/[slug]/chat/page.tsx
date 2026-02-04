@@ -34,28 +34,37 @@ export default function ChatPage({ params }: PageProps) {
     setTyping,
   } = useChatStore()
 
-  // Track runIds originated from this chat (declared early for use in callback)
-  const pendingRunIds = useRef<Set<string>>(new Set())
-
   // OpenClaw WebSocket connection for main session
-  const handleOpenClawMessage = useCallback((msg: { role: string; content: string | Array<{ type: string; text?: string }> }, runId: string) => {
-    if (!activeChat) return
-    
-    // Only save responses to messages THIS chat originated
-    if (!pendingRunIds.current.has(runId)) {
-      console.log("[Chat] Ignoring message for runId not from this chat:", runId)
+  const handleOpenClawMessage = useCallback(async (msg: { role: string; content: string | Array<{ type: string; text?: string }> }, runId: string) => {
+    console.log("[Chat] onMessage (WebSocket) received, runId:", runId)
+    if (!activeChat) {
+      console.log("[Chat] No activeChat, ignoring message")
       return
     }
-    pendingRunIds.current.delete(runId)
     
-    // Dedupe across tabs: only one tab should save each message
+    // Dedupe with race-condition guard: check, wait, re-check
     const lockKey = `openclaw-msg-${runId}`
     if (localStorage.getItem(lockKey)) {
-      console.log("[Chat] Skipping duplicate message save for runId:", runId)
+      console.log("[Chat] Skipping duplicate save for runId:", runId)
       return
     }
-    localStorage.setItem(lockKey, Date.now().toString())
-    setTimeout(() => localStorage.removeItem(lockKey), 30000)
+    
+    // Claim the lock
+    const myToken = Math.random().toString(36)
+    localStorage.setItem(lockKey, myToken)
+    
+    // Wait a bit for other tabs to also try claiming
+    await new Promise(r => setTimeout(r, 50))
+    
+    // Re-check: only proceed if we still hold the lock
+    if (localStorage.getItem(lockKey) !== myToken) {
+      console.log("[Chat] Lost lock race for runId:", runId)
+      return
+    }
+    
+    // Mark as saved (keep for 60s)
+    localStorage.setItem(lockKey, "saved")
+    setTimeout(() => localStorage.removeItem(lockKey), 60000)
     
     // Extract text from content
     const text = typeof msg.content === "string" 
@@ -63,6 +72,7 @@ export default function ChatPage({ params }: PageProps) {
       : msg.content.find(c => c.type === "text")?.text || ""
     
     // Save Ada's response to local DB
+    console.log("[Chat] Saving message to Trap DB for chat:", activeChat.id)
     fetch(`/api/chats/${activeChat.id}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -70,11 +80,8 @@ export default function ChatPage({ params }: PageProps) {
     }).catch(console.error)
   }, [activeChat])
 
-  const handleOpenClawTypingStart = useCallback((runId: string) => {
+  const handleOpenClawTypingStart = useCallback(() => {
     if (activeChat) {
-      // Track this runId so we accept the response
-      pendingRunIds.current.add(runId)
-      setTimeout(() => pendingRunIds.current.delete(runId), 5 * 60 * 1000)
       setTyping(activeChat.id, "ada", "thinking")
     }
   }, [activeChat, setTyping])
@@ -110,13 +117,17 @@ export default function ChatPage({ params }: PageProps) {
     const pollSubagents = async () => {
       try {
         const response = await listSessions({ limit: 50 })
-        // Filter for sessions spawned by main and not completed
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sessions = response.sessions as any[]
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000
+        
+        // Filter for sessions that are:
+        // 1. Spawned by main session (sub-agents)
+        // 2. Updated in the last 5 minutes (still active)
         const subagents = (sessions || [])
           .filter((s) => 
             s.spawnedBy === "agent:main:main" && 
-            s.totalTokens !== undefined // Active sessions have token counts
+            s.updatedAt && s.updatedAt > fiveMinutesAgo
           )
           .map((s) => ({
             key: s.key as string,
@@ -177,6 +188,8 @@ export default function ChatPage({ params }: PageProps) {
   const handleSendMessage = async (content: string) => {
     if (!activeChat) return
     
+    console.log("[Chat] handleSendMessage called, openClawConnected:", openClawConnected)
+    
     // Save user message to local DB
     await sendMessageToDb(activeChat.id, content, "dan")
     
@@ -184,10 +197,14 @@ export default function ChatPage({ params }: PageProps) {
     // Note: runId tracking is handled in onTypingStart to avoid race conditions
     if (openClawConnected) {
       try {
-        await sendToOpenClaw(content, activeChat.id)
+        console.log("[Chat] Calling sendToOpenClaw with chatId:", activeChat.id)
+        const runId = await sendToOpenClaw(content, activeChat.id)
+        console.log("[Chat] sendToOpenClaw returned runId:", runId)
       } catch (error) {
         console.error("[Chat] Failed to send to OpenClaw:", error)
       }
+    } else {
+      console.warn("[Chat] OpenClaw not connected, skipping WebSocket send")
     }
   }
 
