@@ -25,7 +25,7 @@ export function Column({
   showAddButton = false,
 }: ColumnProps) {
   return (
-    <div className="flex flex-col bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] min-h-[500px] w-[280px] flex-shrink-0">
+    <div className="flex flex-col bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] min-h-[500px] w-[280px] flex-shrink-0 lg:w-auto lg:min-w-0">
       {/* Header */}
       <div className="p-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">

@@ -76,7 +76,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
 
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="flex gap-4 overflow-x-auto pb-4 lg:grid lg:grid-cols-5 lg:overflow-visible">
         {COLUMNS.map((col) => (
           <Column
             key={col.status}
