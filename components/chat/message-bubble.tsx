@@ -3,6 +3,7 @@
 import type { ChatMessage } from "@/lib/db/types"
 import { formatDistanceToNow } from "date-fns"
 import { MessageActions } from "./message-actions"
+import { Avatar } from "@/components/ui/avatar"
 
 interface MessageBubbleProps {
   message: ChatMessage
@@ -39,14 +40,7 @@ export function MessageBubble({
   return (
     <div className={`group flex gap-3 ${isOwnMessage ? "flex-row-reverse" : ""}`}>
       {/* Avatar */}
-      {showAuthor && (
-        <div 
-          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0"
-          style={{ backgroundColor: authorColor }}
-        >
-          {message.author.charAt(0).toUpperCase()}
-        </div>
-      )}
+      {showAuthor && <Avatar author={message.author} />}
       {!showAuthor && <div className="w-8 flex-shrink-0" />}
       
       {/* Message content */}

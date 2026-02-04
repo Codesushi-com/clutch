@@ -3,6 +3,7 @@
 import type { Comment } from "@/lib/db/types"
 import { formatDistanceToNow } from "date-fns"
 import { Zap, CheckCircle, ArrowRight, MessageSquare } from "lucide-react"
+import { Avatar } from "@/components/ui/avatar"
 
 interface CommentThreadProps {
   comments: Comment[]
@@ -60,12 +61,7 @@ export function CommentThread({ comments }: CommentThreadProps) {
             
             <div className={`flex gap-3 ${isStatusChange ? "opacity-60" : ""}`}>
               {/* Avatar */}
-              <div 
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0"
-                style={{ backgroundColor: authorColor }}
-              >
-                {comment.author.charAt(0).toUpperCase()}
-              </div>
+              <Avatar author={comment.author} />
               
               {/* Content */}
               <div className="flex-1 min-w-0">
