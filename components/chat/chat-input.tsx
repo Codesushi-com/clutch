@@ -223,7 +223,8 @@ export function ChatInput({
         </div>
       )}
       
-      <div className="flex gap-2 md:gap-3 items-end">
+      {/* Chat input and send button container - aligned center for better visual balance */}
+      <div className="flex gap-2 md:gap-3 items-center">
         <div className="flex-1">
           <textarea
             ref={textareaRef}
@@ -244,7 +245,7 @@ export function ChatInput({
             disabled={!onStop || stopping}
             size="lg"
             variant="destructive"
-            className="rounded-xl min-h-[44px] min-w-[44px] touch-manipulation"
+            className="rounded-xl h-[44px] w-[44px] flex-shrink-0 touch-manipulation"
             title="Stop response"
           >
             <Square className="h-4 w-4 md:h-5 md:w-5" />
@@ -254,7 +255,7 @@ export function ChatInput({
             onClick={handleSend}
             disabled={!hasContent || sending || disabled}
             size="lg"
-            className="rounded-xl min-h-[44px] min-w-[44px] touch-manipulation"
+            className="rounded-xl h-[44px] w-[44px] flex-shrink-0 touch-manipulation"
           >
             {sending ? (
               <div className="animate-spin rounded-full h-4 w-4 md:h-5 md:w-5 border-2 border-white border-t-transparent" />
