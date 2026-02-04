@@ -24,7 +24,7 @@ export function useOpenClawRpc() {
 
   // Get session preview with history
   const getSessionPreview = useCallback(async (sessionKey: string, limit?: number) => {
-    return rpc<SessionPreview>("sessions.preview", { sessionKey, limit: limit || 50 });
+    return rpc<SessionPreview>("sessions.preview", { keys: [sessionKey], limit: limit || 50 });
   }, [rpc]);
 
   // Reset session
