@@ -30,7 +30,7 @@ export function Sidebar() {
   const activeId = getActiveId()
 
   return (
-    <div className="fixed left-0 top-0 z-40 h-screen w-64 bg-[var(--bg-secondary)] border-r border-[var(--border)]">
+    <div className="hidden lg:block fixed left-0 top-0 z-40 h-screen w-64 bg-[var(--bg-secondary)] border-r border-[var(--border)]">
       {/* Header */}
       <div className="p-6 border-b border-[var(--border)]">
         <Link href="/" className="flex items-center gap-3">

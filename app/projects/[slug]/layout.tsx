@@ -5,6 +5,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ArrowLeft, LayoutGrid, MessageSquare, Mic, Activity, Settings } from "lucide-react"
 import type { Project } from "@/lib/db/types"
+import { MobileProjectSwitcher } from "@/components/layout/mobile-project-switcher"
+import { useMobileDetection } from "@/components/board/use-mobile-detection"
 
 type LayoutProps = {
   children: React.ReactNode
@@ -23,6 +25,8 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
   const { slug } = use(params)
   const pathname = usePathname()
   const [project, setProject] = useState<Project | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const isMobile = useMobileDetection(1024)
 
   useEffect(() => {
     async function fetchProject() {
@@ -34,6 +38,21 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
     }
     fetchProject()
   }, [slug])
+
+  useEffect(() => {
+    async function fetchProjects() {
+      try {
+        const response = await fetch('/api/projects')
+        if (response.ok) {
+          const data = await response.json()
+          setProjects(data.projects || [])
+        }
+      } catch (error) {
+        console.error('Failed to fetch projects:', error)
+      }
+    }
+    fetchProjects()
+  }, [])
 
   // Determine active tab from pathname
   const getActiveTab = () => {
@@ -58,51 +77,99 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
       {/* Header */}
-      <header className="border-b border-[var(--border)] bg-[var(--bg-secondary)]">
-        <div className="container mx-auto px-4 max-w-7xl">
-          {/* Top row: back + project name */}
-          <div className="py-4 flex items-center gap-4">
-            <Link 
-              href="/"
-              className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: project.color }}
-              />
-              <h1 className="text-lg font-semibold text-[var(--text-primary)]">
-                {project.name}
-              </h1>
-            </div>
-          </div>
-          
-          {/* Tab navigation */}
-          <nav className="flex gap-1">
-            {TABS.map((tab) => {
-              const Icon = tab.icon
-              const isActive = activeTab === tab.id
-              const href = `/projects/${slug}${tab.href || "/board"}`
-              
-              return (
-                <Link
-                  key={tab.id}
-                  href={href}
-                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                    isActive
-                      ? "bg-[var(--bg-primary)] text-[var(--text-primary)] border border-b-0 border-[var(--border)]"
-                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
-                  }`}
-                  style={isActive ? { marginBottom: -1 } : undefined}
+      <header className="border-b border-[var(--border)] bg-[var(--bg-secondary)] sticky top-0 z-30">
+        <div className="container mx-auto px-4 lg:px-6 max-w-7xl">
+          {/* Mobile: Compact header */}
+          {isMobile ? (
+            <div className="py-3 space-y-3">
+              {/* Top row: Back button + Project switcher */}
+              <div className="flex items-center justify-between">
+                <Link 
+                  href="/"
+                  className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                  style={{ minWidth: "44px", minHeight: "44px" }}
                 >
-                  <Icon className="h-4 w-4" />
-                  {tab.label}
+                  <ArrowLeft className="h-5 w-5" />
                 </Link>
-              )
-            })}
-          </nav>
+                <MobileProjectSwitcher 
+                  currentProject={project}
+                  projects={projects}
+                />
+              </div>
+              
+              {/* Tab navigation - horizontal scroll */}
+              <nav className="flex gap-1 overflow-x-auto scrollbar-hide pb-1">
+                {TABS.map((tab) => {
+                  const Icon = tab.icon
+                  const isActive = activeTab === tab.id
+                  const href = `/projects/${slug}${tab.href || "/board"}`
+                  
+                  return (
+                    <Link
+                      key={tab.id}
+                      href={href}
+                      className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
+                        isActive
+                          ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                      }`}
+                      style={{ minHeight: "44px" }}
+                    >
+                      <Icon className="h-4 w-4 flex-shrink-0" />
+                      {tab.label}
+                    </Link>
+                  )
+                })}
+              </nav>
+            </div>
+          ) : (
+            /* Desktop: Original layout */
+            <>
+              {/* Top row: back + project name */}
+              <div className="py-4 flex items-center gap-4">
+                <Link 
+                  href="/"
+                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </Link>
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: project.color }}
+                  />
+                  <h1 className="text-lg font-semibold text-[var(--text-primary)]">
+                    {project.name}
+                  </h1>
+                </div>
+              </div>
+              
+              {/* Tab navigation */}
+              <nav className="flex gap-1">
+                {TABS.map((tab) => {
+                  const Icon = tab.icon
+                  const isActive = activeTab === tab.id
+                  const href = `/projects/${slug}${tab.href || "/board"}`
+                  
+                  return (
+                    <Link
+                      key={tab.id}
+                      href={href}
+                      className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                        isActive
+                          ? "bg-[var(--bg-primary)] text-[var(--text-primary)] border border-b-0 border-[var(--border)]"
+                          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                      }`}
+                      style={isActive ? { marginBottom: -1 } : undefined}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {tab.label}
+                    </Link>
+                  )
+                })}
+              </nav>
+            </>
+          )}
         </div>
       </header>
       
