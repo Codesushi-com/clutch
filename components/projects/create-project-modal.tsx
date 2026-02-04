@@ -44,6 +44,8 @@ export function CreateProjectModal() {
   const [description, setDescription] = useState("")
   const [color, setColor] = useState(PROJECT_COLORS[0].value)
   const [repoUrl, setRepoUrl] = useState("")
+  const [localPath, setLocalPath] = useState("")
+  const [githubRepo, setGithubRepo] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   
@@ -72,6 +74,8 @@ export function CreateProjectModal() {
       description: description.trim() || undefined,
       color,
       repo_url: repoUrl.trim() || undefined,
+      local_path: localPath.trim() || undefined,
+      github_repo: githubRepo.trim() || undefined,
     }
 
     try {
@@ -84,6 +88,8 @@ export function CreateProjectModal() {
       setDescription("")
       setColor(PROJECT_COLORS[0].value)
       setRepoUrl("")
+      setLocalPath("")
+      setGithubRepo("")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create project")
     } finally {
@@ -171,13 +177,39 @@ export function CreateProjectModal() {
             </div>
             
             <div className="grid gap-2">
-              <Label htmlFor="repo_url">GitHub Repository (optional)</Label>
+              <Label htmlFor="repo_url">Legacy Repo URL (optional)</Label>
               <Input
                 id="repo_url"
                 value={repoUrl}
                 onChange={(e) => setRepoUrl(e.target.value)}
                 placeholder="https://github.com/user/repo"
               />
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="local_path">Local Path (optional)</Label>
+              <Input
+                id="local_path"
+                value={localPath}
+                onChange={(e) => setLocalPath(e.target.value)}
+                placeholder="/path/to/project"
+              />
+              <p className="text-xs text-[var(--text-muted)]">
+                Local file system path to the project source code.
+              </p>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="github_repo">GitHub Repository (optional)</Label>
+              <Input
+                id="github_repo"
+                value={githubRepo}
+                onChange={(e) => setGithubRepo(e.target.value)}
+                placeholder="owner/repository"
+              />
+              <p className="text-xs text-[var(--text-muted)]">
+                GitHub repository in owner/repo format.
+              </p>
             </div>
           </div>
           

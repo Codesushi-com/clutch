@@ -21,6 +21,8 @@ export interface CreateProjectData {
   description?: string
   color?: string
   repo_url?: string
+  local_path?: string
+  github_repo?: string
   chat_layout?: 'slack' | 'imessage'
 }
 

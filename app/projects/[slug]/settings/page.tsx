@@ -1,9 +1,10 @@
 "use client"
 
 import { use, useState, useEffect } from "react"
-import { Settings, MessageSquare, Save, Loader2 } from "lucide-react"
+import { Settings, MessageSquare, Save, Loader2, Folder, AlertCircle, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import type { Project } from "@/lib/db/types"
 
 type PageProps = {
@@ -16,6 +17,14 @@ export default function SettingsPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [chatLayout, setChatLayout] = useState<'slack' | 'imessage'>('slack')
+  
+  // Codebase configuration state
+  const [localPath, setLocalPath] = useState<string>('')
+  const [githubRepo, setGithubRepo] = useState<string>('')
+  const [pathStatus, setPathStatus] = useState<'unchecked' | 'checking' | 'valid' | 'invalid'>('unchecked')
+  const [repoStatus, setRepoStatus] = useState<'unchecked' | 'checking' | 'valid' | 'invalid'>('unchecked')
+  const [pathError, setPathError] = useState<string>('')
+  const [repoError, setRepoError] = useState<string>('')
 
   // Fetch project data
   useEffect(() => {
@@ -26,6 +35,8 @@ export default function SettingsPage({ params }: PageProps) {
           const data = await response.json()
           setProject(data.project)
           setChatLayout(data.project.chat_layout || 'slack')
+          setLocalPath(data.project.local_path || '')
+          setGithubRepo(data.project.github_repo || '')
         }
       } catch (error) {
         console.error('Failed to fetch project:', error)
@@ -36,6 +47,98 @@ export default function SettingsPage({ params }: PageProps) {
     fetchProject()
   }, [slug])
 
+  // Validate local path
+  const validatePath = async (path: string) => {
+    if (!path.trim()) {
+      setPathStatus('unchecked')
+      setPathError('')
+      return
+    }
+    
+    setPathStatus('checking')
+    setPathError('')
+    
+    try {
+      const response = await fetch('/api/validate/path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: path.trim() }),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.exists) {
+          setPathStatus('valid')
+        } else {
+          setPathStatus('invalid')
+          setPathError('Path does not exist')
+        }
+      } else {
+        setPathStatus('invalid')
+        setPathError('Unable to validate path')
+      }
+    } catch {
+      setPathStatus('invalid')
+      setPathError('Network error while validating path')
+    }
+  }
+
+  // Validate GitHub repo
+  const validateRepo = async (repo: string) => {
+    if (!repo.trim()) {
+      setRepoStatus('unchecked')
+      setRepoError('')
+      return
+    }
+    
+    // Check format first
+    if (!/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(repo.trim())) {
+      setRepoStatus('invalid')
+      setRepoError('Must be in owner/repo format')
+      return
+    }
+    
+    setRepoStatus('checking')
+    setRepoError('')
+    
+    try {
+      const response = await fetch('/api/validate/github', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: repo.trim() }),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.accessible) {
+          setRepoStatus('valid')
+        } else {
+          setRepoStatus('invalid')
+          setRepoError(data.error || 'Repository not accessible')
+        }
+      } else {
+        setRepoStatus('invalid')
+        setRepoError('Unable to validate repository')
+      }
+    } catch {
+      setRepoStatus('invalid')
+      setRepoError('Network error while validating repository')
+    }
+  }
+
+  // Handle input changes with validation
+  const handlePathChange = (value: string) => {
+    setLocalPath(value)
+    setPathStatus('unchecked')
+    setPathError('')
+  }
+
+  const handleRepoChange = (value: string) => {
+    setGithubRepo(value)
+    setRepoStatus('unchecked') 
+    setRepoError('')
+  }
+
   const handleSave = async () => {
     if (!project) return
 
@@ -44,11 +147,16 @@ export default function SettingsPage({ params }: PageProps) {
       const response = await fetch(`/api/projects/${project.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_layout: chatLayout }),
+        body: JSON.stringify({ 
+          chat_layout: chatLayout,
+          local_path: localPath.trim() || null,
+          github_repo: githubRepo.trim() || null,
+        }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to update project settings')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update project settings')
       }
 
       const data = await response.json()
@@ -83,7 +191,9 @@ export default function SettingsPage({ params }: PageProps) {
     )
   }
 
-  const hasChanges = chatLayout !== project.chat_layout
+  const hasChanges = chatLayout !== project.chat_layout ||
+    localPath !== (project.local_path || '') ||
+    githubRepo !== (project.github_repo || '')
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-8">
@@ -97,6 +207,123 @@ export default function SettingsPage({ params }: PageProps) {
       </div>
 
       <div className="space-y-6">
+        {/* Codebase Configuration */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Folder className="h-5 w-5 text-[var(--text-primary)]" />
+            <Label className="text-base font-medium text-[var(--text-primary)]">
+              Codebase Configuration
+            </Label>
+          </div>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Configure the local development environment and GitHub repository for this project.
+          </p>
+          
+          <div className="space-y-4">
+            {/* Local Path Field */}
+            <div className="space-y-2">
+              <Label htmlFor="local-path" className="text-sm font-medium">
+                Local Path
+              </Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="local-path"
+                  type="text"
+                  placeholder="/path/to/project"
+                  value={localPath}
+                  onChange={(e) => handlePathChange(e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => validatePath(localPath)}
+                  disabled={!localPath.trim() || pathStatus === 'checking'}
+                  className="shrink-0"
+                >
+                  {pathStatus === 'checking' ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      Checking...
+                    </>
+                  ) : (
+                    'Validate'
+                  )}
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 min-h-[1.5rem]">
+                {pathStatus === 'valid' && (
+                  <div className="flex items-center gap-1 text-green-600 text-sm">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Path exists
+                  </div>
+                )}
+                {pathStatus === 'invalid' && (
+                  <div className="flex items-center gap-1 text-red-600 text-sm">
+                    <AlertCircle className="h-4 w-4" />
+                    {pathError}
+                  </div>
+                )}
+              </div>
+              <p className="text-sm text-[var(--text-secondary)]">
+                The local file system path where your project&apos;s source code is located. This allows agents to read and modify project files.
+              </p>
+            </div>
+
+            {/* GitHub Repo Field */}
+            <div className="space-y-2">
+              <Label htmlFor="github-repo" className="text-sm font-medium">
+                GitHub Repository
+              </Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="github-repo"
+                  type="text"
+                  placeholder="owner/repository"
+                  value={githubRepo}
+                  onChange={(e) => handleRepoChange(e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => validateRepo(githubRepo)}
+                  disabled={!githubRepo.trim() || repoStatus === 'checking'}
+                  className="shrink-0"
+                >
+                  {repoStatus === 'checking' ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      Checking...
+                    </>
+                  ) : (
+                    'Validate'
+                  )}
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 min-h-[1.5rem]">
+                {repoStatus === 'valid' && (
+                  <div className="flex items-center gap-1 text-green-600 text-sm">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Repository accessible
+                  </div>
+                )}
+                {repoStatus === 'invalid' && (
+                  <div className="flex items-center gap-1 text-red-600 text-sm">
+                    <AlertCircle className="h-4 w-4" />
+                    {repoError}
+                  </div>
+                )}
+              </div>
+              <p className="text-sm text-[var(--text-secondary)]">
+                The GitHub repository in owner/repository format. This enables agents to create pull requests, issues, and access repository information.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Chat Layout Setting */}
         <div className="space-y-4">
           <div className="flex items-center gap-2">
