@@ -456,6 +456,7 @@ export default function ChatPage({ params }: PageProps) {
         {projectId && (
           <ChatSidebar 
             projectId={projectId}
+            projectSlug={slug}
             isOpen={isMobile ? sidebarOpen : true}
             onClose={() => setSidebarOpen(false)}
             isMobile={isMobile}

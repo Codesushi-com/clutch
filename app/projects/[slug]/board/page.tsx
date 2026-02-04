@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, use } from "react"
+import { useSearchParams } from "next/navigation"
 import { Board } from "@/components/board/board"
 import { CreateTaskModal } from "@/components/board/create-task-modal"
 import { TaskModal } from "@/components/board/task-modal"
@@ -12,6 +13,9 @@ type PageProps = {
 
 export default function BoardPage({ params }: PageProps) {
   const { slug } = use(params)
+  const searchParams = useSearchParams()
+  const taskIdFromUrl = searchParams.get("task")
+  
   const [project, setProject] = useState<Project | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [createModalStatus, setCreateModalStatus] = useState<TaskStatus>("backlog")
@@ -28,6 +32,25 @@ export default function BoardPage({ params }: PageProps) {
     }
     fetchProject()
   }, [slug])
+
+  // Handle task ID from URL query parameter
+  useEffect(() => {
+    async function openTaskFromUrl() {
+      if (!taskIdFromUrl || !project) return
+      
+      try {
+        const response = await fetch(`/api/tasks/${taskIdFromUrl}`)
+        if (response.ok) {
+          const data = await response.json()
+          setSelectedTask(data.task)
+          setTaskModalOpen(true)
+        }
+      } catch (error) {
+        console.error("Failed to fetch task from URL:", error)
+      }
+    }
+    openTaskFromUrl()
+  }, [taskIdFromUrl, project])
 
   const handleAddTask = (status: TaskStatus) => {
     setCreateModalStatus(status)
