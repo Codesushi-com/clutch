@@ -464,6 +464,8 @@ export default function ChatPage({ params }: PageProps) {
                 onCreateTask={handleCreateTask}
                 typingIndicators={typingIndicators[activeChat.id] || []}
                 chatLayout={project?.chat_layout || 'slack'}
+                activeCrons={activeCrons}
+                projectSlug={slug}
               />
               
               {/* Input */}

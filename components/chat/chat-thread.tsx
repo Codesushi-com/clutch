@@ -18,6 +18,18 @@ interface StreamingMessage {
   timestamp: number
 }
 
+interface SubAgentDetails {
+  key: string
+  label?: string
+  model?: string
+  status?: string
+  agentId?: string
+  createdAt?: number
+  updatedAt?: number
+  runtime?: string
+  isCron?: boolean
+}
+
 interface ChatThreadProps {
   chatId: string
   messages: ChatMessage[]
@@ -27,6 +39,8 @@ interface ChatThreadProps {
   onCreateTask?: (message: ChatMessage) => void
   typingIndicators?: TypingIndicator[]
   chatLayout?: 'slack' | 'imessage'
+  activeCrons?: SubAgentDetails[]
+  projectSlug?: string
 }
 
 export function ChatThread({ 
@@ -38,6 +52,8 @@ export function ChatThread({
   onCreateTask,
   typingIndicators = [],
   chatLayout = 'slack',
+  activeCrons = [],
+  projectSlug,
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -165,6 +181,8 @@ export function ChatThread({
                 isOwnMessage={isOwnMessage}
                 showAuthor={msgIndex === 0}
                 onCreateTask={onCreateTask}
+                activeCrons={activeCrons}
+                projectSlug={projectSlug}
               />
             )
           })}
