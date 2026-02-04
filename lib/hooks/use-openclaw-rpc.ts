@@ -83,6 +83,7 @@ export function useOpenClawRpc() {
       
       // Send connect handshake (required first message)
       const connectId = crypto.randomUUID()
+      console.log("[OpenClawRPC] Connect ID:", connectId)
       
       const timeout = setTimeout(() => {
         if (pendingRequests.current.has(connectId)) {
@@ -137,7 +138,7 @@ export function useOpenClawRpc() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as RPCResponse<unknown>
-        console.log("[OpenClawRPC] Received:", data.type, data.id)
+        console.log("[OpenClawRPC] Received:", data.type, data.id, "pending:", Array.from(pendingRequests.current.keys()))
         
         // Handle RPC responses (type: "res")
         if (data.type === "res" && data.id && pendingRequests.current.has(data.id)) {
