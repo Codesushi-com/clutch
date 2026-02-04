@@ -187,16 +187,15 @@ export default function ChatPage({ params }: PageProps) {
             }
           })
 
-        // Filter for cron sessions associated with this project
-        // Look for cron sessions with labels that match the project slug
+        // Filter for cron sessions
+        // Identify cron sessions by their key pattern: agent:main:cron:UUID
         const crons = (sessions || [])
           .filter((s) => {
-            // Look for sessions with cron-related labels that match the project
+            // Look for sessions with cron in their key that are recently active
             const isRecentlyActive = s.updatedAt && s.updatedAt > fiveMinutesAgo
-            const matchesProject = s.label && s.label.includes(slug) // e.g., "trap-work-loop"
-            const isCronSession = s.sessionTarget === "isolated" && s.label && s.label.includes("loop")
+            const isCronSession = s.key && s.key.includes(":cron:")
             
-            return isRecentlyActive && (matchesProject || isCronSession)
+            return isRecentlyActive && isCronSession
           })
           .map((s) => {
             // Calculate runtime if we have creation time
@@ -208,9 +207,16 @@ export default function ChatPage({ params }: PageProps) {
               runtime = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
             }
             
+            // Extract cron job ID from key for display
+            let cronLabel = s.label
+            if (!cronLabel && s.key) {
+              const cronIdMatch = s.key.match(/:cron:([^:]+)$/)
+              cronLabel = cronIdMatch ? `Cron Job ${cronIdMatch[1].substring(0, 8)}...` : s.key
+            }
+            
             return {
               key: s.key as string,
-              label: s.label as string | undefined,
+              label: cronLabel as string | undefined,
               model: s.model as string | undefined,
               status: s.status as string | undefined,
               agentId: s.agentId as string | undefined,
