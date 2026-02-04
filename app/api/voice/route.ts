@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
     // Convert webm to wav for whisper
     await execAsync(`ffmpeg -i "${inputPath}" -ar 16000 -ac 1 -c:a pcm_s16le "${wavPath}" -y 2>/dev/null`)
 
-    // Transcribe with Whisper
-    const whisperCmd = `cd /home/dan/src/openai-whisper && source .venv/bin/activate && whisper "${wavPath}" --model base --language en --output_format txt --output_dir "${tmpdir()}" 2>/dev/null`
+    // Transcribe with Whisper (installed via pipx)
+    const whisperCmd = `/home/dan/.local/share/pipx/venvs/openai-whisper/bin/whisper "${wavPath}" --model base --language en --output_format txt --output_dir "${tmpdir()}" 2>/dev/null`
     await execAsync(whisperCmd)
 
     // Read transcript (whisper outputs to input name + .txt)
@@ -54,8 +54,8 @@ export async function POST(request: NextRequest) {
 
     // Generate TTS with Ada voice
     try {
-      const ttsCmd = `cd /home/dan/src/qwen3-tts-test && source .venv/bin/activate && python simple_tts.py "${response.replace(/"/g, '\\"')}" --voice ${ADA_VOICE} --output "${responseWavPath}" 2>/dev/null`
-      await execAsync(ttsCmd)
+      const ttsCmd = `cd /home/dan/src/qwen3-tts-test && /home/dan/.local/bin/uv run python simple_tts.py "${response.replace(/"/g, '\\"')}" --voice ${ADA_VOICE} --output "${responseWavPath}"`
+      await execAsync(ttsCmd, { timeout: 30000 })
     } catch (ttsError) {
       console.error("TTS error:", ttsError)
       // Fallback: return text without audio
