@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { useOpenClawWS } from "@/lib/providers/openclaw-ws-provider";
-import { SessionListResponse, SessionListParams, SessionPreview, AgentListResponse, AgentListParams } from "@/lib/types";
+import { SessionListResponse, SessionListParams, SessionPreview, AgentListResponse, AgentListParams, AgentDetail } from "@/lib/types";
 
 export function useOpenClawRpc() {
   const { status, rpc } = useOpenClawWS();
@@ -15,6 +15,11 @@ export function useOpenClawRpc() {
   // List agents via RPC
   const listAgents = useCallback(async (params?: AgentListParams): Promise<AgentListResponse> => {
     return rpc<AgentListResponse>("agents.list", (params || {}) as Record<string, unknown>);
+  }, [rpc]);
+
+  // Get specific agent details via RPC
+  const getAgent = useCallback(async (agentId: string) => {
+    return rpc<{ agent: AgentDetail }>("agents.get", { id: agentId });
   }, [rpc]);
 
   // Get session preview with history
@@ -51,6 +56,7 @@ export function useOpenClawRpc() {
     rpc,
     listSessions,
     listAgents,
+    getAgent,
     getSessionPreview,
     resetSession,
     compactSession,

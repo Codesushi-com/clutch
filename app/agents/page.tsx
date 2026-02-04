@@ -5,7 +5,9 @@
  * Manage and monitor AI agents
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { Bot, Plus, Activity, Zap, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +15,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
 import { Agent, AgentStatus } from '@/lib/types';
 
-function AgentCard({ agent }: { agent: Agent }) {
+function AgentCard({ agent, router }: { agent: Agent; router: AppRouterInstance }) {
   const statusColors = {
     active: 'bg-green-500',
     idle: 'bg-yellow-500',
@@ -70,11 +72,16 @@ function AgentCard({ agent }: { agent: Agent }) {
       </div>
 
       <div className="mt-4 pt-4 border-t flex gap-2">
-        <Button variant="outline" size="sm" className="flex-1">
-          Configure
+        <Button 
+          variant="default" 
+          size="sm" 
+          className="flex-1"
+          onClick={() => router.push(`/agents/${agent.id}`)}
+        >
+          View Details
         </Button>
         <Button variant="outline" size="sm" className="flex-1">
-          View Sessions
+          Configure
         </Button>
       </div>
     </div>
@@ -82,12 +89,13 @@ function AgentCard({ agent }: { agent: Agent }) {
 }
 
 export default function AgentsPage() {
+  const router = useRouter();
   const { listAgents, connected, connecting } = useOpenClawRpc();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAgents = async () => {
+  const fetchAgents = useCallback(async () => {
     try {
       setError(null);
       setLoading(true);
@@ -99,13 +107,13 @@ export default function AgentsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [listAgents]);
 
   useEffect(() => {
     if (connected) {
       fetchAgents();
     }
-  }, [connected]);
+  }, [connected, fetchAgents]);
 
   const activeAgents = agents.filter(a => a.status === 'active');
   const idleAgents = agents.filter(a => a.status === 'idle');
@@ -211,7 +219,7 @@ export default function AgentsPage() {
       {!loading && agents.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {agents.map((agent) => (
-            <AgentCard key={agent.id} agent={agent} />
+            <AgentCard key={agent.id} agent={agent} router={router} />
           ))}
         </div>
       )}
