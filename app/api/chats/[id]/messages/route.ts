@@ -118,7 +118,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   const body = await request.json()
   
-  const { content, author = "dan", run_id } = body
+  const { content, author = "dan", run_id, session_key, is_automated } = body
   
   if (!content) {
     return NextResponse.json(
@@ -157,12 +157,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     author,
     content,
     run_id: run_id || null,
+    session_key: session_key || null,
+    is_automated: is_automated ? 1 : 0,
     created_at: now,
   }
 
   db.prepare(`
-    INSERT INTO chat_messages (id, chat_id, author, content, run_id, created_at)
-    VALUES (@id, @chat_id, @author, @content, @run_id, @created_at)
+    INSERT INTO chat_messages (id, chat_id, author, content, run_id, session_key, is_automated, created_at)
+    VALUES (@id, @chat_id, @author, @content, @run_id, @session_key, @is_automated, @created_at)
   `).run(message)
 
   // Update chat's updated_at

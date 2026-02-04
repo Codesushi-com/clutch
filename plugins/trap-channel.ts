@@ -20,9 +20,14 @@ async function sendToTrap(
   api: OpenClawPluginApi,
   chatId: string,
   content: string,
-  mediaUrl?: string
+  options?: {
+    mediaUrl?: string;
+    isAutomated?: boolean;
+  }
 ): Promise<{ ok: boolean; messageId?: string; error?: string }> {
   const trapUrl = getTrapUrl(api);
+  const { mediaUrl, isAutomated } = options || {};
+  
   try {
     const response = await fetch(`${trapUrl}/api/chats/${chatId}/messages`, {
       method: "POST",
@@ -30,6 +35,7 @@ async function sendToTrap(
       body: JSON.stringify({
         author: "ada",
         content: mediaUrl ? `${content}\n\n📎 ${mediaUrl}` : content,
+        is_automated: isAutomated ?? true, // Default to true for channel-delivered messages
       }),
     });
 
@@ -103,6 +109,7 @@ export default function register(api: OpenClawPluginApi) {
         },
         
         // Send text message to Trap chat
+        // Messages sent via channel plugin (deliver: true) are marked as automated
         sendText: async (ctx) => {
           const { to, text } = ctx;
           
@@ -111,7 +118,7 @@ export default function register(api: OpenClawPluginApi) {
           }
 
           api.logger.info(`Trap: sending text to chat ${to}`);
-          const result = await sendToTrap(api, to, text);
+          const result = await sendToTrap(api, to, text, { isAutomated: true });
           
           if (!result.ok) {
             api.logger.warn(`Trap: failed to send - ${result.error}`);
@@ -133,7 +140,7 @@ export default function register(api: OpenClawPluginApi) {
           }
 
           api.logger.info(`Trap: sending media to chat ${to}`);
-          const result = await sendToTrap(api, to, text || "📎 Attachment", mediaUrl);
+          const result = await sendToTrap(api, to, text || "📎 Attachment", { mediaUrl, isAutomated: true });
           
           if (!result.ok) {
             api.logger.warn(`Trap: failed to send media - ${result.error}`);

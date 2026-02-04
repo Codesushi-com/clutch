@@ -71,6 +71,8 @@ export interface ChatMessage {
   author: string
   content: string
   run_id?: string | null
+  session_key?: string | null
+  is_automated?: number | null  // SQLite boolean (0/1) - true for cron/sub-agent messages
   created_at: number
 }
 

@@ -59,29 +59,34 @@ export function MessageBubble({
   const authorColor = AUTHOR_COLORS[message.author] || "#52525b"
   const authorName = AUTHOR_NAMES[message.author] || message.author
 
-  // Check if this is a work-loop agent message
-  const isWorkLoopMessage = useMemo(() => {
+  // Check if this is an automated (cron/sub-agent) message
+  const isAutomatedMessage = useMemo(() => {
     // Only check agent messages, not human messages
-    if (!message.run_id || message.author === "dan") {
+    if (message.author === "dan") {
       return false
     }
     
-    // Look for patterns indicating this is from a cron/work-loop agent
-    // Check if message contains work-loop indicators
+    // Primary detection: use is_automated flag from database
+    if (message.is_automated === 1) {
+      return true
+    }
+    
+    // Fallback: content-based heuristics for older messages without the flag
+    if (!message.run_id) {
+      return false
+    }
+    
     const hasWorkLoopIndicators = message.content.toLowerCase().includes("cron:") ||
                                    message.content.toLowerCase().includes("work-loop") ||
                                    message.content.toLowerCase().includes("trap-work-loop") ||
-                                   message.content.toLowerCase().includes("task:") && message.content.toLowerCase().includes("trap ticket")
+                                   (message.content.toLowerCase().includes("task:") && message.content.toLowerCase().includes("trap ticket"))
 
-    // Also check if we have active cron sessions that might match
-    const hasActiveCron = activeCrons.length > 0
+    return hasWorkLoopIndicators
+  }, [message.content, message.run_id, message.author, message.is_automated])
 
-    return hasWorkLoopIndicators || hasActiveCron
-  }, [message.content, message.run_id, message.author, activeCrons.length])
-
-  // Extract summary from work-loop message content
-  const workLoopSummary = useMemo(() => {
-    if (!isWorkLoopMessage) return null
+  // Extract summary from automated message content
+  const automatedSummary = useMemo(() => {
+    if (!isAutomatedMessage) return null
 
     const content = message.content
     
@@ -98,15 +103,15 @@ export function MessageBubble({
       const ticketMatch = content.match(/Trap ticket ID: `([^`]+)`/m)
       const taskMatch = content.match(/## Task: (.+?)(?:\n|$)/m)
       if (ticketMatch && taskMatch) {
-        return `Work loop completed: ${taskMatch[1]}`
+        return `Automated: ${taskMatch[1]}`
       } else if (ticketMatch) {
-        return `Work loop completed ticket: ${ticketMatch[1].substring(0, 8)}...`
+        return `Automated task: ${ticketMatch[1].substring(0, 8)}...`
       }
     }
 
     // Look for PR creation patterns
     if (content.includes("PR created") || content.includes("Pull request")) {
-      return "Created PR for work loop task"
+      return "Created PR"
     }
 
     // Fallback - first line or first sentence
@@ -115,21 +120,21 @@ export function MessageBubble({
       return firstLine.startsWith("#") ? firstLine.replace(/^#+\s*/, "") : firstLine
     }
 
-    return "Completed work loop task"
-  }, [isWorkLoopMessage, message.content])
+    return "Automated task completed"
+  }, [isAutomatedMessage, message.content])
 
   // Try to find matching session key from active crons
   const sessionKey = useMemo(() => {
-    if (!isWorkLoopMessage || activeCrons.length === 0) return null
+    if (!isAutomatedMessage || activeCrons.length === 0) return null
     
     // For now, use the most recent cron session
     // TODO: In the future we could try to match by run_id or other criteria
     const mostRecentCron = activeCrons.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
     return mostRecentCron?.key
-  }, [isWorkLoopMessage, activeCrons])
+  }, [isAutomatedMessage, activeCrons])
 
-  // If this is a work-loop message, render the collapsed view
-  if (isWorkLoopMessage && workLoopSummary) {
+  // If this is an automated message, render the collapsed view
+  if (isAutomatedMessage && automatedSummary) {
     return (
       <div className={`group flex gap-3 ${isOwnMessage ? "flex-row-reverse" : ""}`}>
         {/* Avatar */}
@@ -170,10 +175,10 @@ export function MessageBubble({
             <div className="flex items-center justify-between gap-3">
               <div className="flex-1">
                 <div className="font-medium text-sm text-blue-600 dark:text-blue-400 mb-1">
-                  🤖 Automated Work Loop
+                  🤖 Automated
                 </div>
                 <div className="break-words">
-                  {workLoopSummary}
+                  {automatedSummary}
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
