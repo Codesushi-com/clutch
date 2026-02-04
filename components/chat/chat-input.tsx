@@ -223,8 +223,8 @@ export function ChatInput({
         </div>
       )}
       
-      {/* Chat input and send button container - aligned center for better visual balance */}
-      <div className="flex gap-2 md:gap-3 items-center">
+      {/* Chat input and send button container - with proper vertical alignment */}
+      <div className="flex gap-2 md:gap-3 items-end">
         <div className="flex-1">
           <textarea
             ref={textareaRef}
@@ -235,7 +235,7 @@ export function ChatInput({
             placeholder={placeholder}
             disabled={disabled || sending}
             rows={1}
-            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-3 md:px-4 py-3 text-sm md:text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-none touch-manipulation"
+            className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-3 md:px-4 py-3 text-sm md:text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-none touch-manipulation min-h-[44px]"
           />
         </div>
         
