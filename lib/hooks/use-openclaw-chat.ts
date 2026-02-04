@@ -2,6 +2,18 @@
 
 import { useCallback, useRef, useEffect, useState } from "react"
 
+// Fallback for non-secure contexts where crypto.randomUUID isn't available
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
 // Dynamic WebSocket URL based on page protocol
 // HTTPS pages must use WSS through nginx proxy, HTTP can use WS directly
 function getWebSocketUrl(): string {
@@ -78,7 +90,7 @@ export function useOpenClawChat({
     ws.onopen = () => {
       console.log("[OpenClawChat] WebSocket open, sending connect handshake")
       // Send connect handshake (required first message)
-      const connectId = crypto.randomUUID()
+      const connectId = generateUUID()
       pendingRequests.current.set(connectId, {
         resolve: () => {
           console.log("[OpenClawChat] Connected and authenticated")
@@ -180,7 +192,7 @@ export function useOpenClawChat({
       throw new Error("WebSocket not connected")
     }
 
-    const id = crypto.randomUUID()
+    const id = generateUUID()
     return new Promise((resolve, reject) => {
       pendingRequests.current.set(id, { resolve, reject })
       wsRef.current!.send(JSON.stringify({ type: "req", id, method, params }))
@@ -202,7 +214,7 @@ export function useOpenClawChat({
     }
 
     setSending(true)
-    const idempotencyKey = crypto.randomUUID()
+    const idempotencyKey = generateUUID()
     
     // Include Trap chat context in the message
     const contextMessage = trapChatId 

@@ -3,6 +3,19 @@
 import { useCallback, useRef, useEffect, useState } from "react"
 import { SessionListResponse, SessionListParams } from "@/lib/types"
 
+// Fallback for non-secure contexts where crypto.randomUUID isn't available
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  // Fallback implementation
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
 // Dynamic WebSocket URL based on page protocol
 // HTTPS pages must use WSS through nginx proxy, HTTP can use WS directly
 function getWebSocketUrl(): string {
@@ -83,7 +96,7 @@ export function useOpenClawRpc() {
       console.log("[OpenClawRPC] WebSocket open, sending connect handshake")
       
       // Send connect handshake (required first message)
-      const connectId = crypto.randomUUID()
+      const connectId = generateUUID()
       console.log("[OpenClawRPC] Connect ID:", connectId)
       
       const timeout = setTimeout(() => {
@@ -207,7 +220,7 @@ export function useOpenClawRpc() {
       throw new Error("WebSocket not connected")
     }
 
-    const id = crypto.randomUUID()
+    const id = generateUUID()
     
     return new Promise<T>((resolve, reject) => {
       // Set up timeout
