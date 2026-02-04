@@ -184,6 +184,126 @@ trap/
     └── trap-gate.sh      # Gate script for cron-based wakeups
 ```
 
+## Voice Chat Setup
+
+The Trap includes a complete voice chat system with speech-to-text (Whisper) and text-to-speech (Qwen3-TTS) capabilities.
+
+### Prerequisites
+
+**1. OpenAI Whisper (STT)**
+
+Install via pipx for isolated environment:
+```bash
+pipx install openai-whisper
+```
+
+Verify installation:
+```bash
+whisper --help
+# Should show: /home/dan/.local/bin/whisper
+```
+
+**2. Qwen3-TTS (TTS)**
+
+The Ada voice is already set up at `/home/dan/src/qwen3-tts-test/` with:
+- Voice model: `voices/ada_voice.pt`
+- Voice config: `voices/ada_voice.json` 
+- Reference audio: `voices/ada_reference.wav`
+
+Test TTS generation:
+```bash
+cd /home/dan/src/qwen3-tts-test
+uv run python simple_tts.py "Hello, this is a test" --voice ada
+```
+
+**3. FFmpeg (Audio Conversion)**
+
+Should already be installed system-wide:
+```bash
+which ffmpeg
+# Should show: /usr/bin/ffmpeg
+```
+
+If not installed:
+```bash
+sudo apt install ffmpeg  # Ubuntu/Debian
+brew install ffmpeg      # macOS
+```
+
+### Voice Chat Pipeline
+
+The voice chat system processes audio through this pipeline:
+
+1. **Recording**: Browser captures audio via `MediaRecorder` (WebM format)
+2. **Upload**: Audio uploaded to `/api/voice` endpoint
+3. **Conversion**: FFmpeg converts WebM → WAV for Whisper compatibility
+4. **STT**: Whisper transcribes audio to text
+5. **Processing**: Ada generates response (currently prototype echo)
+6. **TTS**: Qwen3-TTS synthesizes response with Ada voice
+7. **Conversion**: FFmpeg converts WAV → WebM for browser playback
+8. **Response**: Client receives transcript, response text, and audio URL
+
+### Using Voice Chat
+
+**Access**: Navigate to `/projects/{slug}/voice` in any project.
+
+**Browser Requirements**:
+- **HTTPS required** for microphone access (Chrome security policy)
+- **Dev workaround**: Use `localhost:3002` (Chrome allows localhost over HTTP)
+
+**Usage**:
+1. Allow microphone access when prompted
+2. Hold the mic button and speak (1-3 seconds recommended)
+3. Release to send - processing will start automatically
+4. Ada's response will appear as text and play as audio
+5. Click "Replay" to hear previous responses again
+
+**Troubleshooting**:
+- **"Could not access microphone"** → Check HTTPS/localhost, allow microphone permission
+- **"Failed to process audio"** → Check Whisper installation, try shorter recordings
+- **No audio response but text works** → Check TTS setup, see logs for TTS errors
+- **"Audio file is empty"** → Hold mic button while speaking, ensure browser recording works
+
+### Audio Format Support
+
+**Recording Formats**:
+- Primary: `audio/webm;codecs=opus` (modern browsers)
+- Fallback: `audio/webm` (broader compatibility)
+- Automatic browser capability detection
+
+**Response Formats**:
+- TTS generates WAV (high quality)
+- Converted to WebM Opus for efficient browser playback
+- Base64 data URL for immediate playback (no file serving needed)
+
+### Integration with OpenClaw
+
+**Current**: Prototype with echo responses for testing voice pipeline.
+
+**Future**: Will integrate with main OpenClaw session to:
+- Send voice transcripts as messages to Ada
+- Receive real AI responses back
+- Maintain conversation context across voice/text interactions
+
+### Debugging Voice Issues
+
+Check component status:
+```bash
+# Test Whisper
+whisper --version
+
+# Test TTS
+cd /home/dan/src/qwen3-tts-test && uv run python simple_tts.py "test" --voice ada
+
+# Test FFmpeg
+ffmpeg -version
+
+# Check API logs
+tail -f .next/trace
+```
+
+API logging includes detailed processing steps for debugging audio pipeline issues.
+
 ## Development Notes
 
 ### Running Trap Server
