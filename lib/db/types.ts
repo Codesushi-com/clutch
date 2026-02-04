@@ -65,6 +65,7 @@ export interface ChatMessage {
   chat_id: string
   author: string
   content: string
+  run_id?: string | null
   created_at: number
 }
 

@@ -59,41 +59,17 @@ export default function ChatPage({ params }: PageProps) {
       clearStreamingMessage(activeChat.id)
     }
     
-    // Dedupe with race-condition guard: check, wait, re-check
-    const lockKey = `openclaw-msg-${runId}`
-    if (localStorage.getItem(lockKey)) {
-      console.log("[Chat] Skipping duplicate save for runId:", runId)
-      return
-    }
-    
-    // Claim the lock
-    const myToken = Math.random().toString(36)
-    localStorage.setItem(lockKey, myToken)
-    
-    // Wait a bit for other tabs to also try claiming
-    await new Promise(r => setTimeout(r, 50))
-    
-    // Re-check: only proceed if we still hold the lock
-    if (localStorage.getItem(lockKey) !== myToken) {
-      console.log("[Chat] Lost lock race for runId:", runId)
-      return
-    }
-    
-    // Mark as saved (keep for 60s)
-    localStorage.setItem(lockKey, "saved")
-    setTimeout(() => localStorage.removeItem(lockKey), 60000)
-    
     // Extract text from content
     const text = typeof msg.content === "string" 
       ? msg.content 
       : msg.content.find(c => c.type === "text")?.text || ""
     
     // Save Ada's response to local DB
-    console.log("[Chat] Saving message to Trap DB for chat:", activeChat.id)
+    console.log("[Chat] Saving message to Trap DB for chat:", activeChat.id, "runId:", runId)
     fetch(`/api/chats/${activeChat.id}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: text, author: "ada" }),
+      body: JSON.stringify({ content: text, author: "ada", run_id: runId }),
     }).catch(console.error)
   }, [activeChat, settings.streamingEnabled, streamingMessages, clearStreamingMessage])
 

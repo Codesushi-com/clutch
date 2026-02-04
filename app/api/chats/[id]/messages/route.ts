@@ -118,7 +118,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   const body = await request.json()
   
-  const { content, author = "dan" } = body
+  const { content, author = "dan", run_id } = body
   
   if (!content) {
     return NextResponse.json(
@@ -136,6 +136,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     )
   }
 
+  // Check for duplicate run_id to prevent double messages from OpenClaw WebSocket
+  if (run_id) {
+    const existing = db.prepare("SELECT id FROM chat_messages WHERE run_id = ?").get(run_id)
+    if (existing) {
+      console.log(`[Messages] Skipping duplicate message with run_id: ${run_id}`)
+      return NextResponse.json(
+        { error: "Message already exists" },
+        { status: 409 }
+      )
+    }
+  }
+
   const now = Date.now()
   const messageId = crypto.randomUUID()
   
@@ -144,12 +156,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     chat_id: id,
     author,
     content,
+    run_id: run_id || null,
     created_at: now,
   }
 
   db.prepare(`
-    INSERT INTO chat_messages (id, chat_id, author, content, created_at)
-    VALUES (@id, @chat_id, @author, @content, @created_at)
+    INSERT INTO chat_messages (id, chat_id, author, content, run_id, created_at)
+    VALUES (@id, @chat_id, @author, @content, @run_id, @created_at)
   `).run(message)
 
   // Update chat's updated_at
