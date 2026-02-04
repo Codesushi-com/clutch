@@ -1,8 +1,6 @@
 "use client"
 
 import { useEffect } from "react"
-import Link from "next/link"
-import { Activity } from "lucide-react"
 import { useProjectStore } from "@/lib/stores/project-store"
 import { ProjectCard } from "@/components/projects/project-card"
 import { CreateProjectModal } from "@/components/projects/create-project-modal"
@@ -16,29 +14,21 @@ export default function Home() {
   }, [fetchProjects])
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)]">
-      <main className="container mx-auto py-12 px-4 max-w-6xl">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-[var(--text-primary)]">
-              🦞 The Trap
-            </h1>
-            <p className="text-[var(--text-secondary)] mt-1">
-              AI agent orchestration dashboard
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link 
-              href="/sessions"
-              className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              <Activity className="h-4 w-4" />
-              Sessions
-            </Link>
-            <CreateProjectModal />
-          </div>
+    <div className="container mx-auto py-12 px-4 max-w-6xl">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-[var(--text-primary)]">
+            Projects
+          </h1>
+          <p className="text-[var(--text-secondary)] mt-1">
+            Organize and manage your AI agent workflows
+          </p>
         </div>
+        <div className="flex items-center gap-3">
+          <CreateProjectModal />
+        </div>
+      </div>
 
         {/* Error state */}
         {error && (
@@ -77,15 +67,14 @@ export default function Home() {
           </div>
         )}
 
-        {/* Project grid */}
-        {projects.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => (
-              <ProjectCard key={project.id} project={project} />
-            ))}
-          </div>
-        )}
-      </main>
+      {/* Project grid */}
+      {projects.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {projects.map((project) => (
+            <ProjectCard key={project.id} project={project} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
