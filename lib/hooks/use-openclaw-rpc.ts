@@ -38,6 +38,7 @@ interface PendingRequest<T> {
 }
 
 export function useOpenClawRpc() {
+  console.log("[OpenClawRPC] Hook initializing")
   const wsRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
@@ -245,9 +246,11 @@ export function useOpenClawRpc() {
 
   // Connect on mount
   useEffect(() => {
+    console.log("[OpenClawRPC] useEffect running, calling connect()")
     connect()
     
     return () => {
+      console.log("[OpenClawRPC] useEffect cleanup, calling disconnect()")
       disconnect()
     }
   }, [connect, disconnect])
