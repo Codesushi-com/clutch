@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
+import { Plus } from "lucide-react"
 import { useTaskStore } from "@/lib/stores/task-store"
 import { Column } from "./column"
 import type { Task, TaskStatus } from "@/lib/db/types"
@@ -42,7 +43,6 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
     }
 
     const newStatus = destination.droppableId as TaskStatus
-    const sourceStatus = source.droppableId as TaskStatus
 
     // If same column, it's a reorder operation
     if (destination.droppableId === source.droppableId) {
@@ -75,21 +75,38 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
   }
 
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
-      <div className="flex gap-4 overflow-x-auto pb-4 lg:grid lg:grid-cols-5 lg:overflow-visible">
-        {COLUMNS.map((col) => (
-          <Column
-            key={col.status}
-            status={col.status}
-            title={col.title}
-            color={col.color}
-            tasks={getTasksByStatus(col.status)}
-            onTaskClick={onTaskClick}
-            onAddTask={() => onAddTask(col.status)}
-            showAddButton={col.showAdd}
-          />
-        ))}
+    <div className="space-y-6">
+      {/* Board Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-[var(--text-primary)]">
+          Board
+        </h2>
+        <button
+          onClick={() => onAddTask("backlog")}
+          className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue)]/90 transition-colors font-medium"
+        >
+          <Plus className="h-4 w-4" />
+          New Ticket
+        </button>
       </div>
-    </DragDropContext>
+
+      {/* Board Columns */}
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <div className="flex gap-4 overflow-x-auto pb-4 lg:grid lg:grid-cols-5 lg:overflow-visible">
+          {COLUMNS.map((col) => (
+            <Column
+              key={col.status}
+              status={col.status}
+              title={col.title}
+              color={col.color}
+              tasks={getTasksByStatus(col.status)}
+              onTaskClick={onTaskClick}
+              onAddTask={() => onAddTask(col.status)}
+              showAddButton={col.showAdd}
+            />
+          ))}
+        </div>
+      </DragDropContext>
+    </div>
   )
 }
