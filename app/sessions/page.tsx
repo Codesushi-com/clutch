@@ -5,21 +5,20 @@
  * Real-time session monitoring with WebSocket updates
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, RefreshCw, Activity } from 'lucide-react';
 import { SessionTable } from '@/components/sessions/session-table';
 import { useSessionStore } from '@/lib/stores/session-store';
-import { useConnectionStatus } from '@/components/providers/websocket-provider';
-import { apiClient } from '@/lib/api/client';
+import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
-function ConnectionBadge({ status }: { status: string }) {
+function ConnectionBadge({ connected, connecting }: { connected: boolean; connecting: boolean }) {
+  const status = connected ? 'connected' : connecting ? 'connecting' : 'disconnected';
   const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
     connected: 'default',
     connecting: 'secondary',
-    reconnecting: 'secondary',
     disconnected: 'destructive',
   };
 
@@ -46,7 +45,8 @@ function ConnectionBadge({ status }: { status: string }) {
 
 export default function SessionsPage() {
   const router = useRouter();
-  const connectionStatus = useConnectionStatus();
+  const { connected, connecting, listSessions } = useOpenClawRpc();
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const {
     sessions,
@@ -58,29 +58,59 @@ export default function SessionsPage() {
     setError,
   } = useSessionStore();
 
-  // Load sessions on mount
-  const loadSessions = useCallback(async () => {
-    if (isInitialized) return;
+  // Fetch sessions via WebSocket RPC
+  const fetchSessions = useCallback(async (isInitialLoad = false) => {
+    if (!connected) return;
     
-    setLoading(true);
+    if (isInitialLoad) {
+      setLoading(true);
+    }
+    
     try {
-      const response = await apiClient.listSessions({ limit: 100 });
+      const response = await listSessions({ limit: 100 });
       setSessions(response.sessions);
-      setInitialized(true);
+      if (isInitialLoad) {
+        setInitialized(true);
+      }
+      setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load sessions';
       setError(message);
+    } finally {
+      if (isInitialLoad) {
+        setLoading(false);
+      }
     }
-  }, [isInitialized, setSessions, setLoading, setInitialized, setError]);
+  }, [connected, listSessions, setSessions, setLoading, setInitialized, setError]);
 
+  // Load sessions when connected and set up auto-refresh
   useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+    if (connected) {
+      // Initial load if not already initialized
+      if (!isInitialized) {
+        fetchSessions(true);
+      }
+      
+      // Set up auto-refresh every 10 seconds
+      refreshIntervalRef.current = setInterval(() => {
+        fetchSessions(false);
+      }, 10000);
+    }
+    
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+  }, [connected, isInitialized, fetchSessions]);
 
   const handleRefresh = async () => {
+    if (!connected) return;
+    
     setLoading(true);
     try {
-      const response = await apiClient.listSessions({ limit: 100 });
+      const response = await listSessions({ limit: 100 });
       setSessions(response.sessions);
       setError(null);
     } catch (err) {
@@ -114,12 +144,12 @@ export default function SessionsPage() {
         </div>
         
         <div className="flex items-center gap-3">
-          <ConnectionBadge status={connectionStatus} />
+          <ConnectionBadge connected={connected} connecting={connecting} />
           <Button
             variant="outline"
             size="sm"
             onClick={handleRefresh}
-            disabled={isLoading}
+            disabled={isLoading || !connected}
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
