@@ -9,6 +9,7 @@ import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
 import { ChatSidebar } from "@/components/chat/chat-sidebar"
 import { ChatThread } from "@/components/chat/chat-thread"
 import { ChatInput } from "@/components/chat/chat-input"
+import { ChatHeader } from "@/components/chat/chat-header"
 import { CreateTaskFromMessage } from "@/components/chat/create-task-from-message"
 import type { ChatMessage } from "@/lib/db/types"
 
@@ -236,38 +237,42 @@ export default function ChatPage({ params }: PageProps) {
           {activeChat ? (
             <>
               {/* Chat header */}
-              <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
-                <div>
-                  <h2 className="font-medium text-[var(--text-primary)]">
-                    {activeChat.title}
-                  </h2>
-                  {activeChat.participants && (
-                    <p className="text-xs text-[var(--text-muted)]">
-                      {JSON.parse(activeChat.participants as string).join(", ")}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 text-xs">
-                  {activeSubagents.length > 0 && (
-                    <span 
-                      className="flex items-center gap-1 text-purple-400 cursor-help"
-                      title={activeSubagents.map(s => s.label || s.key).join(", ")}
-                    >
-                      <Bot className="h-3 w-3 animate-pulse" />
-                      {activeSubagents.length} sub-agent{activeSubagents.length > 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {openClawConnected ? (
-                    <span className="flex items-center gap-1 text-green-500">
-                      <Wifi className="h-3 w-3" />
-                      Connected
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-yellow-500">
-                      <WifiOff className="h-3 w-3" />
-                      Connecting...
-                    </span>
-                  )}
+              <div className="border-b border-[var(--border)]">
+                <ChatHeader chat={activeChat} />
+                
+                {/* Status bar */}
+                <div className="px-4 py-2 border-t border-[var(--border)]/50 bg-[var(--bg-secondary)]/30">
+                  <div className="flex items-center justify-between text-xs">
+                    <div>
+                      {activeChat.participants && (
+                        <span className="text-[var(--text-muted)]">
+                          Participants: {JSON.parse(activeChat.participants as string).join(", ")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {activeSubagents.length > 0 && (
+                        <span 
+                          className="flex items-center gap-1 text-purple-400 cursor-help"
+                          title={activeSubagents.map(s => s.label || s.key).join(", ")}
+                        >
+                          <Bot className="h-3 w-3 animate-pulse" />
+                          {activeSubagents.length} sub-agent{activeSubagents.length > 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {openClawConnected ? (
+                        <span className="flex items-center gap-1 text-green-500">
+                          <Wifi className="h-3 w-3" />
+                          Connected
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-yellow-500">
+                          <WifiOff className="h-3 w-3" />
+                          Connecting...
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
               

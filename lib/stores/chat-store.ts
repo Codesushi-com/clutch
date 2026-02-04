@@ -21,7 +21,8 @@ interface ChatState {
   
   // Actions
   fetchChats: (projectId: string) => Promise<void>
-  createChat: (projectId: string, title: string, participants?: string[]) => Promise<Chat>
+  createChat: (projectId: string, title?: string, participants?: string[]) => Promise<Chat>
+  updateChat: (chatId: string, updates: Partial<Pick<Chat, "title">>) => Promise<Chat>
   setActiveChat: (chat: ChatWithLastMessage | null) => void
   deleteChat: (chatId: string) => Promise<void>
   
@@ -75,6 +76,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     
     set((state) => ({
       chats: [{ ...data.chat, lastMessage: null }, ...state.chats],
+    }))
+    
+    return data.chat
+  },
+
+  updateChat: async (chatId, updates) => {
+    const response = await fetch("/api/chats", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: chatId, ...updates }),
+    })
+    
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to update chat")
+    }
+    
+    const data = await response.json()
+    
+    set((state) => ({
+      chats: state.chats.map((c) => 
+        c.id === chatId ? { ...c, ...updates } : c
+      ),
+      activeChat: state.activeChat?.id === chatId 
+        ? { ...state.activeChat, ...updates }
+        : state.activeChat,
     }))
     
     return data.chat

@@ -58,12 +58,15 @@ export async function POST(request: NextRequest) {
   
   const { project_id, title, participants = ["ada"] } = body
   
-  if (!project_id || !title) {
+  if (!project_id) {
     return NextResponse.json(
-      { error: "project_id and title are required" },
+      { error: "project_id is required" },
       { status: 400 }
     )
   }
+
+  // Auto-generate title if none provided
+  const chatTitle = title?.trim() || `Chat ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
 
   // Verify project exists
   const project = db.prepare("SELECT id FROM projects WHERE id = ?").get(project_id)
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
   const chat: Chat = {
     id,
     project_id,
-    title,
+    title: chatTitle,
     participants: JSON.stringify(participants),
     created_at: now,
     updated_at: now,
@@ -92,4 +95,47 @@ export async function POST(request: NextRequest) {
   `).run(chat)
 
   return NextResponse.json({ chat }, { status: 201 })
+}
+
+// PATCH /api/chats — Update chat (currently supports title only)
+export async function PATCH(request: NextRequest) {
+  const body = await request.json()
+  
+  const { id, title } = body
+  
+  if (!id) {
+    return NextResponse.json(
+      { error: "id is required" },
+      { status: 400 }
+    )
+  }
+
+  if (!title?.trim()) {
+    return NextResponse.json(
+      { error: "title is required" },
+      { status: 400 }
+    )
+  }
+
+  // Verify chat exists
+  const chat = db.prepare("SELECT id FROM chats WHERE id = ?").get(id)
+  if (!chat) {
+    return NextResponse.json(
+      { error: "Chat not found" },
+      { status: 404 }
+    )
+  }
+
+  const now = Date.now()
+  
+  db.prepare(`
+    UPDATE chats 
+    SET title = ?, updated_at = ? 
+    WHERE id = ?
+  `).run(title.trim(), now, id)
+
+  // Fetch the updated chat
+  const updatedChat = db.prepare("SELECT * FROM chats WHERE id = ?").get(id) as Chat
+
+  return NextResponse.json({ chat: updatedChat })
 }

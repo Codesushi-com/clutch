@@ -21,18 +21,12 @@ const AUTHOR_COLORS: Record<string, string> = {
 export function ChatSidebar({ projectId }: ChatSidebarProps) {
   const { chats, activeChat, setActiveChat, createChat, loading } = useChatStore()
   const [creating, setCreating] = useState(false)
-  const [newTitle, setNewTitle] = useState("")
-  const [showNewChat, setShowNewChat] = useState(false)
 
   const handleCreateChat = async () => {
-    if (!newTitle.trim()) return
-    
     setCreating(true)
     try {
-      const chat = await createChat(projectId, newTitle.trim())
+      const chat = await createChat(projectId)
       setActiveChat({ ...chat, lastMessage: null })
-      setNewTitle("")
-      setShowNewChat(false)
     } finally {
       setCreating(false)
     }
@@ -125,54 +119,16 @@ export function ChatSidebar({ projectId }: ChatSidebarProps) {
       
       {/* New chat */}
       <div className="p-2 border-t border-[var(--border)]">
-        {showNewChat ? (
-          <div className="space-y-2">
-            <input
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="Chat title..."
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateChat()
-                if (e.key === "Escape") {
-                  setShowNewChat(false)
-                  setNewTitle("")
-                }
-              }}
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-2 py-1 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)]"
-            />
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={handleCreateChat}
-                disabled={creating || !newTitle.trim()}
-                className="flex-1"
-              >
-                {creating ? "Creating..." : "Create"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setShowNewChat(false)
-                  setNewTitle("")
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowNewChat(true)}
-            className="w-full"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Chat
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleCreateChat}
+          disabled={creating}
+          className="w-full"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          {creating ? "Creating..." : "New Chat"}
+        </Button>
       </div>
     </div>
   )
