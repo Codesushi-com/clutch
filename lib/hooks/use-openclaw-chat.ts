@@ -51,31 +51,46 @@ export function useOpenClawChat({
     if (!enabled) return;
 
     const unsubscribers = [
-      subscribe('chat.typing.start', (runId: string) => {
-        onTypingStartRef.current?.(runId);
+      subscribe('chat.typing.start', (data: { runId: string; sessionKey?: string }) => {
+        // Only handle events for our session
+        if (!data.sessionKey || data.sessionKey === sessionKey) {
+          onTypingStartRef.current?.(data.runId);
+        }
       }),
       
-      subscribe('chat.typing.end', () => {
-        onTypingEndRef.current?.();
+      subscribe('chat.typing.end', (data: { sessionKey?: string } | undefined) => {
+        // Only handle events for our session
+        if (!data?.sessionKey || data.sessionKey === sessionKey) {
+          onTypingEndRef.current?.();
+        }
       }),
       
-      subscribe('chat.delta', ({ delta, runId }: { delta: string; runId: string }) => {
-        onDeltaRef.current?.(delta, runId);
+      subscribe('chat.delta', ({ delta, runId, sessionKey: eventSessionKey }: { delta: string; runId: string; sessionKey?: string }) => {
+        // Only handle events for our session
+        if (!eventSessionKey || eventSessionKey === sessionKey) {
+          onDeltaRef.current?.(delta, runId);
+        }
       }),
       
-      subscribe('chat.message', ({ message, runId }: { message: ChatMessage; runId: string }) => {
-        onMessageRef.current?.(message, runId);
+      subscribe('chat.message', ({ message, runId, sessionKey: eventSessionKey }: { message: ChatMessage; runId: string; sessionKey?: string }) => {
+        // Only handle events for our session
+        if (!eventSessionKey || eventSessionKey === sessionKey) {
+          onMessageRef.current?.(message, runId);
+        }
       }),
       
-      subscribe('chat.error', ({ error, runId }: { error: string; runId: string }) => {
-        onErrorRef.current?.(error, runId);
+      subscribe('chat.error', ({ error, runId, sessionKey: eventSessionKey }: { error: string; runId: string; sessionKey?: string }) => {
+        // Only handle events for our session
+        if (!eventSessionKey || eventSessionKey === sessionKey) {
+          onErrorRef.current?.(error, runId);
+        }
       })
     ];
 
     return () => {
       unsubscribers.forEach(unsub => unsub());
     };
-  }, [enabled, subscribe]);
+  }, [enabled, subscribe, sessionKey]);
 
   // Send a chat message
   const sendMessage = useCallback(async (message: string, trapChatId?: string): Promise<string> => {

@@ -220,24 +220,24 @@ export function OpenClawWSProvider({ children }: OpenClawWSProviderProps) {
             if (payload.state === 'started') {
               activeRunId.current = payload.runId;
               setIsSending(true);
-              emitEvent('chat.typing.start', payload.runId);
+              emitEvent('chat.typing.start', { runId: payload.runId, sessionKey: payload.sessionKey });
             } else if (payload.state === 'delta') {
               const text = typeof payload.message?.content === 'string' 
                 ? payload.message.content 
                 : payload.message?.content?.[0]?.text || '';
-              emitEvent('chat.delta', { delta: text, runId: payload.runId });
+              emitEvent('chat.delta', { delta: text, runId: payload.runId, sessionKey: payload.sessionKey });
             } else if (payload.state === 'final') {
-              emitEvent('chat.typing.end', undefined);
+              emitEvent('chat.typing.end', { sessionKey: payload.sessionKey });
               if (payload.message) {
-                emitEvent('chat.message', { message: payload.message, runId: payload.runId });
+                emitEvent('chat.message', { message: payload.message, runId: payload.runId, sessionKey: payload.sessionKey });
               }
               if (activeRunId.current === payload.runId) {
                 activeRunId.current = null;
                 if (mountedRef.current) setIsSending(false);
               }
             } else if (payload.state === 'error') {
-              emitEvent('chat.typing.end', undefined);
-              emitEvent('chat.error', { error: payload.errorMessage || 'Unknown error', runId: payload.runId });
+              emitEvent('chat.typing.end', { sessionKey: payload.sessionKey });
+              emitEvent('chat.error', { error: payload.errorMessage || 'Unknown error', runId: payload.runId, sessionKey: payload.sessionKey });
               if (activeRunId.current === payload.runId) {
                 activeRunId.current = null;
                 if (mountedRef.current) setIsSending(false);
