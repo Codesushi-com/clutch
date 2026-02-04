@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
   author TEXT NOT NULL,
   content TEXT NOT NULL,
+  run_id TEXT,
   created_at INTEGER NOT NULL
 );
 
