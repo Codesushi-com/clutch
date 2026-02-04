@@ -20,12 +20,77 @@ export default function VoicePage() {
   const audioChunksRef = useRef<Blob[]>([])
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
+  const processAudio = useCallback(async (audioBlob: Blob) => {
+    try {
+      console.log(`Processing audio blob: ${audioBlob.size} bytes, type: ${audioBlob.type}`)
+      
+      if (audioBlob.size === 0) {
+        throw new Error("No audio recorded. Please try again.")
+      }
+
+      const formData = new FormData()
+      formData.append("audio", audioBlob, "recording.webm")
+
+      const response = await fetch("/api/voice", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorMessage
+        } catch {
+          // If response isn't JSON, use the status text
+        }
+        throw new Error(errorMessage)
+      }
+
+      const data = await response.json()
+
+      if (data.warning) {
+        console.warn("Voice processing warning:", data.warning)
+      }
+
+      // Add messages
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", text: data.transcript },
+        { role: "assistant", text: data.response, audioUrl: data.audioUrl },
+      ])
+
+      // Play response audio
+      if (data.audioUrl) {
+        playAudio(data.audioUrl)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to process")
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [])
+
   const startRecording = useCallback(async () => {
     try {
       setError(null)
+      
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Audio recording not supported in this browser")
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      
+      // Check MediaRecorder support
+      if (!MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+        console.warn("Opus codec not supported, falling back to default")
+      }
+
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "audio/webm;codecs=opus",
+        mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus") 
+          ? "audio/webm;codecs=opus"
+          : "audio/webm",
       })
 
       audioChunksRef.current = []
@@ -49,7 +114,7 @@ export default function VoicePage() {
       setError("Could not access microphone. Make sure you have HTTPS or localhost.")
       console.error("Mic access error:", err)
     }
-  }, [])
+  }, [processAudio])
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
@@ -58,41 +123,6 @@ export default function VoicePage() {
       setIsProcessing(true)
     }
   }, [isRecording])
-
-  const processAudio = async (audioBlob: Blob) => {
-    try {
-      const formData = new FormData()
-      formData.append("audio", audioBlob, "recording.webm")
-
-      const response = await fetch("/api/voice", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to process audio")
-      }
-
-      const data = await response.json()
-
-      // Add messages
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", text: data.transcript },
-        { role: "assistant", text: data.response, audioUrl: data.audioUrl },
-      ])
-
-      // Play response audio
-      if (data.audioUrl) {
-        playAudio(data.audioUrl)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to process")
-    } finally {
-      setIsProcessing(false)
-    }
-  }
 
   const playAudio = (url: string) => {
     if (audioRef.current) {
@@ -168,7 +198,25 @@ export default function VoicePage() {
       {/* Error */}
       {error && (
         <div className="mx-4 mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-500">
-          {error}
+          <div className="font-medium mb-1">Error</div>
+          <div>{error}</div>
+          
+          {/* Troubleshooting hints */}
+          {error.includes("microphone") || error.includes("getUserMedia") && (
+            <div className="mt-2 text-xs text-red-400">
+              💡 Make sure to allow microphone access when prompted
+            </div>
+          )}
+          {error.includes("HTTPS") && (
+            <div className="mt-2 text-xs text-red-400">
+              💡 Voice chat requires HTTPS. Try accessing via localhost:3002
+            </div>
+          )}
+          {error.includes("Failed to process") && (
+            <div className="mt-2 text-xs text-red-400">
+              💡 Try speaking for 1-3 seconds, then release the button
+            </div>
+          )}
         </div>
       )}
 
