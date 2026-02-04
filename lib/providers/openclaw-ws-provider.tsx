@@ -262,12 +262,14 @@ export function OpenClawWSProvider({ children }: OpenClawWSProviderProps) {
       
       clearPendingRequests('WebSocket disconnected');
       
-      // Reconnect after delay
-      if (mountedRef.current) {
+      // Only reconnect for network errors, not for endpoint not found errors
+      if (mountedRef.current && event.code !== 1006 && event.code !== 1002) {
         reconnectAttempts.current++;
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current - 1), 30000);
         console.log(`[OpenClawWS] Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current})`);
         reconnectTimeoutRef.current = setTimeout(connect, delay);
+      } else {
+        console.log('[OpenClawWS] WebSocket endpoint not available, falling back to HTTP API');
       }
     };
 
@@ -296,10 +298,36 @@ export function OpenClawWSProvider({ children }: OpenClawWSProviderProps) {
     reconnectAttempts.current = 0;
   }, [clearPendingRequests]);
 
+  // HTTP fallback for when WebSocket is not available
+  const httpFallback = useCallback(async <T,>(method: string, params?: Record<string, unknown>): Promise<T> => {
+    console.log('[OpenClawWS] Using HTTP fallback for method:', method);
+    
+    // Map RPC methods to HTTP endpoints
+    if (method === 'agents.list') {
+      const response = await fetch('/api/agents');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.json() as Promise<T>;
+    }
+    
+    if (method === 'sessions.list') {
+      const response = await fetch('/api/sessions');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.json() as Promise<T>;
+    }
+    
+    throw new Error(`HTTP fallback not implemented for method: ${method}`);
+  }, []);
+
   // Generic RPC request method
   const rpc = useCallback(async <T,>(method: string, params?: Record<string, unknown>): Promise<T> => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket not connected');
+      // Try HTTP fallback instead of throwing error
+      console.warn('[OpenClawWS] WebSocket not connected, attempting HTTP fallback');
+      return httpFallback<T>(method, params);
     }
 
     const id = generateUUID();

@@ -123,8 +123,41 @@ export function useOpenClawRpc() {
 
   // Get specific agent details via RPC
   const getAgent = useCallback(async (agentId: string) => {
-    return rpc<{ agent: AgentDetail }>("agents.get", { id: agentId });
-  }, [rpc]);
+    try {
+      // Try the agents.get RPC method first
+      return await rpc<{ agent: AgentDetail }>("agents.get", { id: agentId });
+    } catch (error) {
+      console.warn('[useOpenClawRpc] agents.get failed, falling back to listAgents:', error);
+      
+      // Fallback: Get agent from list
+      const agentsResponse = await listAgents();
+      const agent = agentsResponse.agents.find(a => a.id === agentId);
+      
+      if (!agent) {
+        throw new Error(`Agent with ID "${agentId}" not found`);
+      }
+      
+      // Convert agent list format to agent detail format
+      const agentDetail: AgentDetail = {
+        ...agent,
+        configuration: {
+          maxTokens: undefined,
+          temperature: undefined,
+          systemPrompt: undefined,
+        },
+        stats: {
+          totalMessages: 0,
+          averageResponseTime: undefined,
+          uptime: undefined,
+        },
+        activeSessions: [],
+        totalTokens: typeof agent.metadata?.totalTokens === 'number' ? agent.metadata.totalTokens : undefined,
+        lastActivity: agent.updatedAt,
+      };
+      
+      return { agent: agentDetail };
+    }
+  }, [rpc, listAgents]);
 
   // Get session preview with history
   const getSessionPreview = useCallback(async (sessionKey: string, limit?: number) => {
