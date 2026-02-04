@@ -2,7 +2,8 @@
 
 /**
  * Session Table Component
- * Data table displaying sessions with sorting and filtering
+ * Responsive data table displaying sessions with sorting and filtering
+ * Shows table view on desktop, card view on mobile
  */
 
 import { useState } from 'react';
@@ -14,7 +15,7 @@ import {
   SortingState,
   useReactTable,
 } from '@tanstack/react-table';
-import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { SessionStatus, SessionType } from '@/lib/types';
 import { useSessionStore } from '@/lib/stores/session-store';
@@ -26,6 +27,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -179,21 +185,133 @@ const columns: ColumnDef<SessionRowData>[] = [
   },
 ];
 
+// Mobile Card Component
+function SessionCard({ 
+  session, 
+  onRowClick 
+}: { 
+  session: SessionRowData; 
+  onRowClick?: (sessionId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <Card 
+      className="cursor-pointer hover:shadow-md transition-shadow"
+      onClick={() => onRowClick?.(session.id)}
+    >
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-medium truncate">{session.name}</h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xs text-muted-foreground capitalize">
+                {session.type}
+                {session.parentId && <span className="ml-1">(sub-agent)</span>}
+              </span>
+              <Badge 
+                variant={statusVariants[session.status]} 
+                className="capitalize text-xs"
+              >
+                {session.status}
+              </Badge>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 h-8 w-8 p-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded(!expanded);
+            }}
+          >
+            {expanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+        
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            {session.updatedAt 
+              ? formatDistanceToNow(new Date(session.updatedAt), { addSuffix: true })
+              : '—'
+            }
+          </span>
+          <span className="tabular-nums">{session.duration}</span>
+        </div>
+      </CardHeader>
+
+      {expanded && (
+        <CardContent className="pt-0">
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Model:</span>
+              <span className="text-right truncate ml-2" title={session.model}>
+                {session.model}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Tokens:</span>
+              <span className="tabular-nums">
+                {formatTokens(session.tokens?.total || 0)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Session ID:</span>
+              <span className="font-mono text-xs truncate ml-2" title={session.id}>
+                {session.id.slice(0, 8)}...
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 // Loading skeleton
 function TableSkeleton() {
   return (
-    <div className="space-y-2">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="flex items-center gap-4 p-4 border-b">
-          <Skeleton className="h-4 w-[200px]" />
-          <Skeleton className="h-4 w-[150px]" />
-          <Skeleton className="h-4 w-[80px]" />
-          <Skeleton className="h-4 w-[100px]" />
-          <Skeleton className="h-4 w-[80px]" />
-          <Skeleton className="h-4 w-[100px]" />
-        </div>
-      ))}
-    </div>
+    <>
+      {/* Desktop skeleton */}
+      <div className="hidden md:block space-y-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-4 p-4 border-b">
+            <Skeleton className="h-4 w-[200px]" />
+            <Skeleton className="h-4 w-[150px]" />
+            <Skeleton className="h-4 w-[80px]" />
+            <Skeleton className="h-4 w-[100px]" />
+            <Skeleton className="h-4 w-[80px]" />
+            <Skeleton className="h-4 w-[100px]" />
+          </div>
+        ))}
+      </div>
+
+      {/* Mobile skeleton */}
+      <div className="md:hidden space-y-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Card key={i}>
+            <CardHeader>
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-[60%]" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-20" />
+                </div>
+                <div className="flex justify-between">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -291,38 +409,55 @@ export function SessionTable({ onRowClick }: SessionTableProps) {
     return <EmptyState />;
   }
 
+  // Get sorted data for mobile view
+  const sortedData = table.getRowModel().rows.map(row => row.original);
+
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow
-              key={row.id}
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => onRowClick?.(row.original.id)}
-            >
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <>
+      {/* Desktop Table View */}
+      <div className="hidden md:block rounded-md border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => (
+              <TableRow
+                key={row.id}
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => onRowClick?.(row.original.id)}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-3">
+        {sortedData.map((session) => (
+          <SessionCard
+            key={session.id}
+            session={session}
+            onRowClick={onRowClick}
+          />
+        ))}
+      </div>
+    </>
   );
 }
