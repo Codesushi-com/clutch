@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, MessageSquare } from "lucide-react"
+import { Plus, MessageSquare, Trash2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
@@ -19,8 +19,9 @@ const AUTHOR_COLORS: Record<string, string> = {
 }
 
 export function ChatSidebar({ projectId }: ChatSidebarProps) {
-  const { chats, activeChat, setActiveChat, createChat, loading } = useChatStore()
+  const { chats, activeChat, setActiveChat, createChat, deleteChat, loading } = useChatStore()
   const [creating, setCreating] = useState(false)
+  const [deletingChatId, setDeletingChatId] = useState<string | null>(null)
 
   const handleCreateChat = async () => {
     setCreating(true)
@@ -29,6 +30,16 @@ export function ChatSidebar({ projectId }: ChatSidebarProps) {
       setActiveChat({ ...chat, lastMessage: null })
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handleDeleteChat = async (chatId: string) => {
+    try {
+      await deleteChat(chatId)
+      setDeletingChatId(null)
+    } catch (error) {
+      console.error("Failed to delete chat:", error)
+      // Could add error toast here if there's a toast system
     }
   }
 
@@ -70,48 +81,89 @@ export function ChatSidebar({ projectId }: ChatSidebarProps) {
             const authorColor = chat.lastMessage 
               ? AUTHOR_COLORS[chat.lastMessage.author] || "#52525b"
               : "#52525b"
+            const isDeleting = deletingChatId === chat.id
             
             return (
-              <button
+              <div
                 key={chat.id}
-                onClick={() => setActiveChat(chat)}
-                className={`w-full text-left p-3 border-b border-[var(--border)] transition-colors ${
+                className={`border-b border-[var(--border)] transition-colors ${
                   isActive
                     ? "bg-[var(--accent-blue)]/10"
                     : "hover:bg-[var(--bg-tertiary)]"
                 }`}
               >
-                <div className="flex items-start gap-2">
-                  {/* Status dot */}
-                  <div 
-                    className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                    style={{ backgroundColor: authorColor }}
-                  />
-                  
-                  <div className="flex-1 min-w-0">
-                    {/* Title + time */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`text-sm font-medium truncate ${
-                        isActive ? "text-[var(--accent-blue)]" : "text-[var(--text-primary)]"
-                      }`}>
-                        {chat.title}
-                      </span>
-                      {chat.lastMessage && (
-                        <span className="text-xs text-[var(--text-muted)] flex-shrink-0">
-                          {formatTime(chat.lastMessage.created_at)}
-                        </span>
-                      )}
+                <div className="flex items-start">
+                  {/* Main chat area - clickable */}
+                  <button
+                    onClick={() => setActiveChat(chat)}
+                    className="flex-1 text-left p-3 focus:outline-none"
+                  >
+                    <div className="flex items-start gap-2">
+                      {/* Status dot */}
+                      <div 
+                        className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                        style={{ backgroundColor: authorColor }}
+                      />
+                      
+                      <div className="flex-1 min-w-0">
+                        {/* Title + time */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-sm font-medium truncate ${
+                            isActive ? "text-[var(--accent-blue)]" : "text-[var(--text-primary)]"
+                          }`}>
+                            {chat.title}
+                          </span>
+                          {chat.lastMessage && (
+                            <span className="text-xs text-[var(--text-muted)] flex-shrink-0">
+                              {formatTime(chat.lastMessage.created_at)}
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Last message preview */}
+                        {chat.lastMessage && (
+                          <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
+                            {chat.lastMessage.author}: {chat.lastMessage.content}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    
-                    {/* Last message preview */}
-                    {chat.lastMessage && (
-                      <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
-                        {chat.lastMessage.author}: {chat.lastMessage.content}
-                      </p>
+                  </button>
+                  
+                  {/* Delete area */}
+                  <div className="p-2 flex items-center">
+                    {!isDeleting ? (
+                      <button
+                        onClick={() => setDeletingChatId(chat.id)}
+                        className="p-1 text-[var(--text-muted)] hover:text-red-500 transition-colors"
+                        title="Delete chat"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-red-500 mr-2">Delete?</span>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDeleteChat(chat.id)}
+                          className="h-6 px-2 text-xs"
+                        >
+                          Yes
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDeletingChatId(null)}
+                          className="h-6 px-2 text-xs"
+                        >
+                          No
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>
-              </button>
+              </div>
             )
           })
         )}
