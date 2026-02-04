@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { useOpenClawWS } from "@/lib/providers/openclaw-ws-provider";
-import { SessionListResponse, SessionListParams, SessionPreview, AgentListResponse, AgentListParams, AgentDetail, SessionType } from "@/lib/types";
+import { SessionListResponse, SessionListParams, SessionPreview, AgentListResponse, AgentListParams, AgentDetail, SessionType, Session } from "@/lib/types";
 
 export function useOpenClawRpc() {
   const { status, rpc } = useOpenClawWS();
@@ -30,8 +30,96 @@ export function useOpenClawRpc() {
 
   // List agents via RPC
   const listAgents = useCallback(async (params?: AgentListParams): Promise<AgentListResponse> => {
-    return rpc<AgentListResponse>("agents.list", (params || {}) as Record<string, unknown>);
-  }, [rpc]);
+    try {
+      // Try the agents.list RPC method first
+      const response = await rpc<{ agents?: unknown[]; [key: string]: unknown } | unknown[]>("agents.list", (params || {}) as Record<string, unknown>);
+      
+      // Handle different possible response formats
+      if (response && typeof response === 'object' && !Array.isArray(response) && 'agents' in response && Array.isArray(response.agents)) {
+        // If agents.list returns properly formatted agents, map them to ensure all fields exist
+        const agents = response.agents.map((agent: unknown) => {
+          const agentObj = agent as Record<string, unknown>;
+          return {
+            id: String(agentObj.id || agentObj.key || 'unknown'),
+            name: String(agentObj.name || (typeof agentObj.key === 'string' ? agentObj.key.split(':').pop() : 'Unknown Agent')),
+            description: String(agentObj.description || 'AI Agent'),
+            model: String(agentObj.model || 'Unknown'),
+            status: (['active', 'idle', 'offline'].includes(String(agentObj.status))) ? String(agentObj.status) as 'active' | 'idle' | 'offline' : 'idle' as const,
+            sessionCount: typeof agentObj.sessionCount === 'number' ? agentObj.sessionCount : 0,
+            createdAt: String(agentObj.createdAt || agentObj.updatedAt || new Date().toISOString()),
+            updatedAt: String(agentObj.updatedAt || new Date().toISOString()),
+            metadata: (agentObj.metadata && typeof agentObj.metadata === 'object') ? agentObj.metadata as Record<string, unknown> : {}
+          };
+        });
+        return { agents, total: agents.length };
+      } else if (response && Array.isArray(response)) {
+        // If response is directly an array, treat it as agents
+        const agents = response.map((agent: unknown) => {
+          const agentObj = agent as Record<string, unknown>;
+          return {
+            id: String(agentObj.id || agentObj.key || 'unknown'),
+            name: String(agentObj.name || (typeof agentObj.key === 'string' ? agentObj.key.split(':').pop() : 'Unknown Agent')),
+            description: String(agentObj.description || 'AI Agent'),
+            model: String(agentObj.model || 'Unknown'),
+            status: (['active', 'idle', 'offline'].includes(String(agentObj.status))) ? String(agentObj.status) as 'active' | 'idle' | 'offline' : 'idle' as const,
+            sessionCount: typeof agentObj.sessionCount === 'number' ? agentObj.sessionCount : 0,
+            createdAt: String(agentObj.createdAt || agentObj.updatedAt || new Date().toISOString()),
+            updatedAt: String(agentObj.updatedAt || new Date().toISOString()),
+            metadata: (agentObj.metadata && typeof agentObj.metadata === 'object') ? agentObj.metadata as Record<string, unknown> : {}
+          };
+        });
+        return { agents, total: agents.length };
+      }
+    } catch (error) {
+      console.warn('[useOpenClawRpc] agents.list failed, falling back to sessions-based agents:', error);
+    }
+    
+    // Fallback: Convert sessions to agents if agents.list doesn't exist or fails
+    try {
+      const sessionsResponse = await listSessions();
+      const sessionsByAgent = new Map<string, Session[]>();
+      
+      // Group sessions by agent/model to create virtual agents
+      sessionsResponse.sessions.forEach(session => {
+        const agentKey = session.model || 'default-agent';
+        if (!sessionsByAgent.has(agentKey)) {
+          sessionsByAgent.set(agentKey, []);
+        }
+        sessionsByAgent.get(agentKey)!.push(session);
+      });
+      
+      // Convert session groups to agents
+      const agents = Array.from(sessionsByAgent.entries()).map(([agentKey, sessions]) => {
+        const latestSession = sessions.sort((a, b) => 
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        )[0];
+        
+        return {
+          id: agentKey,
+          name: agentKey.replace(/[^a-zA-Z0-9]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          description: `Agent using ${agentKey} model`,
+          model: agentKey,
+          status: 'idle' as const,
+          sessionCount: sessions.length,
+          createdAt: sessions.reduce((earliest, session) => 
+            session.createdAt < earliest ? session.createdAt : earliest, 
+            sessions[0]?.createdAt || new Date().toISOString()
+          ),
+          updatedAt: latestSession?.updatedAt || new Date().toISOString(),
+          metadata: {
+            sessionKeys: sessions.map(s => s.id),
+            totalTokens: sessions.reduce((total, s) => total + (s.tokens?.total || 0), 0)
+          }
+        };
+      });
+      
+      return { agents, total: agents.length };
+    } catch (sessionError) {
+      console.error('[useOpenClawRpc] Failed to get sessions for agent fallback:', sessionError);
+      // Return empty result rather than throwing
+      return { agents: [], total: 0 };
+    }
+  }, [rpc, listSessions]);
 
   // Get specific agent details via RPC
   const getAgent = useCallback(async (agentId: string) => {

@@ -29,8 +29,14 @@ function AgentCard({ agent, router }: { agent: Agent; router: AppRouterInstance 
   };
 
   const formatDate = (dateStr: string) => {
+    if (!dateStr) return 'Unknown';
     try {
-      return new Date(dateStr).toLocaleDateString();
+      const date = new Date(dateStr);
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        return 'Unknown';
+      }
+      return date.toLocaleDateString();
     } catch {
       return 'Unknown';
     }
@@ -59,11 +65,11 @@ function AgentCard({ agent, router }: { agent: Agent; router: AppRouterInstance 
       <div className="space-y-2 text-sm">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Zap className="h-4 w-4" />
-          <span>Model: {agent.model}</span>
+          <span>Model: {agent.model || 'Unknown'}</span>
         </div>
         <div className="flex items-center gap-2 text-muted-foreground">
           <Activity className="h-4 w-4" />
-          <span>Sessions: {agent.sessionCount}</span>
+          <span>Sessions: {typeof agent.sessionCount === 'number' && !isNaN(agent.sessionCount) ? agent.sessionCount : 0}</span>
         </div>
         <div className="flex items-center gap-2 text-muted-foreground">
           <Clock className="h-4 w-4" />
@@ -117,7 +123,7 @@ export default function AgentsPage() {
 
   const activeAgents = agents.filter(a => a.status === 'active');
   const idleAgents = agents.filter(a => a.status === 'idle');
-  const totalSessions = agents.reduce((acc, agent) => acc + agent.sessionCount, 0);
+  const totalSessions = agents.reduce((acc, agent) => acc + (typeof agent.sessionCount === 'number' && !isNaN(agent.sessionCount) ? agent.sessionCount : 0), 0);
 
   return (
     <div className="container mx-auto py-8 px-4">
