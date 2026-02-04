@@ -44,8 +44,11 @@ function ConnectionBadge({ connected, connecting }: { connected: boolean; connec
 }
 
 export default function SessionsPage() {
+  console.log("[SessionsPage] Component rendering");
   const router = useRouter();
+  console.log("[SessionsPage] About to call useOpenClawRpc");
   const { connected, connecting, listSessions } = useOpenClawRpc();
+  console.log("[SessionsPage] useOpenClawRpc returned:", { connected, connecting });
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const {
