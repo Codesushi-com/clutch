@@ -599,3 +599,4 @@ export default function ChatPage({ params }: PageProps) {
     </>
   )
 }
+// Updated
