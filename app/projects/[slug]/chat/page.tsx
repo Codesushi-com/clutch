@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, use, useCallback } from "react"
-import { MessageSquare, Wifi, WifiOff, Bot } from "lucide-react"
+import { MessageSquare, Wifi, WifiOff, Bot, Clock, Cpu, Activity } from "lucide-react"
 import { useChatStore } from "@/lib/stores/chat-store"
 import { useChatEvents } from "@/lib/hooks/use-chat-events"
 import { useOpenClawChat } from "@/lib/hooks/use-openclaw-chat"
@@ -13,6 +13,7 @@ import { ChatInput } from "@/components/chat/chat-input"
 import { ChatHeader } from "@/components/chat/chat-header"
 import { CreateTaskFromMessage } from "@/components/chat/create-task-from-message"
 import { StreamingToggle } from "@/components/chat/streaming-toggle"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import type { ChatMessage } from "@/lib/db/types"
 
 type PageProps = {
@@ -136,7 +137,19 @@ export default function ChatPage({ params }: PageProps) {
 
   // Sub-agent monitoring via RPC
   const { connected: rpcConnected, listSessions } = useOpenClawRpc()
-  const [activeSubagents, setActiveSubagents] = useState<Array<{ key: string; label?: string; model?: string }>>([])
+  
+  interface SubAgentDetails {
+    key: string
+    label?: string
+    model?: string
+    status?: string
+    agentId?: string
+    createdAt?: number
+    updatedAt?: number
+    runtime?: string
+  }
+  
+  const [activeSubagents, setActiveSubagents] = useState<SubAgentDetails[]>([])
 
   useEffect(() => {
     if (!rpcConnected) return
@@ -156,11 +169,27 @@ export default function ChatPage({ params }: PageProps) {
             s.spawnedBy === "agent:main:main" && 
             s.updatedAt && s.updatedAt > fiveMinutesAgo
           )
-          .map((s) => ({
-            key: s.key as string,
-            label: s.label as string | undefined,
-            model: s.model as string | undefined,
-          }))
+          .map((s) => {
+            // Calculate runtime if we have creation time
+            let runtime: string | undefined
+            if (s.createdAt) {
+              const runtimeMs = Date.now() - s.createdAt
+              const minutes = Math.floor(runtimeMs / 60000)
+              const seconds = Math.floor((runtimeMs % 60000) / 1000)
+              runtime = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
+            }
+            
+            return {
+              key: s.key as string,
+              label: s.label as string | undefined,
+              model: s.model as string | undefined,
+              status: s.status as string | undefined,
+              agentId: s.agentId as string | undefined,
+              createdAt: s.createdAt as number | undefined,
+              updatedAt: s.updatedAt as number | undefined,
+              runtime,
+            }
+          })
         setActiveSubagents(subagents)
       } catch (err) {
         console.error("[Chat] Failed to poll subagents:", err)
@@ -278,6 +307,38 @@ export default function ChatPage({ params }: PageProps) {
 
   const currentMessages = activeChat ? messages[activeChat.id] || [] : []
 
+  // Format status for display
+  const formatStatus = (status?: string) => {
+    switch (status) {
+      case 'running': return 'Running'
+      case 'idle': return 'Idle'
+      case 'completed': return 'Completed'
+      case 'error': return 'Error'
+      case 'cancelled': return 'Cancelled'
+      default: return 'Unknown'
+    }
+  }
+
+  // Format model for display (show short name)
+  const formatModel = (model?: string) => {
+    if (!model) return 'Unknown'
+    
+    // Extract short names from common model formats
+    if (model.includes('claude')) {
+      if (model.includes('haiku')) return 'Haiku'
+      if (model.includes('sonnet')) return 'Sonnet'
+      if (model.includes('opus')) return 'Opus'
+      return 'Claude'
+    }
+    if (model.includes('kimi')) return 'Kimi'
+    if (model.includes('moonshot')) return 'Moonshot'
+    if (model.includes('gpt')) return 'GPT'
+    
+    // Fallback to last part of model name
+    const parts = model.split('/')
+    return parts[parts.length - 1] || model
+  }
+
   return (
     <>
       <div className="flex h-[calc(100vh-140px)] bg-[var(--bg-primary)] rounded-lg border border-[var(--border)] overflow-hidden">
@@ -308,13 +369,56 @@ export default function ChatPage({ params }: PageProps) {
                         onChange={toggleStreaming} 
                       />
                       {activeSubagents.length > 0 && (
-                        <span 
-                          className="flex items-center gap-1 text-purple-400 cursor-help"
-                          title={activeSubagents.map(s => s.label || s.key).join(", ")}
-                        >
-                          <Bot className="h-3 w-3 animate-pulse" />
-                          {activeSubagents.length} sub-agent{activeSubagents.length > 1 ? "s" : ""}
-                        </span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span 
+                              className="flex items-center gap-1 text-purple-400 cursor-help hover:text-purple-300 transition-colors"
+                            >
+                              <Bot className="h-3 w-3 animate-pulse" />
+                              {activeSubagents.length} sub-agent{activeSubagents.length > 1 ? "s" : ""}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent className="p-3 max-w-sm">
+                            <div className="space-y-2">
+                              <div className="font-medium text-white mb-2">Active Sub-Agents</div>
+                              {activeSubagents.map((agent) => (
+                                <div key={agent.key} className="space-y-1 pb-2 border-b border-gray-600 last:border-b-0 last:pb-0">
+                                  <div className="flex items-center gap-2">
+                                    <Bot className="h-3 w-3 text-purple-300" />
+                                    <span className="font-medium text-white">
+                                      {agent.label || agent.key}
+                                    </span>
+                                  </div>
+                                  
+                                  <div className="text-xs space-y-1 ml-5">
+                                    <div className="flex items-center gap-2">
+                                      <Cpu className="h-3 w-3 text-blue-400" />
+                                      <span>Model: {formatModel(agent.model)}</span>
+                                    </div>
+                                    
+                                    {agent.runtime && (
+                                      <div className="flex items-center gap-2">
+                                        <Clock className="h-3 w-3 text-green-400" />
+                                        <span>Runtime: {agent.runtime}</span>
+                                      </div>
+                                    )}
+                                    
+                                    {agent.status && (
+                                      <div className="flex items-center gap-2">
+                                        <Activity className="h-3 w-3 text-yellow-400" />
+                                        <span>Status: {formatStatus(agent.status)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                              
+                              <div className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-600">
+                                Click a session key to view details
+                              </div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
                       )}
                       {openClawConnected ? (
                         <span className="flex items-center gap-1 text-green-500">
