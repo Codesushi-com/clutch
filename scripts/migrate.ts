@@ -19,6 +19,7 @@ addColumnIfNotExists("tasks", "dispatch_status", "TEXT")
 addColumnIfNotExists("tasks", "dispatch_requested_at", "INTEGER")
 addColumnIfNotExists("tasks", "dispatch_requested_by", "TEXT")
 addColumnIfNotExists("tasks", "position", "INTEGER DEFAULT 0")
+addColumnIfNotExists("chats", "session_key", "TEXT")
 
 // Now run schema.sql for new tables and indexes
 const schemaPath = path.join(__dirname, "../lib/db/schema.sql")

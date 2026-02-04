@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, use, useCallback, useRef } from "react"
+import { useEffect, useState, use, useCallback } from "react"
 import { MessageSquare, Wifi, WifiOff, Bot } from "lucide-react"
 import { useChatStore } from "@/lib/stores/chat-store"
 import { useChatEvents } from "@/lib/hooks/use-chat-events"
@@ -216,6 +216,21 @@ export default function ChatPage({ params }: PageProps) {
     if (!activeChat) return
     
     console.log("[Chat] handleSendMessage called, openClawConnected:", openClawConnected)
+    
+    // Store session key if this is the first message and we don't have one yet
+    if (!activeChat.session_key) {
+      try {
+        await fetch(`/api/chats/${activeChat.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_key: "main" }),
+        })
+        // Update local state
+        setActiveChat({ ...activeChat, session_key: "main" })
+      } catch (error) {
+        console.error("[Chat] Failed to store session key:", error)
+      }
+    }
     
     // Save user message to local DB
     await sendMessageToDb(activeChat.id, content, "dan")

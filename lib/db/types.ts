@@ -55,6 +55,7 @@ export interface Chat {
   project_id: string
   title: string
   participants: string | null // JSON array stored as text
+  session_key: string | null
   created_at: number
   updated_at: number
 }

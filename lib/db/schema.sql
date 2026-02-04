@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS chats (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   participants TEXT,
+  session_key TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

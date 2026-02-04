@@ -1,19 +1,56 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Edit2, Check, X } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
+import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
 
 interface ChatHeaderProps {
   chat: ChatWithLastMessage
 }
 
+interface SessionInfo {
+  model?: string
+  contextPercent?: number
+}
+
 export function ChatHeader({ chat }: ChatHeaderProps) {
   const { updateChat } = useChatStore()
+  const { connected: rpcConnected, getSessionPreview } = useOpenClawRpc()
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(chat.title)
   const [isUpdating, setIsUpdating] = useState(false)
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
+  const [loadingSession, setLoadingSession] = useState(false)
+
+  // Fetch session info when chat has session_key and RPC is connected
+  useEffect(() => {
+    async function fetchSessionInfo() {
+      if (!chat.session_key || !rpcConnected) {
+        setSessionInfo(null)
+        return
+      }
+
+      setLoadingSession(true)
+      try {
+        const preview = await getSessionPreview(chat.session_key)
+        setSessionInfo({
+          model: preview.session.model,
+          contextPercent: Math.round(preview.contextPercentage),
+        })
+      } catch (error) {
+        console.error("[ChatHeader] Failed to fetch session info:", error)
+        setSessionInfo(null)
+      } finally {
+        setLoadingSession(false)
+      }
+    }
+
+    fetchSessionInfo()
+  }, [chat.session_key, rpcConnected, getSessionPreview])
 
   const handleStartEdit = () => {
     setIsEditing(true)
@@ -88,9 +125,23 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
         </>
       ) : (
         <>
-          <h1 className="flex-1 text-lg font-semibold text-[var(--text-primary)] truncate">
-            {chat.title}
-          </h1>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <h1 className="text-lg font-semibold text-[var(--text-primary)] truncate">
+              {chat.title}
+            </h1>
+            {chat.session_key && sessionInfo && !loadingSession && (
+              <Link href={`/sessions/${chat.session_key}`}>
+                <Badge variant="outline" className="cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors">
+                  {sessionInfo.model} • {sessionInfo.contextPercent}%
+                </Badge>
+              </Link>
+            )}
+            {chat.session_key && loadingSession && (
+              <Badge variant="outline" className="opacity-50">
+                Loading...
+              </Badge>
+            )}
+          </div>
           <Button
             size="sm"
             variant="ghost"

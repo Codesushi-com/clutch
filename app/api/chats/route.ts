@@ -85,23 +85,24 @@ export async function POST(request: NextRequest) {
     project_id,
     title: chatTitle,
     participants: JSON.stringify(participants),
+    session_key: null, // Will be set when first message is sent
     created_at: now,
     updated_at: now,
   }
 
   db.prepare(`
-    INSERT INTO chats (id, project_id, title, participants, created_at, updated_at)
-    VALUES (@id, @project_id, @title, @participants, @created_at, @updated_at)
+    INSERT INTO chats (id, project_id, title, participants, session_key, created_at, updated_at)
+    VALUES (@id, @project_id, @title, @participants, @session_key, @created_at, @updated_at)
   `).run(chat)
 
   return NextResponse.json({ chat }, { status: 201 })
 }
 
-// PATCH /api/chats — Update chat (currently supports title only)
+// PATCH /api/chats — Update chat (supports title and session_key)
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
   
-  const { id, title } = body
+  const { id, title, session_key } = body
   
   if (!id) {
     return NextResponse.json(
@@ -110,9 +111,9 @@ export async function PATCH(request: NextRequest) {
     )
   }
 
-  if (!title?.trim()) {
+  if (!title?.trim() && !session_key) {
     return NextResponse.json(
-      { error: "title is required" },
+      { error: "title or session_key is required" },
       { status: 400 }
     )
   }
@@ -128,11 +129,29 @@ export async function PATCH(request: NextRequest) {
 
   const now = Date.now()
   
+  // Build dynamic update query based on provided fields
+  const updateFields = []
+  const values = []
+  
+  if (title?.trim()) {
+    updateFields.push("title = ?")
+    values.push(title.trim())
+  }
+  
+  if (session_key) {
+    updateFields.push("session_key = ?")
+    values.push(session_key)
+  }
+  
+  updateFields.push("updated_at = ?")
+  values.push(now)
+  values.push(id) // for WHERE clause
+  
   db.prepare(`
     UPDATE chats 
-    SET title = ?, updated_at = ? 
+    SET ${updateFields.join(", ")}
     WHERE id = ?
-  `).run(title.trim(), now, id)
+  `).run(...values)
 
   // Fetch the updated chat
   const updatedChat = db.prepare("SELECT * FROM chats WHERE id = ?").get(id) as Chat

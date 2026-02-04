@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import type { Chat, ChatMessage } from "@/lib/db/types"
+import type { Chat } from "@/lib/db/types"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
-// GET /api/chats/[id] — Get chat with recent messages
+// GET /api/chats/[id] — Get single chat by ID
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   
   const chat = db.prepare("SELECT * FROM chats WHERE id = ?").get(id) as Chat | undefined
-
+  
   if (!chat) {
     return NextResponse.json(
       { error: "Chat not found" },
@@ -17,18 +17,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     )
   }
 
-  // Get recent messages (last 50)
-  const messages = db.prepare(`
-    SELECT * FROM chat_messages 
-    WHERE chat_id = ? 
-    ORDER BY created_at DESC 
-    LIMIT 50
-  `).all(id) as ChatMessage[]
-
-  // Reverse to get chronological order
-  messages.reverse()
-
-  return NextResponse.json({ chat, messages })
+  return NextResponse.json({ chat })
 }
 
 // PATCH /api/chats/[id] — Update chat
@@ -36,46 +25,70 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   const body = await request.json()
   
-  const existing = db.prepare("SELECT * FROM chats WHERE id = ?").get(id) as Chat | undefined
+  const { title, session_key } = body
   
-  if (!existing) {
+  // Verify chat exists
+  const chat = db.prepare("SELECT id FROM chats WHERE id = ?").get(id)
+  if (!chat) {
     return NextResponse.json(
       { error: "Chat not found" },
       { status: 404 }
     )
   }
 
-  const { title, participants } = body
+  const now = Date.now()
   
-  const updated: Chat = {
-    ...existing,
-    title: title ?? existing.title,
-    participants: participants ? JSON.stringify(participants) : existing.participants,
-    updated_at: Date.now(),
+  // Build dynamic update query based on provided fields
+  const updateFields = []
+  const values = []
+  
+  if (title?.trim()) {
+    updateFields.push("title = ?")
+    values.push(title.trim())
   }
-
+  
+  if (session_key !== undefined) {
+    updateFields.push("session_key = ?")
+    values.push(session_key)
+  }
+  
+  if (updateFields.length === 0) {
+    return NextResponse.json(
+      { error: "No fields to update" },
+      { status: 400 }
+    )
+  }
+  
+  updateFields.push("updated_at = ?")
+  values.push(now)
+  values.push(id) // for WHERE clause
+  
   db.prepare(`
     UPDATE chats 
-    SET title = @title, participants = @participants, updated_at = @updated_at
-    WHERE id = @id
-  `).run(updated)
+    SET ${updateFields.join(", ")}
+    WHERE id = ?
+  `).run(...values)
 
-  return NextResponse.json({ chat: updated })
+  // Fetch the updated chat
+  const updatedChat = db.prepare("SELECT * FROM chats WHERE id = ?").get(id) as Chat
+
+  return NextResponse.json({ chat: updatedChat })
 }
 
 // DELETE /api/chats/[id] — Delete chat
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   
-  const existing = db.prepare("SELECT id FROM chats WHERE id = ?").get(id)
-  
-  if (!existing) {
+  // Verify chat exists
+  const chat = db.prepare("SELECT id FROM chats WHERE id = ?").get(id)
+  if (!chat) {
     return NextResponse.json(
       { error: "Chat not found" },
       { status: 404 }
     )
   }
 
+  // Delete the chat (cascade will delete messages)
   db.prepare("DELETE FROM chats WHERE id = ?").run(id)
 
   return NextResponse.json({ success: true })

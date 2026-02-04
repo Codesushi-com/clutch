@@ -67,13 +67,14 @@ export async function POST(request: NextRequest) {
     project_id: id,
     title: "General",
     participants: JSON.stringify(["ada"]),
+    session_key: null,
     created_at: now,
     updated_at: now,
   }
   
   db.prepare(`
-    INSERT INTO chats (id, project_id, title, participants, created_at, updated_at)
-    VALUES (@id, @project_id, @title, @participants, @created_at, @updated_at)
+    INSERT INTO chats (id, project_id, title, participants, session_key, created_at, updated_at)
+    VALUES (@id, @project_id, @title, @participants, @session_key, @created_at, @updated_at)
   `).run(chat)
 
   return NextResponse.json({ project }, { status: 201 })
