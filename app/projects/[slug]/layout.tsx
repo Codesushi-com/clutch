@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ArrowLeft, LayoutGrid, MessageSquare, Activity, Settings } from "lucide-react"
+import { ArrowLeft, LayoutGrid, MessageSquare, Mic, Activity, Settings } from "lucide-react"
 import type { Project } from "@/lib/db/types"
 
 type LayoutProps = {
@@ -14,6 +14,7 @@ type LayoutProps = {
 const TABS = [
   { id: "board", label: "Board", icon: LayoutGrid, href: "" },
   { id: "chat", label: "Chat", icon: MessageSquare, href: "/chat" },
+  { id: "voice", label: "Voice", icon: Mic, href: "/voice" },
   { id: "sessions", label: "Sessions", icon: Activity, href: "/sessions" },
   { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
 ]
@@ -39,6 +40,7 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
     const path = pathname.replace(`/projects/${slug}`, "")
     if (path === "" || path === "/board") return "board"
     if (path.startsWith("/chat")) return "chat"
+    if (path.startsWith("/voice")) return "voice"
     if (path.startsWith("/sessions")) return "sessions"
     if (path.startsWith("/settings")) return "settings"
     return "board"

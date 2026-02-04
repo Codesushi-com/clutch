@@ -12,7 +12,16 @@
  *   Set TRAP_URL environment variable (default: http://localhost:3002)
  */
 
-import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw";
+// Types from OpenClaw (declared here since module isn't available at build time)
+type OpenClawPluginToolContext = {
+  sessionKey?: string;
+  agentId?: string;
+};
+
+type OpenClawPluginApi = {
+  registerTool: (tool: any, opts?: { optional?: boolean }) => void;
+  logger: { info: (msg: string) => void };
+};
 
 const TRAP_URL = process.env.TRAP_URL || "http://localhost:3002";
 
