@@ -1,15 +1,25 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Plus, MessageSquare, Trash2, X } from "lucide-react"
+import { useState, useEffect, useCallback } from "react"
+import { Plus, MessageSquare, Trash2, X, ChevronDown, ChevronRight, ListTodo, ExternalLink } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
+import type { Task } from "@/lib/db/types"
 
 interface ChatSidebarProps {
   projectId: string
+  projectSlug?: string
   isOpen?: boolean
   onClose?: () => void
   isMobile?: boolean
+}
+
+interface WorkQueueSection {
+  label: string
+  status: string
+  tasks: Task[]
+  expanded: boolean
 }
 
 const AUTHOR_COLORS: Record<string, string> = {
@@ -20,10 +30,75 @@ const AUTHOR_COLORS: Record<string, string> = {
   dan: "#ef4444",
 }
 
-export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = false }: ChatSidebarProps) {
+const STATUS_COLORS: Record<string, string> = {
+  review: "#a855f7",     // Purple for review
+  in_progress: "#3b82f6", // Blue for in progress
+  ready: "#22c55e",       // Green for ready/up next
+}
+
+export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, isMobile = false }: ChatSidebarProps) {
   const { chats, activeChat, setActiveChat, createChat, deleteChat, loading } = useChatStore()
   const [creating, setCreating] = useState(false)
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null)
+  
+  // Work queue state
+  const [workQueueSections, setWorkQueueSections] = useState<WorkQueueSection[]>([
+    { label: "In Review", status: "review", tasks: [], expanded: true },
+    { label: "In Progress", status: "in_progress", tasks: [], expanded: true },
+    { label: "Up Next", status: "ready", tasks: [], expanded: true },
+  ])
+  const [loadingTasks, setLoadingTasks] = useState(true)
+
+  // Fetch work queue tasks
+  const fetchWorkQueue = useCallback(async () => {
+    try {
+      // Fetch tasks for each status
+      const [reviewRes, inProgressRes, readyRes] = await Promise.all([
+        fetch(`/api/tasks?projectId=${projectId}&status=review`),
+        fetch(`/api/tasks?projectId=${projectId}&status=in_progress`),
+        fetch(`/api/tasks?projectId=${projectId}&status=ready`),
+      ])
+
+      const [reviewData, inProgressData, readyData] = await Promise.all([
+        reviewRes.json(),
+        inProgressRes.json(),
+        readyRes.json(),
+      ])
+
+      setWorkQueueSections(prev => prev.map(section => {
+        if (section.status === "review") {
+          return { ...section, tasks: reviewData.tasks || [] }
+        }
+        if (section.status === "in_progress") {
+          return { ...section, tasks: inProgressData.tasks || [] }
+        }
+        if (section.status === "ready") {
+          // Only show top 2 ready tasks as "Up Next"
+          return { ...section, tasks: (readyData.tasks || []).slice(0, 2) }
+        }
+        return section
+      }))
+    } catch (error) {
+      console.error("Failed to fetch work queue:", error)
+    } finally {
+      setLoadingTasks(false)
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    fetchWorkQueue()
+    // Poll every 30 seconds for updates
+    const interval = setInterval(fetchWorkQueue, 30000)
+    return () => clearInterval(interval)
+  }, [fetchWorkQueue])
+
+  const toggleSection = (status: string) => {
+    setWorkQueueSections(prev => prev.map(section => 
+      section.status === status 
+        ? { ...section, expanded: !section.expanded }
+        : section
+    ))
+  }
 
   const handleCreateChat = async () => {
     setCreating(true)
@@ -41,19 +116,16 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
       setDeletingChatId(null)
     } catch (error) {
       console.error("Failed to delete chat:", error)
-      // Could add error toast here if there's a toast system
     }
   }
 
   const handleChatSelect = (chat: ChatWithLastMessage) => {
     setActiveChat(chat)
-    // Close sidebar on mobile after selection
     if (isMobile && onClose) {
       onClose()
     }
   }
 
-  // Close sidebar on escape key (mobile)
   useEffect(() => {
     if (!isMobile || !isOpen) return
     
@@ -83,6 +155,15 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
     }
   }
 
+  const formatShortId = (id: string) => {
+    return `#${id.substring(0, 8)}`
+  }
+
+  const truncateTitle = (title: string, maxLength: number = 30) => {
+    if (title.length <= maxLength) return title
+    return title.substring(0, maxLength) + "..."
+  }
+
   // Mobile backdrop
   const backdrop = isMobile && isOpen && onClose && (
     <div 
@@ -90,6 +171,9 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
       onClick={onClose}
     />
   )
+
+  // Count total tasks in work queue (excluding sections with 0)
+  const totalWorkItems = workQueueSections.reduce((sum, s) => sum + s.tasks.length, 0)
 
   const sidebarContent = (
     <div className={`
@@ -119,7 +203,7 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
       </div>
       
       {/* Chat list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="overflow-y-auto" style={{ maxHeight: 'calc(50vh - 100px)' }}>
         {loading ? (
           <div className="p-4 text-sm text-[var(--text-muted)]">Loading...</div>
         ) : chats.length === 0 ? (
@@ -145,19 +229,16 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
                 }`}
               >
                 <div className="flex items-start gap-2 p-3">
-                  {/* Status dot */}
                   <div 
                     className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
                     style={{ backgroundColor: authorColor }}
                   />
                   
-                  {/* Main chat area - clickable */}
                   <button
                     onClick={() => handleChatSelect(chat)}
                     className="flex-1 text-left focus:outline-none min-h-[40px] touch-manipulation min-w-0"
                   >
                     <div className="min-w-0">
-                      {/* Title */}
                       <div className="flex items-center gap-2 min-w-0">
                         <span className={`text-sm font-medium truncate ${
                           isActive ? "text-[var(--accent-blue)]" : "text-[var(--text-primary)]"
@@ -166,7 +247,6 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
                         </span>
                       </div>
                       
-                      {/* Last message preview */}
                       {chat.lastMessage && (
                         <p className="text-xs text-[var(--text-muted)] truncate mt-0.5 max-w-full">
                           {chat.lastMessage.author}: {chat.lastMessage.content}
@@ -175,14 +255,12 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
                     </div>
                   </button>
                   
-                  {/* Timestamp - always visible */}
                   {chat.lastMessage && (
                     <div className="flex-shrink-0 text-xs text-[var(--text-muted)] pt-0.5">
                       {formatTime(chat.lastMessage.created_at)}
                     </div>
                   )}
                   
-                  {/* Delete area - always visible */}
                   <div className="flex-shrink-0 flex items-center">
                     {!isDeleting ? (
                       <button
@@ -221,8 +299,8 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
         )}
       </div>
       
-      {/* New chat */}
-      <div className="p-2 border-t border-[var(--border)]">
+      {/* New chat button - moved up */}
+      <div className="p-2 border-b border-[var(--border)]">
         <Button
           variant="outline"
           size="sm"
@@ -233,6 +311,96 @@ export function ChatSidebar({ projectId, isOpen = true, onClose, isMobile = fals
           <Plus className="h-4 w-4 mr-2" />
           {creating ? "Creating..." : "New Chat"}
         </Button>
+      </div>
+
+      {/* Divider with Work Queue header */}
+      <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/30">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ListTodo className="h-4 w-4 text-[var(--text-muted)]" />
+            <h2 className="font-medium text-[var(--text-primary)]">Work Queue</h2>
+            {totalWorkItems > 0 && (
+              <span className="text-xs bg-[var(--accent-blue)]/20 text-[var(--accent-blue)] px-1.5 py-0.5 rounded">
+                {totalWorkItems}
+              </span>
+            )}
+          </div>
+          {projectSlug && (
+            <Link 
+              href={`/projects/${projectSlug}/board`}
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] flex items-center gap-1"
+              title="Open board"
+            >
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {/* Work Queue sections */}
+      <div className="flex-1 overflow-y-auto">
+        {loadingTasks ? (
+          <div className="p-4 text-sm text-[var(--text-muted)]">Loading tasks...</div>
+        ) : totalWorkItems === 0 ? (
+          <div className="p-4 text-center">
+            <ListTodo className="h-8 w-8 mx-auto text-[var(--text-muted)] mb-2" />
+            <p className="text-sm text-[var(--text-muted)]">No active work</p>
+          </div>
+        ) : (
+          workQueueSections.map((section) => {
+            if (section.tasks.length === 0) return null
+            
+            return (
+              <div key={section.status} className="border-b border-[var(--border)]">
+                {/* Section header */}
+                <button
+                  onClick={() => toggleSection(section.status)}
+                  className="w-full flex items-center gap-2 p-2 px-3 hover:bg-[var(--bg-tertiary)] transition-colors"
+                >
+                  {section.expanded ? (
+                    <ChevronDown className="h-3 w-3 text-[var(--text-muted)]" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 text-[var(--text-muted)]" />
+                  )}
+                  <span className="text-xs font-medium text-[var(--text-secondary)]">
+                    {section.label}
+                  </span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    ({section.tasks.length})
+                  </span>
+                </button>
+
+                {/* Section tasks */}
+                {section.expanded && (
+                  <div className="pb-1">
+                    {section.tasks.map((task) => (
+                      <Link
+                        key={task.id}
+                        href={projectSlug ? `/projects/${projectSlug}/board?task=${task.id}` : '#'}
+                        className="flex items-start gap-2 px-3 py-2 hover:bg-[var(--bg-tertiary)] transition-colors group"
+                      >
+                        <div 
+                          className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                          style={{ backgroundColor: STATUS_COLORS[section.status] || "#52525b" }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono text-[var(--text-muted)]">
+                              {formatShortId(task.id)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[var(--text-primary)] group-hover:text-[var(--accent-blue)] truncate">
+                            {truncateTitle(task.title)}
+                          </p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })
+        )}
       </div>
     </div>
   )
