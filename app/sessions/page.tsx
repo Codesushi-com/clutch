@@ -90,9 +90,14 @@ export default function SessionsPage() {
 
   // Load sessions when connected and set up auto-refresh
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    
     if (connected && !isInitialized) {
-      console.log("[SessionsPage] Connected, fetching sessions...");
-      fetchSessions(true);
+      // Small delay to let connection stabilize
+      timeoutId = setTimeout(() => {
+        console.log("[SessionsPage] Connected, fetching sessions...");
+        fetchSessions(true);
+      }, 500);
     }
     
     // Set up auto-refresh every 10 seconds when connected
@@ -103,6 +108,7 @@ export default function SessionsPage() {
     }
     
     return () => {
+      if (timeoutId) clearTimeout(timeoutId);
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current);
         refreshIntervalRef.current = null;
