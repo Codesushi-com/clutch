@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   requires_human_review INTEGER DEFAULT 0,
   tags TEXT,
   session_id TEXT,
+  dispatch_status TEXT,
+  dispatch_requested_at INTEGER,
+  dispatch_requested_by TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   completed_at INTEGER

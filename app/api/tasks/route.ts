@@ -73,6 +73,9 @@ export async function POST(request: NextRequest) {
     requires_human_review: requires_human_review ? 1 : 0,
     tags: tags ? JSON.stringify(tags) : null,
     session_id: null,
+    dispatch_status: null,
+    dispatch_requested_at: null,
+    dispatch_requested_by: null,
     created_at: now,
     updated_at: now,
     completed_at: null,
@@ -81,12 +84,14 @@ export async function POST(request: NextRequest) {
   db.prepare(`
     INSERT INTO tasks (
       id, project_id, title, description, status, priority, 
-      assignee, requires_human_review, tags, session_id, 
+      assignee, requires_human_review, tags, session_id,
+      dispatch_status, dispatch_requested_at, dispatch_requested_by,
       created_at, updated_at, completed_at
     )
     VALUES (
       @id, @project_id, @title, @description, @status, @priority,
       @assignee, @requires_human_review, @tags, @session_id,
+      @dispatch_status, @dispatch_requested_at, @dispatch_requested_by,
       @created_at, @updated_at, @completed_at
     )
   `).run(task)

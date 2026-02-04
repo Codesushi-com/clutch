@@ -14,6 +14,7 @@ export interface Project {
 
 export type TaskStatus = "backlog" | "ready" | "in_progress" | "review" | "done"
 export type TaskPriority = "low" | "medium" | "high" | "urgent"
+export type DispatchStatus = "pending" | "spawning" | "active" | "completed" | "failed"
 
 export interface Task {
   id: string
@@ -26,6 +27,9 @@ export interface Task {
   requires_human_review: number // SQLite boolean (0/1)
   tags: string | null // JSON array stored as text
   session_id: string | null
+  dispatch_status: DispatchStatus | null
+  dispatch_requested_at: number | null
+  dispatch_requested_by: string | null
   created_at: number
   updated_at: number
   completed_at: number | null
