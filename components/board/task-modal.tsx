@@ -228,6 +228,17 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
         {/* Header */}
         <div className="flex items-start justify-between p-4 border-b border-[var(--border)]">
           <div className="flex-1 pr-4">
+            {/* Short ID */}
+            <div className="mb-2">
+              <span 
+                className="text-xs text-[var(--text-muted)] font-mono cursor-pointer hover:text-[var(--accent-blue)] transition-colors select-all"
+                title="Click to copy ID"
+                onClick={() => navigator.clipboard.writeText(task.id.substring(0, 8))}
+              >
+                #{task.id.substring(0, 8)}
+              </span>
+            </div>
+            
             {/* Title */}
             <input
               value={title}
