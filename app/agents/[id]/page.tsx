@@ -5,13 +5,14 @@
  * View detailed information about a specific agent
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Bot, Loader2, AlertCircle, Activity, Zap, Clock, MessageSquare, Settings, BarChart3, X } from 'lucide-react';
+import { ArrowLeft, Bot, Loader2, AlertCircle, Activity, Zap, Clock, MessageSquare, Settings, BarChart3, X, Info, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
 import { AgentDetail, AgentStatus } from '@/lib/types';
+import { MarkdownEditor } from '@/components/editors/markdown-editor';
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -20,17 +21,58 @@ export default function AgentDetailPage() {
   
   const [isLoading, setIsLoading] = useState(true);
   const [agent, setAgent] = useState<AgentDetail | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'soul'>('overview');
+  const [soulContent, setSoulContent] = useState<string>('');
+  const [soulExists, setSoulExists] = useState(false);
+  const [soulLoading, setSoulLoading] = useState(false);
   const [notification, setNotification] = useState<{
     message: string;
     type: 'success' | 'error';
   } | null>(null);
 
-  const { getAgent, connected } = useOpenClawRpc();
+  const { getAgent, getAgentSoul, updateAgentSoul, connected } = useOpenClawRpc();
 
   // Simple toast function
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 5000);
+  }, []);
+
+  // Load soul content
+  const loadSoulContent = useCallback(async () => {
+    if (!connected || !agentId) return;
+    
+    try {
+      setSoulLoading(true);
+      const response = await getAgentSoul(agentId);
+      setSoulContent(response.content || '');
+      setSoulExists(response.exists);
+    } catch (error) {
+      console.error('Failed to load soul content:', error);
+      showToast("Failed to load soul content", "error");
+      setSoulContent('');
+      setSoulExists(false);
+    } finally {
+      setSoulLoading(false);
+    }
+  }, [connected, agentId, getAgentSoul, showToast]);
+
+  // Save soul content
+  const saveSoulContent = async (content: string) => {
+    if (!connected || !agentId) {
+      throw new Error('Not connected to OpenClaw');
+    }
+    
+    try {
+      await updateAgentSoul(agentId, content);
+      setSoulContent(content);
+      setSoulExists(true);
+      showToast("Soul content saved successfully");
+    } catch (error) {
+      console.error('Failed to save soul content:', error);
+      showToast("Failed to save soul content", "error");
+      throw error;
+    }
   };
 
   // Load agent data
@@ -51,7 +93,14 @@ export default function AgentDetailPage() {
     };
 
     loadAgent();
-  }, [agentId, connected, getAgent]);
+  }, [agentId, connected, getAgent, showToast]);
+
+  // Load soul content when switching to soul tab
+  useEffect(() => {
+    if (activeTab === 'soul' && connected && agentId && !soulLoading) {
+      loadSoulContent();
+    }
+  }, [activeTab, connected, agentId, soulLoading, loadSoulContent]);
 
   // Status colors and variants
   const statusColors = {
@@ -144,6 +193,38 @@ export default function AgentDetailPage() {
             </Button>
           </div>
         </div>
+
+        {/* Tab Navigation */}
+        <div className="flex space-x-1 mb-6 border-b">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+              activeTab === 'overview'
+                ? 'border-primary text-primary bg-muted/50'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground'
+            }`}
+          >
+            <Info className="h-4 w-4 mr-2 inline" />
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('soul')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+              activeTab === 'soul'
+                ? 'border-primary text-primary bg-muted/50'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground'
+            }`}
+          >
+            <Heart className="h-4 w-4 mr-2 inline" />
+            Soul
+            {soulExists && <Badge variant="secondary" className="ml-2 text-xs">SOUL.md</Badge>}
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'overview' ? (
+          <div>
+            {/* Overview content - original agent details */}
 
         {/* Core Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -307,15 +388,84 @@ export default function AgentDetailPage() {
           )}
         </div>
 
-        {/* Connection Status Warning */}
-        {!connected && (
-          <div className="border-t pt-6 mt-6">
-            <div className="flex items-center gap-2 text-yellow-600">
-              <AlertCircle className="h-4 w-4" />
-              <span className="text-sm">
-                Not connected to OpenClaw. Some information may not be current.
-              </span>
-            </div>
+            {/* Connection Status Warning */}
+            {!connected && (
+              <div className="border-t pt-6 mt-6">
+                <div className="flex items-center gap-2 text-yellow-600">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm">
+                    Not connected to OpenClaw. Some information may not be current.
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Soul Tab */
+          <div>
+            {soulLoading ? (
+              <div className="flex items-center justify-center min-h-[400px]">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <span className="ml-2 text-muted-foreground">Loading soul content...</span>
+              </div>
+            ) : (
+              <div>
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                    <Heart className="h-5 w-5" />
+                    Agent Soul
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    The SOUL.md file defines the agent&apos;s personality, behavior, and core values. 
+                    This is what makes the agent unique and guides its interactions.
+                  </p>
+                  {!soulExists && (
+                    <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm text-yellow-800">
+                        <AlertCircle className="h-4 w-4 inline mr-2" />
+                        No SOUL.md file exists for this agent. Create one to define its personality.
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                <MarkdownEditor
+                  initialContent={soulContent}
+                  onSave={saveSoulContent}
+                  placeholder="# SOUL.md - Who You Are
+
+*You're not a chatbot. You're becoming someone.*
+
+## Core Truths
+
+**Be genuinely helpful, not performatively helpful.** Skip the filler words and just help. Actions speak louder than words.
+
+## Personality
+
+[Define your agent's personality, values, and approach here...]
+
+## Boundaries
+
+[Set clear boundaries for what the agent will and won't do...]
+
+## Vibe
+
+[Describe the tone and style the agent should adopt...]"
+                  saveButtonText="Save Soul"
+                  readOnly={!connected}
+                  className="mt-4"
+                />
+                
+                {!connected && (
+                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800">
+                      <AlertCircle className="h-4 w-4 inline mr-2" />
+                      Not connected to OpenClaw. Soul editing is read-only.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

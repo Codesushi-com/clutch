@@ -42,6 +42,16 @@ export function useOpenClawRpc() {
     return rpc<void>("sessions.cancel", { sessionKey });
   }, [rpc]);
 
+  // Get agent's soul file content
+  const getAgentSoul = useCallback(async (agentId: string) => {
+    return rpc<{ content: string; exists: boolean }>("agents.getSoul", { id: agentId });
+  }, [rpc]);
+
+  // Update agent's soul file content
+  const updateAgentSoul = useCallback(async (agentId: string, content: string) => {
+    return rpc<void>("agents.updateSoul", { id: agentId, content });
+  }, [rpc]);
+
   return {
     connected: status === 'connected',
     connecting: status === 'connecting' || status === 'reconnecting',
@@ -61,6 +71,8 @@ export function useOpenClawRpc() {
     resetSession,
     compactSession,
     cancelSession,
+    getAgentSoul,
+    updateAgentSoul,
   };
 }
 
