@@ -87,19 +87,21 @@ export default function ChatPage({ params }: PageProps) {
       clearStreamingMessage(activeChat.id)
     }
     
+    // Clear typing indicator when message is complete
+    setTyping(activeChat.id, "ada", false)
+    
     // Message persistence handled by trap-channel plugin (server-side)
     // No need to save here - SSE will broadcast when server receives it
     console.log("[Chat] WebSocket message received, server-side save via trap-channel")
-  }, [activeChat, settings.streamingEnabled, streamingMessages, clearStreamingMessage])
+  }, [activeChat, settings.streamingEnabled, streamingMessages, clearStreamingMessage, setTyping])
 
-  const handleOpenClawTypingStart = useCallback(() => {
-    if (activeChat) {
-      setTyping(activeChat.id, "ada", "thinking")
-    }
-  }, [activeChat, setTyping])
-
-  const handleOpenClawTypingEnd = useCallback(() => {
-    if (activeChat) {
+  // Consolidated typing handler for OpenClaw WebSocket events
+  const handleOpenClawTyping = useCallback((isTyping: boolean, state?: "thinking" | "typing") => {
+    if (!activeChat) return
+    
+    if (isTyping && state) {
+      setTyping(activeChat.id, "ada", state)
+    } else {
       setTyping(activeChat.id, "ada", false)
     }
   }, [activeChat, setTyping])
@@ -107,6 +109,7 @@ export default function ChatPage({ params }: PageProps) {
   const handleOpenClawDelta = useCallback((delta: string, runId: string) => {
     if (!activeChat) return
     
+    // Update typing state to "typing" when receiving deltas
     setTyping(activeChat.id, "ada", "typing")
     
     if (settings.streamingEnabled) {
@@ -123,13 +126,16 @@ export default function ChatPage({ params }: PageProps) {
     sessionKey,
     onMessage: handleOpenClawMessage,
     onDelta: handleOpenClawDelta,
-    onTypingStart: handleOpenClawTypingStart,
-    onTypingEnd: handleOpenClawTypingEnd,
+    onTypingStart: () => handleOpenClawTyping(true, "thinking"),
+    onTypingEnd: () => handleOpenClawTyping(false),
   })
 
-  // Note: SSE message handling now consolidated via useChatEvents hook
-
-  // SSE subscription via useChatEvents (consolidated)
+  // TYPING INDICATOR FLOW (simplified):
+  // 1. PRIMARY: OpenClaw WebSocket → handleOpenClawTyping() → setTyping() 
+  //    - thinking (agent processing) → typing (streaming response) → false (done)
+  // 2. BACKUP: SSE → handleSSETyping() → setTyping() (only when WebSocket disconnected)
+  // 3. trap-channel plugin broadcasts typing via POST /api/chats/[id]/typing → SSE
+  //    This creates a feedback loop but SSE is only used as backup when WS is down.
 
   // Sub-agent monitoring via RPC
   const { connected: rpcConnected, listSessions, getSessionPreview, getGatewayStatus } = useOpenClawRpc()
@@ -346,18 +352,22 @@ export default function ChatPage({ params }: PageProps) {
     return () => clearInterval(interval)
   }, [rpcConnected, listSessions])
 
-  // SSE subscription for real-time local updates
+  // SSE subscription for real-time local updates and backup recovery
   const handleNewMessage = useCallback((message: ChatMessage) => {
     if (activeChat) {
       receiveMessage(activeChat.id, message)
     }
   }, [activeChat, receiveMessage])
 
-  const handleTyping = useCallback((author: string, typing: boolean) => {
-    if (activeChat) {
+  // SSE typing handler - used as backup/recovery for typing state
+  // Primary typing state comes from OpenClaw WebSocket
+  const handleSSETyping = useCallback((author: string, typing: boolean) => {
+    if (activeChat && !openClawConnected) {
+      // Only use SSE typing when WebSocket is disconnected (backup mode)
+      console.log("[Chat] Using SSE typing indicator (WebSocket disconnected)")
       setTyping(activeChat.id, author, typing ? "typing" : false)
     }
-  }, [activeChat, setTyping])
+  }, [activeChat, setTyping, openClawConnected])
 
   // Refetch messages when tab becomes visible (after being hidden)
   const handleRefreshMessages = useCallback(() => {
@@ -371,7 +381,7 @@ export default function ChatPage({ params }: PageProps) {
   useChatEvents({
     chatId: activeChat?.id || "",
     onMessage: handleNewMessage,
-    onTyping: handleTyping,
+    onTyping: handleSSETyping,
     onRefreshMessages: handleRefreshMessages,
     enabled: Boolean(activeChat),
   })
@@ -482,10 +492,8 @@ export default function ChatPage({ params }: PageProps) {
       // Always clean up local state, even if abort failed
       console.log("[Chat] Cleaning up local UI state")
       
-      // Clear typing indicators for Ada
+      // Clear typing and streaming state
       setTyping(activeChat.id, "ada", false)
-      
-      // Clear streaming message if any
       clearStreamingMessage(activeChat.id)
       
       // Show user that response was cancelled
