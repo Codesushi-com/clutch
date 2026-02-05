@@ -98,6 +98,32 @@ function toTaskSummary(doc: {
 // ============================================
 
 /**
+ * Get tasks by status
+ */
+export const getByStatus = query({
+  args: {
+    status: v.union(
+      v.literal('backlog'),
+      v.literal('ready'),
+      v.literal('in_progress'),
+      v.literal('review'),
+      v.literal('done')
+    ),
+  },
+  handler: async (ctx, args): Promise<Task[]> => {
+    const tasks = await ctx.db
+      .query('tasks')
+      .withIndex('by_status', (q) => q.eq('status', args.status))
+      .collect()
+
+    // Sort by position
+    return tasks
+      .sort((a, b) => (a as { position: number }).position - (b as { position: number }).position)
+      .map((t) => toTask(t as Parameters<typeof toTask>[0]))
+  },
+})
+
+/**
  * Get tasks by project with optional status filter
  */
 export const getByProject = query({

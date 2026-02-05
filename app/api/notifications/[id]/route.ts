@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { db } from "@/lib/db"
+import { convexServerClient } from "@/lib/convex-server"
+import type { Notification } from "@/lib/db/types"
 
 type RouteContext = {
   params: Promise<{ id: string }>
@@ -10,21 +11,47 @@ export async function PATCH(
   request: NextRequest,
   context: RouteContext
 ) {
-  const { id } = await context.params
-  const body = await request.json()
-  
-  const existing = db.prepare("SELECT id FROM notifications WHERE id = ?").get(id)
-  if (!existing) {
-    return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+  try {
+    const { id } = await context.params
+    const body = await request.json()
+
+    if (body.read !== undefined) {
+      const notification = await convexServerClient.mutation(
+        // @ts-expect-error - Convex self-hosted uses any api type
+        { name: "notifications/markRead" },
+        {
+          id,
+          read: Boolean(body.read),
+        }
+      ) as Notification
+
+      return NextResponse.json({ notification })
+    }
+
+    // If no read field, just return the notification
+    const notification = await convexServerClient.query(
+      // @ts-expect-error - Convex self-hosted uses any api type
+      { name: "notifications/getById" },
+      { id }
+    ) as Notification | null
+
+    if (!notification) {
+      return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ notification })
+  } catch (error) {
+    console.error("[notifications/patch] Error:", error)
+    
+    if (error instanceof Error && error.message.includes("not found")) {
+      return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+    }
+    
+    return NextResponse.json(
+      { error: "Failed to update notification", details: String(error) },
+      { status: 500 }
+    )
   }
-  
-  if (body.read !== undefined) {
-    db.prepare("UPDATE notifications SET read = ? WHERE id = ?").run(body.read ? 1 : 0, id)
-  }
-  
-  const notification = db.prepare("SELECT * FROM notifications WHERE id = ?").get(id)
-  
-  return NextResponse.json({ notification })
 }
 
 // DELETE /api/notifications/:id — Delete notification
@@ -32,13 +59,26 @@ export async function DELETE(
   _request: NextRequest,
   context: RouteContext
 ) {
-  const { id } = await context.params
-  
-  const result = db.prepare("DELETE FROM notifications WHERE id = ?").run(id)
-  
-  if (result.changes === 0) {
-    return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+  try {
+    const { id } = await context.params
+
+    await convexServerClient.mutation(
+      // @ts-expect-error - Convex self-hosted uses any api type
+      { name: "notifications/deleteNotification" },
+      { id }
+    )
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("[notifications/delete] Error:", error)
+    
+    if (error instanceof Error && error.message.includes("not found")) {
+      return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+    }
+    
+    return NextResponse.json(
+      { error: "Failed to delete notification", details: String(error) },
+      { status: 500 }
+    )
   }
-  
-  return NextResponse.json({ success: true })
 }

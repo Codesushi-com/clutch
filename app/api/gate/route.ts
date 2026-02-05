@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { db } from "@/lib/db"
+import { convexServerClient } from "@/lib/convex-server"
 
 interface GateStatus {
   needsAttention: boolean
@@ -27,166 +27,28 @@ interface GateStatus {
 
 // GET /api/gate — Check if coordinator should wake
 export async function GET() {
-  const now = Date.now()
-  const twoHoursAgo = now - (2 * 60 * 60 * 1000)
-  
-  // Get counts for all conditions
-  // ready_tasks excludes tasks with incomplete dependencies (blocked tasks)
-  const counts = db.prepare(`
-    SELECT 
-      (SELECT COUNT(*) FROM tasks t 
-       WHERE t.status = 'ready' 
-         AND t.assignee IS NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM task_dependencies td 
-           JOIN tasks dep ON td.depends_on_id = dep.id 
-           WHERE td.task_id = t.id AND dep.status != 'done'
-         )
-      ) as ready_tasks,
-      (SELECT COUNT(*) FROM comments WHERE type = 'request_input' AND responded_at IS NULL) as pending_inputs,
-      (SELECT COUNT(*) FROM tasks WHERE status = 'in_progress' AND updated_at < ?) as stuck_tasks,
-      (SELECT COUNT(*) FROM tasks WHERE status = 'review') as review_tasks,
-      (SELECT COUNT(*) FROM tasks WHERE dispatch_status = 'pending') as pending_dispatch,
-      (SELECT COUNT(*) FROM notifications WHERE type = 'escalation' AND read = 0) as unread_escalations,
-      (SELECT COUNT(*) FROM signals WHERE blocking = 1 AND responded_at IS NULL) as pending_signals
-  `).get(twoHoursAgo) as {
-    ready_tasks: number
-    pending_inputs: number
-    stuck_tasks: number
-    review_tasks: number
-    pending_dispatch: number
-    unread_escalations: number
-    pending_signals: number
+  try {
+    const status = await convexServerClient.query(
+      // @ts-expect-error - Convex self-hosted uses any api type
+      { name: "gate/getStatus" },
+      {}
+    ) as GateStatus
+
+    // Log check
+    console.log(
+      `[gate_check] needsAttention=${status.needsAttention} ` +
+      `ready=${status.details.readyTasks} pending=${status.details.pendingInputs} ` +
+      `dispatch=${status.details.pendingDispatch} stuck=${status.details.stuckTasks} ` +
+      `review=${status.details.reviewTasks} escalations=${status.details.unreadEscalations} ` +
+      `signals=${status.details.pendingSignals}`
+    )
+
+    return NextResponse.json(status)
+  } catch (error) {
+    console.error("[gate_check] Error:", error)
+    return NextResponse.json(
+      { error: "Failed to fetch gate status", details: String(error) },
+      { status: 500 }
+    )
   }
-  
-  // Build detailed response
-  const status: GateStatus = {
-    needsAttention: false,
-    reason: null,
-    details: {
-      readyTasks: counts.ready_tasks,
-      pendingInputs: counts.pending_inputs,
-      stuckTasks: counts.stuck_tasks,
-      reviewTasks: counts.review_tasks,
-      pendingDispatch: counts.pending_dispatch,
-      unreadEscalations: counts.unread_escalations,
-      pendingSignals: counts.pending_signals,
-    },
-    timestamp: now,
-  }
-  
-  // Build reasons list (priority order)
-  const reasons: string[] = []
-  
-  if (counts.pending_signals > 0) {
-    reasons.push(`${counts.pending_signals} pending agent signal(s)`)
-  }
-  if (counts.unread_escalations > 0) {
-    reasons.push(`${counts.unread_escalations} unread escalation(s)`)
-  }
-  if (counts.pending_inputs > 0) {
-    reasons.push(`${counts.pending_inputs} pending input request(s)`)
-  }
-  if (counts.pending_dispatch > 0) {
-    reasons.push(`${counts.pending_dispatch} task(s) pending dispatch`)
-  }
-  if (counts.ready_tasks > 0) {
-    reasons.push(`${counts.ready_tasks} task(s) ready for assignment`)
-  }
-  if (counts.stuck_tasks > 0) {
-    reasons.push(`${counts.stuck_tasks} task(s) stuck > 2 hours`)
-  }
-  if (counts.review_tasks > 0) {
-    reasons.push(`${counts.review_tasks} task(s) ready for review`)
-  }
-  
-  if (reasons.length > 0) {
-    status.needsAttention = true
-    status.reason = reasons.join("; ")
-    
-    // Fetch task details
-    const tasks: NonNullable<GateStatus["tasks"]> = {
-      ready: db.prepare(`
-        SELECT t.id, t.title, t.priority FROM tasks t
-        WHERE t.status = 'ready' AND t.assignee IS NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM task_dependencies td 
-            JOIN tasks dep ON td.depends_on_id = dep.id 
-            WHERE td.task_id = t.id AND dep.status != 'done'
-          )
-        ORDER BY 
-          CASE t.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END
-        LIMIT 10
-      `).all() as Array<{ id: string; title: string; priority: string }>,
-      
-      pendingInput: db.prepare(`
-        SELECT c.task_id as taskId, t.title as taskTitle, c.author, c.content
-        FROM comments c
-        JOIN tasks t ON c.task_id = t.id
-        WHERE c.type = 'request_input' AND c.responded_at IS NULL
-        ORDER BY c.created_at
-        LIMIT 10
-      `).all() as Array<{ taskId: string; taskTitle: string; author: string; content: string }>,
-      
-      stuck: db.prepare(`
-        SELECT id, title, assignee, 
-          CAST((? - updated_at) / 3600000.0 AS INT) as hours
-        FROM tasks 
-        WHERE status = 'in_progress' AND updated_at < ?
-        ORDER BY updated_at
-        LIMIT 10
-      `).all(now, twoHoursAgo) as Array<{ id: string; title: string; assignee: string; hours: number }>,
-      
-      review: db.prepare(`
-        SELECT id, title, assignee FROM tasks 
-        WHERE status = 'review'
-        ORDER BY updated_at DESC
-        LIMIT 10
-      `).all() as Array<{ id: string; title: string; assignee: string }>,
-      
-      pendingDispatch: db.prepare(`
-        SELECT id, title, assignee FROM tasks 
-        WHERE dispatch_status = 'pending'
-        ORDER BY dispatch_requested_at
-        LIMIT 10
-      `).all() as Array<{ id: string; title: string; assignee: string }>,
-    }
-    
-    status.tasks = tasks
-    
-    // Fetch escalations
-    if (counts.unread_escalations > 0) {
-      status.escalations = db.prepare(`
-        SELECT id, severity, message, agent FROM notifications
-        WHERE type = 'escalation' AND read = 0
-        ORDER BY 
-          CASE severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END,
-          created_at DESC
-        LIMIT 10
-      `).all() as GateStatus["escalations"]
-    }
-    
-    // Fetch pending signals
-    if (counts.pending_signals > 0) {
-      status.signals = db.prepare(`
-        SELECT id, kind, severity, message, agent_id, task_id FROM signals
-        WHERE blocking = 1 AND responded_at IS NULL
-        ORDER BY 
-          CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 ELSE 3 END,
-          created_at DESC
-        LIMIT 10
-      `).all() as GateStatus["signals"]
-    }
-  }
-  
-  // Log check (could be persisted to DB)
-  console.log(
-    `[gate_check] needsAttention=${status.needsAttention} ` +
-    `ready=${counts.ready_tasks} pending=${counts.pending_inputs} ` +
-    `dispatch=${counts.pending_dispatch} stuck=${counts.stuck_tasks} ` +
-    `review=${counts.review_tasks} escalations=${counts.unread_escalations} ` +
-    `signals=${counts.pending_signals}`
-  )
-  
-  return NextResponse.json(status)
 }
