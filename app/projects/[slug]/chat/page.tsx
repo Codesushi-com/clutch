@@ -663,6 +663,7 @@ export default function ChatPage({ params }: PageProps) {
                 onSend={handleSendMessage}
                 onStop={handleStopChat}
                 isAssistantTyping={activeChat ? (typingIndicators[activeChat.id] || []).some(t => t.author === "ada") : false}
+                sessionKey={sessionKey}
               />
             </>
           ) : (

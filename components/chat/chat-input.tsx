@@ -19,6 +19,7 @@ interface ChatInputProps {
   disabled?: boolean
   placeholder?: string
   isAssistantTyping?: boolean
+  sessionKey?: string
 }
 
 export function ChatInput({ 
@@ -27,6 +28,7 @@ export function ChatInput({
   disabled = false,
   placeholder = "Type a message...",
   isAssistantTyping = false,
+  sessionKey = "main",
 }: ChatInputProps) {
   const [content, setContent] = useState("")
   const [sending, setSending] = useState(false)
@@ -273,7 +275,7 @@ export function ChatInput({
       {/* Context indicator */}
       <div className="mt-2 md:mt-3 mb-1 md:mb-2">
         <ContextIndicator 
-          sessionKey="main"
+          sessionKey={sessionKey}
           key={contextUpdateTrigger} // Force re-fetch when trigger updates
         />
       </div>
