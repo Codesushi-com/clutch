@@ -504,18 +504,17 @@ export default function ChatPage({ params }: PageProps) {
       console.log("[Chat] Including project context for first message")
     }
     
-    // Send to OpenClaw main session via WebSocket
-    // Note: runId tracking is handled in onTypingStart to avoid race conditions
+    // Send to OpenClaw via WebSocket
     if (openClawConnected) {
       try {
-        console.log("[Chat] Calling sendToOpenClaw with chatId:", activeChat.id)
+        console.log("[Chat] Sending to OpenClaw, sessionKey:", sessionKey)
         const runId = await sendToOpenClaw(openClawMessage, activeChat.id)
         console.log("[Chat] sendToOpenClaw returned runId:", runId)
       } catch (error) {
         console.error("[Chat] Failed to send to OpenClaw:", error)
       }
     } else {
-      console.warn("[Chat] OpenClaw not connected, skipping WebSocket send")
+      console.warn("[Chat] OpenClaw not connected, message saved but not sent")
     }
   }
 

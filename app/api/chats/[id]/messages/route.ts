@@ -176,11 +176,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     data: message,
   })
 
-  // Note: OpenClaw forwarding now happens via WebSocket in the chat UI
-  // The hooks-based forwarding is disabled
-  // if (author !== "ada") {
-  //   forwardToOpenClaw(id, content, author).catch(console.error)
-  // }
+  // Forward non-Ada messages to OpenClaw via webhook (server-side, reliable)
+  // This ensures responses persist even if frontend disconnects
+  if (author !== "ada") {
+    forwardToOpenClaw(id, content, author).catch(console.error)
+  }
 
   return NextResponse.json({ message }, { status: 201 })
 }
