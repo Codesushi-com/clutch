@@ -4,7 +4,7 @@ import { useEffect, useState, use, useCallback } from "react"
 import { MessageSquare, Menu } from "lucide-react"
 import { useChatStore } from "@/lib/stores/chat-store"
 import { useChatEvents } from "@/lib/hooks/use-chat-events"
-import { useOpenClawChat } from "@/lib/hooks/use-openclaw-chat"
+import { useOpenClawWS } from "@/lib/providers/openclaw-ws-provider"
 import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
 import { useSettings } from "@/lib/hooks/use-settings"
 import { ChatSidebar } from "@/components/chat/chat-sidebar"
@@ -122,13 +122,53 @@ export default function ChatPage({ params }: PageProps) {
 
   // OpenClaw WebSocket - PRIMARY for both sending AND receiving
   // SSE is BACKUP for tab switch recovery
-  const { connected: openClawConnected, sendMessage: sendToOpenClaw, abortChat } = useOpenClawChat({
-    sessionKey,
-    onMessage: handleOpenClawMessage,
-    onDelta: handleOpenClawDelta,
-    onTypingStart: () => handleOpenClawTyping(true, "thinking"),
-    onTypingEnd: () => handleOpenClawTyping(false),
-  })
+  const { status, sendChatMessage, subscribe, rpc } = useOpenClawWS()
+  const openClawConnected = status === 'connected'
+
+  // Subscribe to OpenClaw events (replaces useOpenClawChat hook)
+  useEffect(() => {
+    const unsubscribers = [
+      subscribe('chat.typing.start', (data: { runId: string; sessionKey?: string }) => {
+        // Only handle events for our session or global events
+        if (!data.sessionKey || data.sessionKey === sessionKey) {
+          handleOpenClawTyping(true, "thinking")
+        }
+      }),
+      
+      subscribe('chat.typing.end', (data: { sessionKey?: string } | undefined) => {
+        // Only handle events for our session or global events
+        if (!data?.sessionKey || data.sessionKey === sessionKey) {
+          handleOpenClawTyping(false)
+        }
+      }),
+      
+      subscribe('chat.delta', ({ delta, runId, sessionKey: eventSessionKey }: { delta: string; runId: string; sessionKey?: string }) => {
+        // Only handle events for our session or global events
+        if (!eventSessionKey || eventSessionKey === sessionKey) {
+          handleOpenClawDelta(delta, runId)
+        }
+      }),
+      
+      subscribe('chat.message', ({ message, runId, sessionKey: eventSessionKey }: { message: { role: string; content: string | Array<{ type: string; text?: string }> }; runId: string; sessionKey?: string }) => {
+        // Only handle events for our session or global events
+        if (!eventSessionKey || eventSessionKey === sessionKey) {
+          handleOpenClawMessage(message, runId)
+        }
+      }),
+      
+      subscribe('chat.error', ({ error, sessionKey: eventSessionKey }: { error: string; runId: string; sessionKey?: string }) => {
+        // Only handle events for our session or global events
+        if (!eventSessionKey || eventSessionKey === sessionKey) {
+          console.error('[Chat] OpenClaw chat error:', error)
+          handleOpenClawTyping(false)
+        }
+      })
+    ]
+
+    return () => {
+      unsubscribers.forEach(unsub => unsub())
+    }
+  }, [subscribe, sessionKey, handleOpenClawMessage, handleOpenClawDelta, handleOpenClawTyping])
 
   // TYPING INDICATOR FLOW (simplified):
   // 1. PRIMARY: OpenClaw WebSocket → handleOpenClawTyping() → setTyping() 
@@ -475,8 +515,8 @@ export default function ChatPage({ params }: PageProps) {
     if (openClawConnected) {
       try {
         console.log("[Chat] Sending to OpenClaw, sessionKey:", sessionKey)
-        const runId = await sendToOpenClaw(openClawMessage, activeChat.id)
-        console.log("[Chat] sendToOpenClaw returned runId:", runId)
+        const runId = await sendChatMessage(openClawMessage, sessionKey, activeChat.id)
+        console.log("[Chat] sendChatMessage returned runId:", runId)
       } catch (error) {
         console.error("[Chat] Failed to send to OpenClaw:", error)
       }
@@ -494,7 +534,7 @@ export default function ChatPage({ params }: PageProps) {
       // Attempt to abort via OpenClaw
       if (openClawConnected) {
         console.log("[Chat] Aborting chat via WebSocket")
-        await abortChat()
+        await rpc("chat.abort", { sessionKey })
       } else {
         console.log("[Chat] OpenClaw not connected, cleaning up local state only")
       }
