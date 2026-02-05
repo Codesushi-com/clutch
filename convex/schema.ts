@@ -95,7 +95,7 @@ export default defineSchema({
 
   // Chats
   chats: defineTable({
-    project_id: v.id("projects"),
+    project_id: v.string(),
     title: v.string(),
     participants: v.optional(v.array(v.string())),
     session_key: v.optional(v.string()),
@@ -106,7 +106,7 @@ export default defineSchema({
 
   // Chat Messages
   chatMessages: defineTable({
-    chat_id: v.id("chats"),
+    chat_id: v.string(),
     author: v.string(),
     content: v.string(),
     run_id: v.optional(v.string()),

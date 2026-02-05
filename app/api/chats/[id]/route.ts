@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getConvexClient } from "@/lib/convex/server"
 import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -11,7 +10,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   try {
     const convex = getConvexClient()
-    const chat = await convex.query(api.chats.getById, { id: id as Id<'chats'> })
+    const chat = await convex.query(api.chats.getById, { id })
 
     if (!chat) {
       return NextResponse.json(
@@ -41,7 +40,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const convex = getConvexClient()
 
     // Verify chat exists
-    const existingChat = await convex.query(api.chats.getById, { id: id as Id<'chats'> })
+    const existingChat = await convex.query(api.chats.getById, { id })
     if (!existingChat) {
       return NextResponse.json(
         { error: "Chat not found" },
@@ -61,7 +60,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const updatedChat = await convex.mutation(api.chats.update, {
-      id: id as Id<'chats'>,
+      id,
       ...updates,
     })
 
@@ -83,7 +82,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const convex = getConvexClient()
 
     // Verify chat exists
-    const existingChat = await convex.query(api.chats.getById, { id: id as Id<'chats'> })
+    const existingChat = await convex.query(api.chats.getById, { id })
     if (!existingChat) {
       return NextResponse.json(
         { error: "Chat not found" },
@@ -92,7 +91,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Delete the chat (cascade will delete messages)
-    await convex.mutation(api.chats.deleteChat, { id: id as Id<'chats'> })
+    await convex.mutation(api.chats.deleteChat, { id })
 
     return NextResponse.json({ success: true })
   } catch (error) {

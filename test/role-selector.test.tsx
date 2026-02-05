@@ -17,6 +17,10 @@ vi.mock('@/lib/stores/task-store', () => ({
     }
     return selector ? selector(store) : store
   },
+  useCreateTask: () => vi.fn().mockResolvedValue(undefined),
+  useUpdateTask: () => vi.fn().mockResolvedValue(undefined),
+  useDeleteTask: () => vi.fn().mockResolvedValue(undefined),
+  useMoveTask: () => vi.fn().mockResolvedValue(undefined),
 }))
 
 // Mock the dependencies hook
