@@ -1,14 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useMemo } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
-import { Plus, Eye, EyeOff, Wifi, WifiOff } from "lucide-react"
-import { useTaskStore } from "@/lib/stores/task-store"
-import { useWebSocket } from "@/lib/websocket/client"
+import { Plus, Eye, EyeOff } from "lucide-react"
+import { useTasks, useMoveTask, getTasksByStatus } from "@/lib/stores/task-store"
 import { Column } from "./column"
 import { MobileBoard } from "./mobile-board"
 import { useMobileDetection } from "./use-mobile-detection"
 import type { Task, TaskStatus } from "@/lib/db/types"
+import type { Id } from "@/convex/_generated/server"
 
 interface BoardProps {
   projectId: string
@@ -25,26 +25,9 @@ const COLUMNS: { status: TaskStatus; title: string; color: string; showAdd: bool
 ]
 
 export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
-  const { 
-    tasks, 
-    loading, 
-    error, 
-    fetchTasks, 
-    getTasksByStatus, 
-    moveTask,
-    handleWebSocketMessage,
-    setWebSocketConnected
-  } = useTaskStore()
+  const tasks = useTasks(projectId as Id<"projects">)
+  const moveTask = useMoveTask()
   const isMobile = useMobileDetection(768)
-  
-  // WebSocket connection for real-time updates
-  const { connected: wsConnected, subscribers } = useWebSocket({
-    projectId,
-    userId: 'anonymous', // TODO: Get actual user ID from auth
-    onMessage: handleWebSocketMessage,
-    onConnect: () => setWebSocketConnected(true),
-    onDisconnect: () => setWebSocketConnected(false)
-  })
   
   // Column visibility state - initialize from localStorage
   const [showDone, setShowDone] = useState(() => {
@@ -62,14 +45,29 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
   })
   
   // Save preferences to localStorage whenever they change
-  useEffect(() => {
-    const prefs = { showDone }
+  const toggleShowDone = () => {
+    const newValue = !showDone
+    setShowDone(newValue)
+    const prefs = { showDone: newValue }
     localStorage.setItem(`board-prefs-${projectId}`, JSON.stringify(prefs))
-  }, [projectId, showDone])
+  }
 
-  useEffect(() => {
-    fetchTasks(projectId)
-  }, [fetchTasks, projectId])
+  // Get tasks by status - memoized for performance
+  const tasksByStatus = useMemo(() => {
+    const result: Record<TaskStatus, Task[]> = {
+      backlog: [],
+      ready: [],
+      in_progress: [],
+      review: [],
+      done: [],
+    }
+    if (tasks) {
+      for (const col of COLUMNS) {
+        result[col.status] = getTasksByStatus(tasks, col.status)
+      }
+    }
+    return result
+  }, [tasks])
   
   // Determine which columns should be visible
   const getVisibleColumns = () => {
@@ -86,18 +84,14 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
       
       // Show Review column only if it has tasks (auto-hide when empty)
       if (col.status === "review") {
-        return getTasksByStatus("review").length > 0
+        return tasksByStatus.review.length > 0
       }
       
       return true
     })
   }
-  
-  const toggleShowDone = () => {
-    setShowDone(!showDone)
-  }
 
-  const handleDragEnd = (result: DropResult) => {
+  const handleDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result
 
     // Dropped outside a column
@@ -113,16 +107,28 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
 
     const newStatus = destination.droppableId as TaskStatus
 
-    // If same column, it's a reorder operation
-    if (destination.droppableId === source.droppableId) {
-      moveTask(draggableId, newStatus, destination.index)
-    } else {
-      // Moving to different column
-      moveTask(draggableId, newStatus)
+    try {
+      // If same column, it's a reorder operation
+      if (destination.droppableId === source.droppableId) {
+        await moveTask({
+          id: draggableId as Id<"tasks">,
+          status: newStatus,
+          position: destination.index,
+        })
+      } else {
+        // Moving to different column
+        await moveTask({
+          id: draggableId as Id<"tasks">,
+          status: newStatus,
+        })
+      }
+    } catch (error) {
+      console.error("Failed to move task:", error)
     }
   }
 
-  if (loading && tasks.length === 0) {
+  // Loading state
+  if (tasks === undefined) {
     return (
       <div className="flex gap-4 overflow-x-auto pb-4">
         {COLUMNS.map((col) => (
@@ -135,27 +141,17 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
     )
   }
 
-  if (error) {
-    return (
-      <div className="text-center py-8 text-red-500">
-        {error}
-      </div>
-    )
-  }
-
   // Mobile view
   if (isMobile) {
     return (
       <MobileBoard
         columns={getVisibleColumns()}
-        getTasksByStatus={getTasksByStatus}
+        tasksByStatus={tasksByStatus}
         onTaskClick={onTaskClick}
         onAddTask={onAddTask}
         onDragEnd={handleDragEnd}
         showDone={showDone}
         onToggleShowDone={toggleShowDone}
-        wsConnected={wsConnected}
-        subscribers={subscribers}
       />
     )
   }
@@ -169,22 +165,9 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
           <h2 className="text-xl font-semibold text-[var(--text-primary)]">
             Board
           </h2>
-          {/* WebSocket connection status */}
-          <div className="flex items-center gap-1" title={wsConnected ? "Connected - real-time updates active" : "Disconnected - changes may not appear immediately"}>
-            {wsConnected ? (
-              <Wifi className="h-4 w-4 text-green-500" />
-            ) : (
-              <WifiOff className="h-4 w-4 text-red-500" />
-            )}
-            <span className="text-xs text-[var(--text-secondary)]">
-              {wsConnected ? 'Live' : 'Offline'}
-            </span>
-            {subscribers.length > 0 && (
-              <span className="text-xs text-[var(--text-secondary)]">
-                • {subscribers.length} viewing
-              </span>
-            )}
-          </div>
+          <span className="text-xs text-[var(--text-secondary)]">
+            Real-time sync via Convex
+          </span>
         </div>
         <div className="flex items-center gap-3">
           {/* Show Done toggle */}
@@ -218,7 +201,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
               status={col.status}
               title={col.title}
               color={col.color}
-              tasks={getTasksByStatus(col.status)}
+              tasks={tasksByStatus[col.status]}
               onTaskClick={onTaskClick}
               onAddTask={() => onAddTask(col.status)}
               showAddButton={col.showAdd}
