@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useProjectStore, type CreateProjectData } from "@/lib/stores/project-store"
+import { useCreateProject, type CreateProjectData } from "@/lib/stores/project-store"
 import { Plus } from "lucide-react"
 
 const PROJECT_COLORS = [
@@ -49,7 +49,7 @@ export function CreateProjectModal() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   
-  const createProject = useProjectStore((s) => s.createProject)
+  const createProject = useCreateProject()
 
   const handleNameChange = (value: string) => {
     setName(value)

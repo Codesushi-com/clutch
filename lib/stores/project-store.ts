@@ -1,18 +1,24 @@
-import { create } from "zustand"
-import type { Project } from "@/lib/db/types"
+import { create } from 'zustand'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '@/convex/_generated/api'
+import type { Project } from '@/lib/db/types'
+import type { Id } from '@/convex/_generated/server'
 
 export type ProjectWithCount = Project & { task_count: number }
 
 interface ProjectState {
-  projects: ProjectWithCount[]
-  loading: boolean
-  error: string | null
-  
+  // UI state only - data comes from Convex
+  selectedProjectId: string | null
+  isCreateModalOpen: boolean
+  isEditModalOpen: boolean
+  editingProject: Project | null
+
   // Actions
-  fetchProjects: () => Promise<void>
-  createProject: (data: CreateProjectData) => Promise<ProjectWithCount>
-  updateProject: (id: string, data: Partial<CreateProjectData>) => Promise<ProjectWithCount>
-  deleteProject: (id: string) => Promise<void>
+  setSelectedProjectId: (id: string | null) => void
+  openCreateModal: () => void
+  closeCreateModal: () => void
+  openEditModal: (project: Project) => void
+  closeEditModal: () => void
 }
 
 export interface CreateProjectData {
@@ -26,83 +32,66 @@ export interface CreateProjectData {
   chat_layout?: 'slack' | 'imessage'
 }
 
-export const useProjectStore = create<ProjectState>((set, get) => ({
-  projects: [],
-  loading: false,
-  error: null,
+export const useProjectStore = create<ProjectState>((set) => ({
+  selectedProjectId: null,
+  isCreateModalOpen: false,
+  isEditModalOpen: false,
+  editingProject: null,
 
-  fetchProjects: async () => {
-    set({ loading: true, error: null })
-    
-    const response = await fetch("/api/projects")
-    
-    if (!response.ok) {
-      const data = await response.json()
-      set({ loading: false, error: data.error || "Failed to fetch projects" })
-      throw new Error(data.error || "Failed to fetch projects")
-    }
-    
-    const data = await response.json()
-    set({ projects: data.projects, loading: false })
-  },
-
-  createProject: async (projectData) => {
-    const response = await fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(projectData),
-    })
-    
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to create project")
-    }
-    
-    const data = await response.json()
-    const newProject = { ...data.project, task_count: 0 }
-    
-    set((state) => ({
-      projects: [newProject, ...state.projects],
-    }))
-    
-    return newProject
-  },
-
-  updateProject: async (id, projectData) => {
-    const response = await fetch(`/api/projects/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(projectData),
-    })
-    
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to update project")
-    }
-    
-    const data = await response.json()
-    
-    set((state) => ({
-      projects: state.projects.map((p) =>
-        p.id === id ? { ...data.project, task_count: p.task_count } : p
-      ),
-    }))
-    
-    return data.project
-  },
-
-  deleteProject: async (id) => {
-    const response = await fetch(`/api/projects/${id}`, {
-      method: "DELETE",
-    })
-    
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to delete project")
-    }
-    
-    set((state) => ({
-      projects: state.projects.filter((p) => p.id !== id),
-    }))
-  },
+  setSelectedProjectId: (id) => set({ selectedProjectId: id }),
+  openCreateModal: () => set({ isCreateModalOpen: true }),
+  closeCreateModal: () => set({ isCreateModalOpen: false }),
+  openEditModal: (project) => set({ isEditModalOpen: true, editingProject: project }),
+  closeEditModal: () => set({ isEditModalOpen: false, editingProject: null }),
 }))
+
+// ============================================
+// Convex Hooks for Data Fetching
+// ============================================
+
+/**
+ * Hook to fetch all projects with task counts
+ * Uses Convex for real-time subscriptions
+ */
+export function useProjects() {
+  return useQuery(api.projects.getAll)
+}
+
+/**
+ * Hook to fetch a single project by ID
+ */
+export function useProject(id: Id<'projects'> | null) {
+  return useQuery(api.projects.getById, id ? { id } : 'skip')
+}
+
+/**
+ * Hook to fetch a project by slug
+ */
+export function useProjectBySlug(slug: string | null) {
+  return useQuery(api.projects.getBySlug, slug ? { slug } : 'skip')
+}
+
+// ============================================
+// Convex Mutations
+// ============================================
+
+/**
+ * Hook to create a new project
+ */
+export function useCreateProject() {
+  return useMutation(api.projects.create)
+}
+
+/**
+ * Hook to update a project
+ */
+export function useUpdateProject() {
+  return useMutation(api.projects.update)
+}
+
+/**
+ * Hook to delete a project
+ */
+export function useDeleteProject() {
+  return useMutation(api.projects.deleteProject)
+}

@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState, use } from "react"
+import { use, useMemo } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ArrowLeft, LayoutGrid, MessageSquare, Activity, Settings } from "lucide-react"
-import type { Project } from "@/lib/db/types"
+import { useProjectBySlug, useProjects, type ProjectWithCount } from "@/lib/stores/project-store"
 import { MobileProjectSwitcher } from "@/components/layout/mobile-project-switcher"
 import { DesktopProjectSwitcher } from "@/components/layout/desktop-project-switcher"
 import { useMobileDetection } from "@/components/board/use-mobile-detection"
@@ -24,35 +24,21 @@ const TABS = [
 export default function ProjectLayout({ children, params }: LayoutProps) {
   const { slug } = use(params)
   const pathname = usePathname()
-  const [project, setProject] = useState<Project | null>(null)
-  const [projects, setProjects] = useState<Project[]>([])
   const isMobile = useMobileDetection(1024)
-
-  useEffect(() => {
-    async function fetchProject() {
-      const response = await fetch(`/api/projects/${slug}`)
-      if (response.ok) {
-        const data = await response.json()
-        setProject(data.project)
-      }
-    }
-    fetchProject()
-  }, [slug])
-
-  useEffect(() => {
-    async function fetchProjects() {
-      try {
-        const response = await fetch('/api/projects')
-        if (response.ok) {
-          const data = await response.json()
-          setProjects(data.projects || [])
-        }
-      } catch (error) {
-        console.error('Failed to fetch projects:', error)
-      }
-    }
-    fetchProjects()
-  }, [])
+  
+  // Use Convex for real-time data
+  const project = useProjectBySlug(slug)
+  const projectsWithCounts = useProjects()
+  
+  // Extract projects list for switcher (just need slug, name, color)
+  const projects = useMemo(() => {
+    if (!projectsWithCounts) return []
+    return projectsWithCounts.map((p: ProjectWithCount) => ({
+      slug: p.slug,
+      name: p.name,
+      color: p.color,
+    }))
+  }, [projectsWithCounts])
 
   // Determine active tab from pathname
   const getActiveTab = () => {
@@ -65,10 +51,20 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
   }
   const activeTab = getActiveTab()
 
-  if (!project) {
+  // Loading state
+  if (project === undefined) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
         <div className="text-[var(--text-secondary)]">Loading...</div>
+      </div>
+    )
+  }
+  
+  // Not found state
+  if (project === null) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
+        <div className="text-[var(--text-secondary)]">Project not found</div>
       </div>
     )
   }

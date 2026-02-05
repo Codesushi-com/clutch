@@ -1,17 +1,15 @@
 "use client"
 
-import { useEffect } from "react"
-import { useProjectStore } from "@/lib/stores/project-store"
+import { useProjects, type ProjectWithCount } from "@/lib/stores/project-store"
 import { ProjectCard } from "@/components/projects/project-card"
 import { CreateProjectModal } from "@/components/projects/create-project-modal"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function Home() {
-  const { projects, loading, error, fetchProjects } = useProjectStore()
+  const projects = useProjects()
 
-  useEffect(() => {
-    fetchProjects()
-  }, [fetchProjects])
+  const loading = projects === undefined
+  const error = null // Convex handles errors via suspense/error boundaries
 
   return (
     <div className="container mx-auto py-12 px-4 max-w-6xl">
@@ -30,47 +28,40 @@ export default function Home() {
         </div>
       </div>
 
-        {/* Error state */}
-        {error && (
-          <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded px-4 py-3 mb-6">
-            {error}
-          </div>
-        )}
-
-        {/* Loading state */}
-        {loading && projects.length === 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg overflow-hidden">
-                <Skeleton className="h-1 w-full" />
-                <div className="p-4 space-y-3">
-                  <Skeleton className="h-5 w-1/2" />
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-6 w-16" />
-                </div>
+      {/* Loading state */}
+      {loading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg overflow-hidden">
+              <Skeleton className="h-1 w-full" />
+              <div className="p-4 space-y-3">
+                <Skeleton className="h-5 w-1/2" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-6 w-16" />
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          ))}
+        </div>
+      )}
 
-        {/* Empty state */}
-        {!loading && projects.length === 0 && (
-          <div className="text-center py-16">
-            <div className="text-6xl mb-4">📋</div>
-            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
-              No projects yet
-            </h2>
-            <p className="text-[var(--text-secondary)] mb-6">
-              Create your first project to start organizing work.
-            </p>
-            <CreateProjectModal />
-          </div>
-        )}
+      {/* Empty state */}
+      {!loading && projects && projects.length === 0 && (
+        <div className="text-center py-16">
+          <div className="text-6xl mb-4">📋</div>
+          <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
+            No projects yet
+          </h2>
+          <p className="text-[var(--text-secondary)] mb-6">
+            Create your first project to start organizing work.
+          </p>
+          <CreateProjectModal />
+        </div>
+      )}
 
       {/* Project grid */}
-      {projects.length > 0 && (
+      {projects && projects.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project) => (
+          {projects.map((project: ProjectWithCount) => (
             <ProjectCard key={project.id} project={project} />
           ))}
         </div>
