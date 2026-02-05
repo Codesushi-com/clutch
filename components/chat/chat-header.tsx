@@ -98,7 +98,7 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
   }
 
   return (
-    <div className="p-3 md:p-4 flex items-center gap-2 md:gap-3">
+    <div className="p-2 md:p-4 flex items-center gap-2 md:gap-3">
       {isEditing ? (
         <>
           <input
@@ -107,30 +107,30 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
             onKeyDown={handleKeyDown}
             autoFocus
             disabled={isUpdating}
-            className="flex-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded px-2 md:px-3 py-2 text-sm md:text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] disabled:opacity-50 touch-manipulation"
+            className="flex-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded px-2 md:px-3 py-1.5 md:py-2 text-sm md:text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] disabled:opacity-50 touch-manipulation"
           />
           <Button
             size="sm"
             onClick={handleSave}
             disabled={isUpdating || !editTitle.trim()}
-            className="p-1 h-8 w-8 md:h-auto md:w-auto min-h-[44px] md:min-h-0 touch-manipulation"
+            className="p-1.5 h-7 w-7 md:h-auto md:w-auto min-h-[36px] md:min-h-0 touch-manipulation"
           >
-            <Check className="h-4 w-4" />
+            <Check className="h-3.5 w-3.5 md:h-4 md:w-4" />
           </Button>
           <Button
             size="sm"
             variant="outline"
             onClick={handleCancel}
             disabled={isUpdating}
-            className="p-1 h-8 w-8 md:h-auto md:w-auto min-h-[44px] md:min-h-0 touch-manipulation"
+            className="p-1.5 h-7 w-7 md:h-auto md:w-auto min-h-[36px] md:min-h-0 touch-manipulation"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5 md:h-4 md:w-4" />
           </Button>
         </>
       ) : (
         <>
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <h1 className="text-base md:text-lg font-semibold text-[var(--text-primary)] truncate">
+          <div className="flex items-center gap-1.5 md:gap-2 flex-1 min-w-0">
+            <h1 className="text-sm md:text-lg font-semibold text-[var(--text-primary)] truncate">
               {chat.title}
             </h1>
             {chat.session_key && sessionInfo && !loadingSession && (
@@ -150,9 +150,9 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
             size="sm"
             variant="ghost"
             onClick={handleStartEdit}
-            className="p-1 h-8 w-8 md:h-auto md:w-auto hover:bg-[var(--bg-tertiary)] min-h-[44px] md:min-h-0 touch-manipulation"
+            className="p-1.5 h-7 w-7 md:h-auto md:w-auto hover:bg-[var(--bg-tertiary)] min-h-[36px] md:min-h-0 touch-manipulation"
           >
-            <Edit2 className="h-4 w-4" />
+            <Edit2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
           </Button>
         </>
       )}

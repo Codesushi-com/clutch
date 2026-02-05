@@ -616,17 +616,24 @@ export default function ChatPage({ params }: PageProps) {
                   </div>
                 </div>
                 
-                {/* Status bar */}
-                <div className="px-4 py-2 border-t border-[var(--border)]/50 bg-[var(--bg-secondary)]/30">
+                {/* Status bar - compact on mobile */}
+                <div className="px-2 md:px-4 py-1.5 md:py-2 border-t border-[var(--border)]/50 bg-[var(--bg-secondary)]/30">
                   <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
+                      {/* Hide participants on mobile to save space */}
                       {activeChat.participants && (
-                        <span className="text-[var(--text-muted)]">
+                        <span className="text-[var(--text-muted)] hidden md:inline truncate">
                           Participants: {JSON.parse(activeChat.participants as string).join(", ")}
                         </span>
                       )}
+                      {/* Show compact participant count on mobile */}
+                      {activeChat.participants && (
+                        <span className="text-[var(--text-muted)] md:hidden text-xs">
+                          {JSON.parse(activeChat.participants as string).length} participant{JSON.parse(activeChat.participants as string).length !== 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 md:gap-3">
                       <StreamingToggle 
                         enabled={settings.streamingEnabled} 
                         onChange={toggleStreaming} 

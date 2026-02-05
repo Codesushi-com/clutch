@@ -78,48 +78,52 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
       {/* Header */}
       <header className="border-b border-[var(--border)] bg-[var(--bg-secondary)] sticky top-0 z-30">
         <div className="container mx-auto px-4 lg:px-6 max-w-7xl">
-          {/* Mobile: Compact header */}
+          {/* Mobile: Ultra-compact header */}
           {isMobile ? (
-            <div className="py-3 space-y-3">
-              {/* Top row: Back button + Project switcher */}
-              <div className="flex items-center justify-between">
+            <div className="py-2">
+              {/* Single row: Back + Project + Tabs */}
+              <div className="flex items-center gap-2">
                 <Link 
                   href="/"
-                  className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                  style={{ minWidth: "44px", minHeight: "44px" }}
+                  className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0"
+                  style={{ minWidth: "40px", minHeight: "40px" }}
                 >
-                  <ArrowLeft className="h-5 w-5" />
+                  <ArrowLeft className="h-4 w-4" />
                 </Link>
-                <MobileProjectSwitcher 
-                  currentProject={project}
-                  projects={projects}
-                />
+                
+                {/* Compact project switcher */}
+                <div className="flex-shrink-0">
+                  <MobileProjectSwitcher 
+                    currentProject={project}
+                    projects={projects}
+                  />
+                </div>
+                
+                {/* Compact tab navigation - hide Settings on mobile */}
+                <nav className="flex gap-1 overflow-x-auto scrollbar-hide flex-1 min-w-0">
+                  {TABS.filter(tab => tab.id !== 'settings').map((tab) => {
+                    const Icon = tab.icon
+                    const isActive = activeTab === tab.id
+                    const href = `/projects/${slug}${tab.href}`
+                    
+                    return (
+                      <Link
+                        key={tab.id}
+                        href={href}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${
+                          isActive
+                            ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                        }`}
+                        style={{ minHeight: "36px" }}
+                      >
+                        <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="text-xs">{tab.label}</span>
+                      </Link>
+                    )
+                  })}
+                </nav>
               </div>
-              
-              {/* Tab navigation - horizontal scroll */}
-              <nav className="flex gap-1 overflow-x-auto scrollbar-hide pb-1">
-                {TABS.map((tab) => {
-                  const Icon = tab.icon
-                  const isActive = activeTab === tab.id
-                  const href = `/projects/${slug}${tab.href}`
-                  
-                  return (
-                    <Link
-                      key={tab.id}
-                      href={href}
-                      className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
-                        isActive
-                          ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
-                          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
-                      }`}
-                      style={{ minHeight: "44px" }}
-                    >
-                      <Icon className="h-4 w-4 flex-shrink-0" />
-                      {tab.label}
-                    </Link>
-                  )
-                })}
-              </nav>
             </div>
           ) : (
             /* Desktop: Original layout */

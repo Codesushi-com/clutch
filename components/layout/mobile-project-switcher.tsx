@@ -24,19 +24,19 @@ export function MobileProjectSwitcher({ currentProject, projects = [] }: MobileP
 
   return (
     <>
-      {/* Project Switcher Button */}
+      {/* Project Switcher Button - compact for mobile */}
       <button
         onClick={toggleOpen}
-        className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-tertiary)] rounded-lg transition-colors hover:bg-[var(--bg-secondary)]"
-        style={{ minHeight: "44px" }}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-tertiary)] rounded-md transition-colors hover:bg-[var(--bg-secondary)]"
+        style={{ minHeight: "36px" }}
       >
         <div 
-          className="w-3 h-3 rounded-full"
+          className="w-2.5 h-2.5 rounded-full"
           style={{ backgroundColor: currentProject.color }}
         />
-        <span className="truncate">{currentProject.name}</span>
+        <span className="truncate text-xs">{currentProject.name}</span>
         <ChevronDown className={cn(
-          "h-4 w-4 transition-transform",
+          "h-3.5 w-3.5 transition-transform",
           isOpen && "rotate-180"
         )} />
       </button>
