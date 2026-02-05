@@ -21,6 +21,7 @@ interface WorkQueueSection {
   label: string
   status: string
   tasks: Task[]
+  totalCount: number
   expanded: boolean
 }
 
@@ -45,9 +46,9 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   
   // Work queue state
   const [workQueueSections, setWorkQueueSections] = useState<WorkQueueSection[]>([
-    { label: "In Review", status: "in_review", tasks: [], expanded: true },
-    { label: "In Progress", status: "in_progress", tasks: [], expanded: true },
-    { label: "Up Next", status: "ready", tasks: [], expanded: true },
+    { label: "In Review", status: "in_review", tasks: [], totalCount: 0, expanded: true },
+    { label: "In Progress", status: "in_progress", tasks: [], totalCount: 0, expanded: true },
+    { label: "Up Next", status: "ready", tasks: [], totalCount: 0, expanded: true },
   ])
   const [loadingTasks, setLoadingTasks] = useState(true)
   
@@ -82,14 +83,21 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
 
       setWorkQueueSections(prev => prev.map(section => {
         if (section.status === "in_review") {
-          return { ...section, tasks: reviewData.tasks || [] }
+          const tasks = reviewData.tasks || []
+          return { ...section, tasks, totalCount: tasks.length }
         }
         if (section.status === "in_progress") {
-          return { ...section, tasks: inProgressData.tasks || [] }
+          const tasks = inProgressData.tasks || []
+          return { ...section, tasks, totalCount: tasks.length }
         }
         if (section.status === "ready") {
-          // Only show top 2 ready tasks as "Up Next"
-          return { ...section, tasks: (readyData.tasks || []).slice(0, 2) }
+          const allReadyTasks = readyData.tasks || []
+          // Only show top 2 ready tasks as "Up Next" but store total count
+          return { 
+            ...section, 
+            tasks: allReadyTasks.slice(0, 2), 
+            totalCount: allReadyTasks.length 
+          }
         }
         return section
       }))
@@ -430,7 +438,10 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
                     {section.label}
                   </span>
                   <span className="text-xs text-[var(--text-muted)]">
-                    ({section.tasks.length})
+                    {section.status === "ready" && section.totalCount > section.tasks.length
+                      ? `(${section.tasks.length}/${section.totalCount})`
+                      : `(${section.totalCount})`
+                    }
                   </span>
                 </button>
 
