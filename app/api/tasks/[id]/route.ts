@@ -1,31 +1,37 @@
 import { NextRequest, NextResponse } from "next/server"
-import { db } from "@/lib/db"
-import { wsManager } from "@/lib/websocket/server"
-import { getIncompleteDependencies } from "@/lib/db/dependencies"
-import type { Task, Comment } from "@/lib/db/types"
+import { convexServerClient } from "@/lib/convex"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/server"
+import type { TaskStatus } from "@/lib/db/types"
 
 type RouteParams = { params: Promise<{ id: string }> }
+
+type TaskId = Id<"tasks">
 
 // GET /api/tasks/[id] — Get task with comments
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   
-  const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as Task | undefined
+  try {
+    const result = await convexServerClient.query(api.tasks.getById, {
+      id: id as TaskId,
+    })
 
-  if (!task) {
+    if (!result) {
+      return NextResponse.json(
+        { error: "Task not found" },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json(result)
+  } catch (error) {
+    console.error("Error fetching task:", error)
     return NextResponse.json(
-      { error: "Task not found" },
-      { status: 404 }
+      { error: "Failed to fetch task" },
+      { status: 500 }
     )
   }
-
-  const comments = db.prepare(`
-    SELECT * FROM comments 
-    WHERE task_id = ? 
-    ORDER BY created_at ASC
-  `).all(id) as Comment[]
-
-  return NextResponse.json({ task, comments })
 }
 
 // PATCH /api/tasks/[id] — Update task
@@ -33,15 +39,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   const body = await request.json()
   
-  const existing = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as Task | undefined
-  
-  if (!existing) {
-    return NextResponse.json(
-      { error: "Task not found" },
-      { status: 404 }
-    )
-  }
-
   const { 
     title, 
     description, 
@@ -54,89 +51,97 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     session_id,
   } = body
 
-  const now = Date.now()
+  try {
+    // If status is being changed, use the move mutation
+    if (status !== undefined) {
+      const movedTask = await convexServerClient.mutation(api.tasks.move, {
+        id: id as TaskId,
+        status: status as TaskStatus,
+      })
 
-  // Check for incomplete dependencies when moving forward from backlog
-  // Tasks with incomplete dependencies can only be in "backlog" status
-  if (status && status !== existing.status && status !== "backlog") {
-    const incompleteDeps = getIncompleteDependencies(id)
-    if (incompleteDeps.length > 0) {
-      return NextResponse.json(
-        { 
-          error: "Cannot change status: dependencies not complete", 
-          blocking: incompleteDeps 
-        },
-        { status: 400 }
-      )
+      // Apply other updates if present
+      if (title !== undefined || description !== undefined || priority !== undefined ||
+          role !== undefined || assignee !== undefined || requires_human_review !== undefined ||
+          tags !== undefined || session_id !== undefined) {
+        const updated = await convexServerClient.mutation(api.tasks.update, {
+          id: id as TaskId,
+          title,
+          description,
+          priority,
+          role,
+          assignee,
+          requires_human_review,
+          tags,
+          session_id,
+        })
+        return NextResponse.json({ task: updated })
+      }
+
+      return NextResponse.json({ task: movedTask })
     }
-  }
-  
-  // Track if status changed to done
-  const wasCompleted = existing.status !== "done" && status === "done"
-  
-  const updated: Task = {
-    ...existing,
-    title: title ?? existing.title,
-    description: description !== undefined ? description : existing.description,
-    status: status ?? existing.status,
-    priority: priority ?? existing.priority,
-    role: role !== undefined ? role : existing.role,
-    assignee: assignee !== undefined ? assignee : existing.assignee,
-    requires_human_review: requires_human_review !== undefined 
-      ? (requires_human_review ? 1 : 0) 
-      : existing.requires_human_review,
-    tags: tags !== undefined ? (tags ? JSON.stringify(tags) : null) : existing.tags,
-    session_id: session_id !== undefined ? session_id : existing.session_id,
-    updated_at: now,
-    completed_at: wasCompleted ? now : existing.completed_at,
-  }
 
-  db.prepare(`
-    UPDATE tasks 
-    SET title = @title, description = @description, status = @status,
-        priority = @priority, role = @role, assignee = @assignee, 
-        requires_human_review = @requires_human_review, tags = @tags,
-        session_id = @session_id, updated_at = @updated_at, completed_at = @completed_at
-    WHERE id = @id
-  `).run(updated)
-
-  // Emit WebSocket event for real-time updates
-  wsManager.broadcastToProject(updated.project_id, {
-    type: 'task:updated',
-    data: updated
-  })
-
-  // If status changed, also emit a move event for better UX
-  if (status && status !== existing.status) {
-    wsManager.broadcastToProject(updated.project_id, {
-      type: 'task:moved',
-      data: { id: updated.id, status: updated.status, projectId: updated.project_id }
+    // Otherwise just update
+    const updated = await convexServerClient.mutation(api.tasks.update, {
+      id: id as TaskId,
+      title,
+      description,
+      priority,
+      role,
+      assignee,
+      requires_human_review,
+      tags,
+      session_id,
     })
-  }
 
-  return NextResponse.json({ task: updated })
+    return NextResponse.json({ task: updated })
+  } catch (error) {
+    console.error("Error updating task:", error)
+    
+    if (error instanceof Error) {
+      if (error.message.includes("Task not found")) {
+        return NextResponse.json(
+          { error: "Task not found" },
+          { status: 404 }
+        )
+      }
+      if (error.message.includes("dependencies not complete")) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: 400 }
+        )
+      }
+    }
+    
+    return NextResponse.json(
+      { error: "Failed to update task" },
+      { status: 500 }
+    )
+  }
 }
 
 // DELETE /api/tasks/[id] — Delete task
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   
-  const existing = db.prepare("SELECT id, project_id FROM tasks WHERE id = ?").get(id) as { id: string; project_id: string } | undefined
-  
-  if (!existing) {
+  try {
+    await convexServerClient.mutation(api.tasks.deleteTask, {
+      id: id as TaskId,
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error deleting task:", error)
+    
+    if (error instanceof Error && error.message.includes("Task not found")) {
+      return NextResponse.json(
+        { error: "Task not found" },
+        { status: 404 }
+      )
+    }
+    
     return NextResponse.json(
-      { error: "Task not found" },
-      { status: 404 }
+      { error: "Failed to delete task" },
+      { status: 500 }
     )
   }
-
-  db.prepare("DELETE FROM tasks WHERE id = ?").run(id)
-
-  // Emit WebSocket event for real-time updates
-  wsManager.broadcastToProject(existing.project_id, {
-    type: 'task:deleted',
-    data: { id: existing.id, projectId: existing.project_id }
-  })
-
-  return NextResponse.json({ success: true })
 }

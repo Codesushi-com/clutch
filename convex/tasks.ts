@@ -724,3 +724,216 @@ async function shiftTasksInColumn(
     }
   }
 }
+
+// ============================================
+// Dependency Mutations
+// ============================================
+
+/**
+ * Add a dependency between two tasks
+ */
+export const addDependency = mutation({
+  args: {
+    task_id: v.id('tasks'),
+    depends_on_id: v.id('tasks'),
+  },
+  handler: async (ctx, args): Promise<{ id: string; task_id: string; depends_on_id: string; created_at: number }> => {
+    // Verify both tasks exist
+    const task = await ctx.db.get(args.task_id)
+    if (!task) {
+      throw new Error(`Task not found: ${args.task_id}`)
+    }
+
+    const dependsOnTask = await ctx.db.get(args.depends_on_id)
+    if (!dependsOnTask) {
+      throw new Error(`Dependency task not found: ${args.depends_on_id}`)
+    }
+
+    // Check for self-dependency
+    if (args.task_id === args.depends_on_id) {
+      throw new Error('Task cannot depend on itself')
+    }
+
+    // Check if dependency already exists
+    const existing = await ctx.db
+      .query('taskDependencies')
+      .withIndex('by_task_depends_on', (q) =>
+        (q as unknown as { eq: (field: string, value: string) => typeof q }).eq('task_id', args.task_id)
+          .eq('depends_on_id', args.depends_on_id)
+      )
+      .unique()
+
+    if (existing) {
+      throw new Error('Dependency already exists')
+    }
+
+    // Check for circular dependency using BFS
+    const wouldCreateCycle = await checkForCycle(ctx as unknown as Parameters<typeof checkForCycle>[0], args.task_id, args.depends_on_id)
+    if (wouldCreateCycle) {
+      throw new Error('Adding this dependency would create a circular dependency')
+    }
+
+    const now = Date.now()
+    const id = await ctx.db.insert('taskDependencies', {
+      task_id: args.task_id,
+      depends_on_id: args.depends_on_id,
+      created_at: now,
+    })
+
+    return {
+      id,
+      task_id: args.task_id,
+      depends_on_id: args.depends_on_id,
+      created_at: now,
+    }
+  },
+})
+
+/**
+ * Remove a dependency
+ */
+export const removeDependency = mutation({
+  args: {
+    id: v.id('taskDependencies'),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const existing = await ctx.db.get(args.id)
+
+    if (!existing) {
+      throw new Error(`Dependency not found: ${args.id}`)
+    }
+
+    await ctx.db.delete(args.id)
+
+    return { success: true }
+  },
+})
+
+/**
+ * Check if adding a dependency would create a cycle (BFS from depends_on_id to see if it reaches task_id)
+ */
+async function checkForCycle(
+  ctx: { db: { query: (table: 'taskDependencies') => { withIndex: (index: 'by_task', fn: (q: { eq: (field: 'task_id', value: string) => unknown }) => unknown) => { collect: () => Promise<unknown[]> } } } },
+  taskId: string,
+  dependsOnId: string
+): Promise<boolean> {
+  const visited = new Set<string>()
+  const queue: string[] = [dependsOnId]
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+
+    if (current === taskId) {
+      return true // Found a path back to taskId - would create cycle
+    }
+
+    if (visited.has(current)) {
+      continue
+    }
+    visited.add(current)
+
+    // Get all tasks that current depends on
+    const deps = await ctx.db
+      .query('taskDependencies')
+      .withIndex('by_task', (q) => q.eq('task_id', current))
+      .collect()
+
+    for (const dep of deps) {
+      const depDoc = dep as { depends_on_id: string }
+      if (!visited.has(depDoc.depends_on_id)) {
+        queue.push(depDoc.depends_on_id)
+      }
+    }
+  }
+
+  return false
+}
+
+// ============================================
+// Task Completion Mutation
+// ============================================
+
+/**
+ * Mark a task as complete with completion comment
+ */
+export const completeTask = mutation({
+  args: {
+    id: v.id('tasks'),
+    summary: v.string(),
+    prUrl: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    agent: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{
+    success: boolean
+    task: Task
+    comment: Comment
+  }> => {
+    const task = await ctx.db.get(args.id)
+
+    if (!task) {
+      throw new Error(`Task not found: ${args.id}`)
+    }
+
+    const now = Date.now()
+    const taskDoc = task as { _id: string; project_id: string; assignee?: string; status: string }
+
+    // Determine new status - 'review' if PR created, 'done' otherwise
+    const newStatus = args.prUrl ? 'review' : 'done'
+
+    // Build completion comment content
+    let commentContent = `## Task Completed\n\n${args.summary}`
+    if (args.prUrl) {
+      commentContent += `\n\n**Pull Request**: ${args.prUrl}`
+    }
+    if (args.notes) {
+      commentContent += `\n\n**Notes**: ${args.notes}`
+    }
+
+    // Create completion comment
+    const commentId = await ctx.db.insert('comments', {
+      task_id: args.id,
+      author: args.agent || taskDoc.assignee || 'agent',
+      author_type: 'agent',
+      content: commentContent,
+      type: 'completion',
+      created_at: now,
+    })
+
+    // Update task status
+    await ctx.db.patch(args.id, {
+      status: newStatus,
+      dispatch_status: 'completed',
+      completed_at: now,
+      updated_at: now,
+    })
+
+    // Create event
+    await ctx.db.insert('events', {
+      project_id: taskDoc.project_id as unknown as Id<'projects'>,
+      task_id: args.id,
+      type: 'task_completed',
+      actor: args.agent || taskDoc.assignee || 'agent',
+      data: JSON.stringify({
+        summary: args.summary,
+        prUrl: args.prUrl,
+        notes: args.notes,
+        newStatus,
+      }),
+      created_at: now,
+    })
+
+    const updatedTask = await ctx.db.get(args.id)
+    const comment = await ctx.db.get(commentId)
+
+    if (!updatedTask || !comment) {
+      throw new Error('Failed to complete task')
+    }
+
+    return {
+      success: true,
+      task: toTask(updatedTask as Parameters<typeof toTask>[0]),
+      comment: toComment(comment as Parameters<typeof toComment>[0]),
+    }
+  },
+})

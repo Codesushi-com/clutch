@@ -1,44 +1,49 @@
 import { NextRequest, NextResponse } from "next/server"
-import { db } from "@/lib/db"
-import { getDependencyById, removeDependency } from "@/lib/db/dependencies"
+import { convexServerClient } from "@/lib/convex"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/server"
 
 type RouteParams = { params: Promise<{ id: string; depId: string }> }
+
+type TaskId = Id<"tasks">
+// Note: taskDependencies not in generated types yet, use string for now
+type TaskDependencyId = string
 
 // DELETE /api/tasks/[id]/dependencies/[depId] — Remove a dependency
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { id, depId } = await params
 
-  // Verify task exists
-  const task = db.prepare("SELECT id FROM tasks WHERE id = ?").get(id)
-  if (!task) {
-    return NextResponse.json({ error: "Task not found" }, { status: 404 })
-  }
+  try {
+    // Verify task exists
+    const taskResult = await convexServerClient.query(api.tasks.getById, {
+      id: id as TaskId,
+    })
 
-  // Verify the dependency exists and belongs to this task
-  const dependency = getDependencyById(depId)
-  if (!dependency) {
-    return NextResponse.json(
-      { error: "Dependency not found" },
-      { status: 404 }
-    )
-  }
+    if (!taskResult) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 })
+    }
 
-  // Ensure the dependency belongs to the specified task
-  if (dependency.task_id !== id) {
-    return NextResponse.json(
-      { error: "Dependency does not belong to this task" },
-      { status: 403 }
-    )
-  }
+    // Remove the dependency using Convex mutation
+    await convexServerClient.mutation(api.tasks.removeDependency, {
+      id: depId as TaskDependencyId,
+    })
 
-  const deleted = removeDependency(depId)
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error removing dependency:", error)
 
-  if (!deleted) {
+    if (error instanceof Error) {
+      if (error.message.includes("Dependency not found")) {
+        return NextResponse.json(
+          { error: "Dependency not found" },
+          { status: 404 }
+        )
+      }
+    }
+
     return NextResponse.json(
       { error: "Failed to remove dependency" },
       { status: 500 }
     )
   }
-
-  return NextResponse.json({ success: true })
 }

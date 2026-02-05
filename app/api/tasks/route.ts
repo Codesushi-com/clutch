@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { db } from "@/lib/db"
-import { wsManager } from "@/lib/websocket/server"
-import type { Task } from "@/lib/db/types"
+import { convexServerClient } from "@/lib/convex"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/server"
+import type { TaskStatus } from "@/lib/db/types"
+
+// Helper type for Convex IDs
+type ProjectId = Id<"projects">
 
 // GET /api/tasks?projectId=xxx&status=xxx&limit=n — List with filters
 export async function GET(request: NextRequest) {
@@ -10,39 +14,36 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status")
   const limit = searchParams.get("limit")
   
-  let query = "SELECT * FROM tasks WHERE 1=1"
-  const params: (string | number | null)[] = []
-  
-  if (projectId) {
-    query += " AND project_id = ?"
-    params.push(projectId)
-  }
-  
-  if (status) {
-    query += " AND status = ?"
-    params.push(status)
-  }
-  
-  // For done tasks, sort by completion time (most recent first)
-  // For other statuses, sort by position
-  if (status === "done") {
-    query += " ORDER BY completed_at DESC, updated_at DESC"
-  } else {
-    query += " ORDER BY position ASC, created_at ASC"
-  }
-  
-  // Apply limit if specified
-  if (limit) {
-    const limitNum = parseInt(limit, 10)
-    if (!isNaN(limitNum) && limitNum > 0) {
-      query += " LIMIT ?"
-      params.push(limitNum)
+  try {
+    // If projectId is provided, use Convex query
+    if (projectId) {
+      const tasks = await convexServerClient.query(api.tasks.getByProject, {
+        projectId: projectId as ProjectId,
+        status: status as TaskStatus | undefined,
+      })
+      
+      // Apply limit if specified
+      let result = tasks
+      if (limit) {
+        const limitNum = parseInt(limit, 10)
+        if (!isNaN(limitNum) && limitNum > 0) {
+          result = tasks.slice(0, limitNum)
+        }
+      }
+      
+      return NextResponse.json({ tasks: result })
     }
+    
+    // Without projectId, we need a different approach - get all tasks is not implemented
+    // Return empty array for now (frontend should always provide projectId)
+    return NextResponse.json({ tasks: [] })
+  } catch (error) {
+    console.error("Error fetching tasks:", error)
+    return NextResponse.json(
+      { error: "Failed to fetch tasks" },
+      { status: 500 }
+    )
   }
-  
-  const tasks = db.prepare(query).all(...params) as Task[]
-
-  return NextResponse.json({ tasks })
 }
 
 // POST /api/tasks — Create task
@@ -68,67 +69,33 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Verify project exists
-  const project = db.prepare("SELECT id FROM projects WHERE id = ?").get(project_id)
-  if (!project) {
+  try {
+    const task = await convexServerClient.mutation(api.tasks.create, {
+      project_id: project_id as ProjectId,
+      title,
+      description,
+      status: status as TaskStatus | undefined,
+      priority,
+      role,
+      assignee,
+      requires_human_review,
+      tags,
+    })
+
+    return NextResponse.json({ task }, { status: 201 })
+  } catch (error) {
+    console.error("Error creating task:", error)
+    
+    if (error instanceof Error && error.message.includes("Project not found")) {
+      return NextResponse.json(
+        { error: "Project not found" },
+        { status: 404 }
+      )
+    }
+    
     return NextResponse.json(
-      { error: "Project not found" },
-      { status: 404 }
+      { error: "Failed to create task" },
+      { status: 500 }
     )
   }
-
-  const now = Date.now()
-  const id = crypto.randomUUID()
-  
-  // Get the highest position in this column to append new task at the end
-  const maxPositionResult = db.prepare(`
-    SELECT MAX(position) as max_pos FROM tasks 
-    WHERE project_id = ? AND status = ?
-  `).get(project_id, status) as { max_pos: number | null }
-  
-  const position = (maxPositionResult?.max_pos ?? -1) + 1
-  
-  const task: Task = {
-    id,
-    project_id,
-    title,
-    description: description || null,
-    status,
-    priority,
-    assignee: assignee || null,
-    requires_human_review: requires_human_review ? 1 : 0,
-    tags: tags ? JSON.stringify(tags) : null,
-    session_id: null,
-    dispatch_status: null,
-    dispatch_requested_at: null,
-    dispatch_requested_by: null,
-    position,
-    created_at: now,
-    updated_at: now,
-    completed_at: null,
-    role: role || null,
-  }
-
-  db.prepare(`
-    INSERT INTO tasks (
-      id, project_id, title, description, status, priority, 
-      assignee, requires_human_review, tags, session_id,
-      dispatch_status, dispatch_requested_at, dispatch_requested_by,
-      position, created_at, updated_at, completed_at
-    )
-    VALUES (
-      @id, @project_id, @title, @description, @status, @priority,
-      @assignee, @requires_human_review, @tags, @session_id,
-      @dispatch_status, @dispatch_requested_at, @dispatch_requested_by,
-      @position, @created_at, @updated_at, @completed_at
-    )
-  `).run(task)
-
-  // Emit WebSocket event for real-time updates
-  wsManager.broadcastToProject(project_id, {
-    type: 'task:created',
-    data: task
-  })
-
-  return NextResponse.json({ task }, { status: 201 })
 }

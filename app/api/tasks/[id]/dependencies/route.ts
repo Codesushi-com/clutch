@@ -1,33 +1,36 @@
 import { NextRequest, NextResponse } from "next/server"
-import { db } from "@/lib/db"
-import {
-  getTaskDependencies,
-  getTasksBlockedBy,
-  addDependency,
-  dependencyExists,
-  wouldCreateCycle,
-} from "@/lib/db/dependencies"
-import type { Task } from "@/lib/db/types"
+import { convexServerClient } from "@/lib/convex"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/server"
 
 type RouteParams = { params: Promise<{ id: string }> }
+
+type TaskId = Id<"tasks">
 
 // GET /api/tasks/[id]/dependencies — Get task dependencies
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
 
-  // Verify task exists
-  const task = db.prepare("SELECT id FROM tasks WHERE id = ?").get(id)
-  if (!task) {
-    return NextResponse.json({ error: "Task not found" }, { status: 404 })
+  try {
+    const result = await convexServerClient.query(api.tasks.getWithDependencies, {
+      id: id as TaskId,
+    })
+
+    if (!result) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({
+      depends_on: result.dependencies,
+      blocks: result.blockedBy,
+    })
+  } catch (error) {
+    console.error("Error fetching dependencies:", error)
+    return NextResponse.json(
+      { error: "Failed to fetch dependencies" },
+      { status: 500 }
+    )
   }
-
-  const dependsOn = getTaskDependencies(id)
-  const blocks = getTasksBlockedBy(id)
-
-  return NextResponse.json({
-    depends_on: dependsOn,
-    blocks: blocks,
-  })
 }
 
 // POST /api/tasks/[id]/dependencies — Add a dependency
@@ -44,46 +47,32 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     )
   }
 
-  // Verify task exists
-  const task = db.prepare("SELECT id FROM tasks WHERE id = ?").get(id) as Task | undefined
-  if (!task) {
-    return NextResponse.json({ error: "Task not found" }, { status: 404 })
-  }
+  try {
+    const dependency = await convexServerClient.mutation(api.tasks.addDependency, {
+      task_id: id as TaskId,
+      depends_on_id: depends_on_id as TaskId,
+    })
 
-  // Verify the dependency task exists
-  const dependsOnTask = db.prepare("SELECT id FROM tasks WHERE id = ?").get(depends_on_id) as Task | undefined
-  if (!dependsOnTask) {
+    return NextResponse.json({ dependency }, { status: 201 })
+  } catch (error) {
+    console.error("Error adding dependency:", error)
+
+    if (error instanceof Error) {
+      if (error.message.includes("Task not found")) {
+        return NextResponse.json({ error: error.message }, { status: 404 })
+      }
+      if (
+        error.message.includes("cannot depend on itself") ||
+        error.message.includes("already exists") ||
+        error.message.includes("circular dependency")
+      ) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+    }
+
     return NextResponse.json(
-      { error: "Dependency task not found" },
-      { status: 404 }
+      { error: "Failed to add dependency" },
+      { status: 500 }
     )
   }
-
-  // Check for self-dependency
-  if (id === depends_on_id) {
-    return NextResponse.json(
-      { error: "Task cannot depend on itself" },
-      { status: 400 }
-    )
-  }
-
-  // Check if dependency already exists
-  if (dependencyExists(id, depends_on_id)) {
-    return NextResponse.json(
-      { error: "Dependency already exists" },
-      { status: 400 }
-    )
-  }
-
-  // Check for circular dependency
-  if (wouldCreateCycle(id, depends_on_id)) {
-    return NextResponse.json(
-      { error: "Adding this dependency would create a circular dependency" },
-      { status: 400 }
-    )
-  }
-
-  const dependency = addDependency(id, depends_on_id)
-
-  return NextResponse.json({ dependency }, { status: 201 })
 }
