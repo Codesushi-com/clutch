@@ -16,6 +16,45 @@ function getTrapUrl(api: OpenClawPluginApi): string {
   return api.config.env?.TRAP_URL || api.config.env?.TRAP_API_URL || "http://localhost:3002";
 }
 
+function detectAutomatedContext(api: OpenClawPluginApi, chatId: string): boolean {
+  // Check environment variables that indicate automated execution
+  const env = api.config.env || {};
+  
+  // Check if this is a cron job execution
+  if (env.CRON_JOB_ID || env.CRON_NAME || env.AUTOMATED_RUN) {
+    return true;
+  }
+  
+  // Check for cron-specific indicators in the chat ID or session context
+  // Cron sessions typically have identifiable patterns in their IDs
+  if (chatId && typeof chatId === 'string') {
+    // Check if the chat ID contains cron-related patterns
+    if (chatId.includes('cron:') || chatId.includes(':cron') || 
+        chatId.includes('automated') || chatId.includes('background')) {
+      return true;
+    }
+    
+    // Check for sub-agent session patterns (which are often spawned by cron)
+    if (chatId.includes('trap:') && chatId.includes('-')) {
+      // This might be a sub-agent session ID pattern
+      return true;
+    }
+  }
+  
+  // Check for runtime flags that might indicate automation
+  const runtime = api.runtime || {};
+  if (runtime && typeof runtime === 'object') {
+    // Check if there are any automation indicators in runtime
+    const runtimeStr = JSON.stringify(runtime).toLowerCase();
+    if (runtimeStr.includes('cron') || runtimeStr.includes('automated') || runtimeStr.includes('background')) {
+      return true;
+    }
+  }
+  
+  // Default to false for interactive sessions
+  return false;
+}
+
 async function sendToTrap(
   api: OpenClawPluginApi,
   chatId: string,
@@ -28,6 +67,9 @@ async function sendToTrap(
   const trapUrl = getTrapUrl(api);
   const { mediaUrl, isAutomated } = options || {};
   
+  // If isAutomated is explicitly provided, use it; otherwise detect from context
+  const shouldMarkAsAutomated = isAutomated !== undefined ? isAutomated : detectAutomatedContext(api, chatId);
+  
   try {
     const response = await fetch(`${trapUrl}/api/chats/${chatId}/messages`, {
       method: "POST",
@@ -35,7 +77,7 @@ async function sendToTrap(
       body: JSON.stringify({
         author: "ada",
         content: mediaUrl ? `${content}\n\n📎 ${mediaUrl}` : content,
-        is_automated: isAutomated ?? true, // Default to true for channel-delivered messages
+        is_automated: shouldMarkAsAutomated,
       }),
     });
 
@@ -109,7 +151,7 @@ export default function register(api: OpenClawPluginApi) {
         },
         
         // Send text message to Trap chat
-        // Messages sent via channel plugin (deliver: true) are marked as automated
+        // Automation status is now detected automatically based on execution context
         sendText: async (ctx) => {
           const { to, text } = ctx;
           
@@ -118,7 +160,7 @@ export default function register(api: OpenClawPluginApi) {
           }
 
           api.logger.info(`Trap: sending text to chat ${to}`);
-          const result = await sendToTrap(api, to, text, { isAutomated: true });
+          const result = await sendToTrap(api, to, text);
           
           if (!result.ok) {
             api.logger.warn(`Trap: failed to send - ${result.error}`);
@@ -140,7 +182,7 @@ export default function register(api: OpenClawPluginApi) {
           }
 
           api.logger.info(`Trap: sending media to chat ${to}`);
-          const result = await sendToTrap(api, to, text || "📎 Attachment", { mediaUrl, isAutomated: true });
+          const result = await sendToTrap(api, to, text || "📎 Attachment", { mediaUrl });
           
           if (!result.ok) {
             api.logger.warn(`Trap: failed to send media - ${result.error}`);
