@@ -353,14 +353,16 @@ export default function ChatPage({ params }: PageProps) {
           })
 
         // Filter for cron sessions
-        // Identify cron sessions by their key pattern: agent:main:cron:UUID
+        // Identify cron sessions by their key pattern: agent:main:cron:UUID:trap-*
+        // We specifically look for trap-related cron jobs
         const crons = (sessions || [])
           .filter((s) => {
             // Look for sessions with cron in their key that are recently active
             const isRecentlyActive = s.updatedAt && s.updatedAt > fiveMinutesAgo
             const isCronSession = s.key && s.key.includes(":cron:")
+            const isTrapCron = s.key && s.key.includes(":trap-")
             
-            return isRecentlyActive && isCronSession
+            return isRecentlyActive && isCronSession && isTrapCron
           })
           .map((s) => {
             // Calculate runtime if we have creation time
@@ -372,11 +374,17 @@ export default function ChatPage({ params }: PageProps) {
               runtime = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
             }
             
-            // Extract cron job ID from key for display
+            // Extract meaningful label from trap cron session key
             let cronLabel = s.label
             if (!cronLabel && s.key) {
-              const cronIdMatch = s.key.match(/:cron:([^:]+)$/)
-              cronLabel = cronIdMatch ? `Cron Job ${cronIdMatch[1].substring(0, 8)}...` : s.key
+              // Pattern: agent:main:cron:JOB_ID:trap-TASK_ID
+              const trapTaskMatch = s.key.match(/:trap-(.+)$/)
+              if (trapTaskMatch) {
+                cronLabel = `Trap: ${trapTaskMatch[1]}`
+              } else {
+                const cronIdMatch = s.key.match(/:cron:([^:]+)/)
+                cronLabel = cronIdMatch ? `Cron Job ${cronIdMatch[1].substring(0, 8)}...` : s.key
+              }
             }
             
             return {
