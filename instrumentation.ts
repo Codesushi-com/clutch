@@ -9,25 +9,30 @@ export async function register() {
     console.log('[Trap] Initializing backend services...')
     
     // Initialize OpenClaw WebSocket client
-    const { initializeOpenClawClient, getOpenClawClient } = await import('@/lib/openclaw')
+    const { initializeOpenClawClient } = await import('@/lib/openclaw')
     
     const client = initializeOpenClawClient()
     
     // Set up chat event handler to save messages
     client.onChatEvent(async (event) => {
-      console.log('[Trap] Received chat event:', event.type, event.sessionKey)
+      // Only log non-typing events to reduce noise
+      if (!event.type.includes('typing')) {
+        console.log('[Trap] Chat event:', event.type, event.sessionKey?.substring(0, 30))
+      }
       
-      // Import database functions dynamically to avoid edge runtime issues
+      // Save assistant messages to database with deduplication
       if (event.type === 'chat.message' && event.message) {
         try {
-          // TODO: Save message to database (next ticket)
-          // const { saveMessage } = await import('@/lib/db/messages')
-          // await saveMessage(event.sessionKey, event.message, event.runId)
-          console.log('[Trap] Would save message:', {
-            sessionKey: event.sessionKey,
-            role: event.message.role,
-            runId: event.runId
-          })
+          const { saveOpenClawMessage } = await import('@/lib/db/messages')
+          const messageId = saveOpenClawMessage(
+            event.sessionKey,
+            event.message,
+            event.runId
+          )
+          
+          if (messageId) {
+            console.log('[Trap] Saved message:', messageId)
+          }
         } catch (error) {
           console.error('[Trap] Failed to save message:', error)
         }
