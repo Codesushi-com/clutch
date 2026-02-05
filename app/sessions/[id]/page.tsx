@@ -25,9 +25,30 @@ import {
 export default function SessionDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const sessionId = decodeURIComponent(params.id as string);
+  // Safely decode session ID, handling multiple encoding levels and special characters
+  const sessionId = (() => {
+    const rawId = params.id as string;
+    try {
+      // Handle double-encoded URLs and ensure proper decoding
+      let decoded = decodeURIComponent(rawId);
+      // If it looks like it might be double-encoded, try again
+      if (decoded.includes('%')) {
+        try {
+          decoded = decodeURIComponent(decoded);
+        } catch {
+          // If second decode fails, use the first result
+        }
+      }
+      return decoded;
+    } catch (error) {
+      console.error('[SessionDetail] Failed to decode session ID:', rawId, error);
+      // Fallback to raw ID if decoding fails
+      return rawId;
+    }
+  })();
   
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [sessionPreview, setSessionPreview] = useState<SessionPreview | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [isCompacting, setIsCompacting] = useState(false);
@@ -37,6 +58,7 @@ export default function SessionDetailPage() {
     message: string;
     type: 'success' | 'error';
   } | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Simple toast function
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -47,25 +69,94 @@ export default function SessionDetailPage() {
   const session = useSessionStore((state) => state.getSessionById(sessionId));
   const { getSessionPreview, resetSession, compactSession, cancelSession, connected } = useOpenClawRpc();
 
-  // Load session preview data
+  // Load session preview data with timeout and retry logic
   useEffect(() => {
-    const loadSessionPreview = async () => {
-      if (!connected || !sessionId) return;
+    const loadSessionPreview = async (attempt = 0) => {
+      if (!sessionId) return;
       
       try {
         setIsLoading(true);
-        const preview = await getSessionPreview(sessionId);
+        setLoadError(null);
+        
+        // If not connected and it's the first attempt, wait a bit for connection
+        if (!connected && attempt === 0) {
+          console.log('[SessionDetail] Waiting for WebSocket connection...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+        // If still not connected after waiting, or if this is a retry, try anyway
+        if (!connected && attempt > 0) {
+          console.log('[SessionDetail] WebSocket not connected, attempting RPC call anyway (will use HTTP fallback)');
+        }
+        
+        // Add timeout to prevent hanging
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Request timeout after 15 seconds')), 15000);
+        });
+        
+        const dataPromise = getSessionPreview(sessionId);
+        const preview = await Promise.race([dataPromise, timeoutPromise]);
+        
         setSessionPreview(preview);
+        setLoadError(null);
+        setRetryCount(0);
       } catch (error) {
         console.error('Failed to load session preview:', error);
-        showToast("Failed to load session details", "error");
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setLoadError(errorMessage);
+        
+        // Auto-retry up to 3 times with exponential backoff
+        if (attempt < 3) {
+          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+          console.log(`[SessionDetail] Retrying in ${delay}ms (attempt ${attempt + 1}/3)`);
+          setTimeout(() => {
+            setRetryCount(attempt + 1);
+            loadSessionPreview(attempt + 1);
+          }, delay);
+          return; // Don't set isLoading to false yet
+        } else {
+          showToast(`Failed to load session details: ${errorMessage}`, "error");
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
     loadSessionPreview();
-  }, [sessionId, connected, getSessionPreview]);
+  }, [sessionId, getSessionPreview]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: 'connected' dependency intentionally removed to allow HTTP fallback when WebSocket unavailable
+
+  // Add manual retry function
+  const retryLoad = () => {
+    setRetryCount(0);
+    const loadSessionPreview = async () => {
+      if (!sessionId) return;
+      
+      try {
+        setIsLoading(true);
+        setLoadError(null);
+        
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Request timeout after 15 seconds')), 15000);
+        });
+        
+        const dataPromise = getSessionPreview(sessionId);
+        const preview = await Promise.race([dataPromise, timeoutPromise]);
+        
+        setSessionPreview(preview);
+        setLoadError(null);
+      } catch (error) {
+        console.error('Failed to load session preview:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setLoadError(errorMessage);
+        showToast(`Failed to load session details: ${errorMessage}`, "error");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadSessionPreview();
+  };
 
   // Handle session reset
   const handleResetSession = async () => {
@@ -121,13 +212,54 @@ export default function SessionDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-8 px-4 flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="container mx-auto py-8 px-4 flex flex-col items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin mb-4" />
+        <p className="text-muted-foreground text-center">
+          Loading session details...
+          {retryCount > 0 && (
+            <span className="block text-sm mt-2">
+              Retry attempt {retryCount}/3
+            </span>
+          )}
+          {!connected && (
+            <span className="block text-sm mt-2 text-yellow-600">
+              WebSocket connecting...
+            </span>
+          )}
+        </p>
       </div>
     );
   }
 
-  if (!sessionPreview && !isLoading) {
+  if (loadError && !sessionPreview) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <Button variant="ghost" onClick={() => router.push('/sessions')} className="mb-4">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Sessions
+        </Button>
+        <div className="rounded-lg border p-8 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold mb-2">Failed to Load Session</h1>
+          <p className="text-muted-foreground mb-4">
+            {loadError}
+          </p>
+          <div className="flex gap-2 justify-center">
+            <Button onClick={retryLoad} variant="outline">
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
+            <Button variant="ghost" onClick={() => router.push('/sessions')}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Sessions
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!sessionPreview && !isLoading && !loadError) {
     return (
       <div className="container mx-auto py-8 px-4">
         <Button variant="ghost" onClick={() => router.push('/sessions')} className="mb-4">
@@ -136,9 +268,13 @@ export default function SessionDetailPage() {
         </Button>
         <div className="rounded-lg border p-8 text-center">
           <h1 className="text-2xl font-bold mb-2">Session Not Found</h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground mb-4">
             The session you&apos;re looking for doesn&apos;t exist or has been removed.
           </p>
+          <Button variant="outline" onClick={retryLoad}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Try Again
+          </Button>
         </div>
       </div>
     );
@@ -356,7 +492,8 @@ export default function SessionDetailPage() {
             <div className="flex items-center gap-2 text-yellow-600">
               <AlertCircle className="h-4 w-4" />
               <span className="text-sm">
-                Not connected to OpenClaw. Session actions are unavailable.
+                WebSocket connection unavailable. Using HTTP fallback for session operations.
+                Some real-time features may be limited.
               </span>
             </div>
           </div>

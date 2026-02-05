@@ -324,38 +324,58 @@ export function OpenClawWSProvider({ children }: OpenClawWSProviderProps) {
 
   // HTTP fallback for when WebSocket is not available
   const httpFallback = useCallback(async <T,>(method: string, params?: Record<string, unknown>): Promise<T> => {
-    console.log('[OpenClawWS] Using HTTP fallback for method:', method);
+    console.log('[OpenClawWS] Using HTTP fallback for method:', method, 'with params:', params);
     
-    // Map RPC methods to HTTP endpoints
-    if (method === 'agents.list') {
-      const response = await fetch('/api/agents');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      return response.json() as Promise<T>;
-    }
+    // Use OpenClaw's HTTP RPC endpoint for direct API calls
+    const openclawUrl = process.env.NEXT_PUBLIC_OPENCLAW_HTTP_URL || 'http://127.0.0.1:4440';
+    const openclawToken = process.env.NEXT_PUBLIC_OPENCLAW_TOKEN || AUTH_TOKEN;
     
-    if (method === 'sessions.list') {
-      const response = await fetch('/api/sessions');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      return response.json() as Promise<T>;
-    }
+    const rpcRequest = {
+      type: 'req',
+      id: generateUUID(),
+      method,
+      params: params || {}
+    };
     
-    if (method === 'chat.abort') {
-      const response = await fetch('/api/chat/abort', {
+    try {
+      const response = await fetch(`${openclawUrl}/rpc`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params || {}),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': openclawToken ? `Bearer ${openclawToken}` : ''
+        },
+        body: JSON.stringify(rpcRequest)
       });
+      
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`OpenClaw HTTP ${response.status}: ${response.statusText}`);
       }
-      return response.json() as Promise<T>;
+      
+      const rpcResponse = await response.json();
+      
+      if (!rpcResponse.ok || rpcResponse.error) {
+        throw new Error(rpcResponse.error?.message || 'OpenClaw RPC error');
+      }
+      
+      return rpcResponse.payload as T;
+    } catch (error) {
+      console.error('[OpenClawWS] HTTP fallback failed:', error);
+      
+      // For specific methods, try app-specific API endpoints as final fallback
+      if (method === 'chat.abort') {
+        const response = await fetch('/api/chat/abort', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params || {}),
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json() as Promise<T>;
+      }
+      
+      throw error;
     }
-    
-    throw new Error(`HTTP fallback not implemented for method: ${method}`);
   }, []);
 
   // Generic RPC request method
