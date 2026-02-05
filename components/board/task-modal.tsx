@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback } from "react"
 import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useTaskStore } from "@/lib/stores/task-store"
+import { useUpdateTask, useDeleteTask, useTask } from "@/lib/stores/task-store"
 import { CommentThread } from "./comment-thread"
 import { CommentInput } from "./comment-input"
 import { DependencyPicker } from "./dependency-picker"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
 import type { Task, TaskStatus, TaskPriority, TaskRole, Comment, DispatchStatus, TaskDependencySummary } from "@/lib/db/types"
+import type { Id } from "@/convex/_generated/server"
 
 interface TaskModalProps {
   task: Task | null
@@ -73,33 +74,16 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   const [pickerOpen, setPickerOpen] = useState(false)
   const [removingDepId, setRemovingDepId] = useState<string | null>(null)
   
-  const updateTask = useTaskStore((s) => s.updateTask)
-  const deleteTask = useTaskStore((s) => s.deleteTask)
+  const updateTask = useUpdateTask()
+  const deleteTask = useDeleteTask()
+
+  // Fetch task with comments via Convex
+  const taskWithComments = useTask(task?.id as Id<"tasks"> | null)
 
   // Dependencies
   const { dependencies, refresh: refreshDependencies } = useDependencies(task?.id || null)
   const dependsOn = dependencies.depends_on
   const blocks = dependencies.blocks
-
-  // Keyboard shortcut for dependency picker
-  useEffect(() => {
-    if (!open || !task) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // 'd' key to open dependency picker (when not typing in an input)
-      if (e.key === 'd' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement
-        const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
-        if (!isInput && !pickerOpen) {
-          e.preventDefault()
-          setPickerOpen(true)
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [open, task, pickerOpen])
 
   // Load task data when modal opens
   useEffect(() => {
@@ -122,24 +106,35 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
       setTags(taskTags.join(", "))
       setShowDeleteConfirm(false)
       setDispatchStatus(task.dispatch_status)
-      
-      // Fetch comments
-      fetchComments(task.id)
     }
   }, [task, open])
 
-  const fetchComments = async (taskId: string) => {
-    setLoadingComments(true)
-    try {
-      const response = await fetch(`/api/tasks/${taskId}/comments`)
-      if (response.ok) {
-        const data = await response.json()
-        setComments(data.comments)
-      }
-    } finally {
-      setLoadingComments(false)
+  // Update comments when task data changes
+  useEffect(() => {
+    if (taskWithComments?.comments) {
+      setComments(taskWithComments.comments)
     }
-  }
+  }, [taskWithComments?.comments])
+
+  // Keyboard shortcut for dependency picker
+  useEffect(() => {
+    if (!open || !task) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 'd' key to open dependency picker (when not typing in an input)
+      if (e.key === 'd' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement
+        const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+        if (!isInput && !pickerOpen) {
+          e.preventDefault()
+          setPickerOpen(true)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [open, task, pickerOpen])
 
   const handleAddComment = async (content: string) => {
     if (!task) return
@@ -170,15 +165,16 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
     const newStatus = status
     
     try {
-      await updateTask(task.id, {
+      await updateTask({
+        id: task.id as Id<"tasks">,
         title: title.trim(),
-        description: description.trim() || null,
+        description: description.trim() || undefined,
         status,
         priority,
-        role: role === "any" ? null : role,
-        assignee: assignee || null,
-        requires_human_review: requiresHumanReview ? 1 : 0,
-        tags: tagArray.length > 0 ? JSON.stringify(tagArray) : null,
+        role: role === "any" ? undefined : role,
+        assignee: assignee || undefined,
+        requires_human_review: requiresHumanReview,
+        tags: tagArray.length > 0 ? tagArray : undefined,
       })
       
       // Auto-create status change comment if status changed
@@ -199,6 +195,8 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
       }
       
       onOpenChange(false)
+    } catch (error) {
+      console.error("Failed to update task:", error)
     } finally {
       setSaving(false)
     }
@@ -207,7 +205,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   const handleDelete = async () => {
     if (!task) return
     
-    await deleteTask(task.id)
+    await deleteTask({ id: task.id as Id<"tasks"> })
     onDelete?.(task.id)
     onOpenChange(false)
   }
@@ -240,9 +238,6 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
             author_type: "human",
           }),
         })
-        
-        // Refresh comments
-        fetchComments(task.id)
       } else {
         const data = await response.json()
         console.error("Dispatch failed:", data.error)
@@ -394,16 +389,10 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     </label>
                   </div>
                   
-                  {loadingComments ? (
-                    <div className="text-sm text-[var(--text-muted)]">Loading comments...</div>
-                  ) : (
-                    <>
-                      <div className="max-h-[500px] overflow-y-auto mb-4">
-                        <CommentThread comments={comments} />
-                      </div>
-                      <CommentInput onSubmit={handleAddComment} />
-                    </>
-                  )}
+                  <div className="max-h-[500px] overflow-y-auto mb-4">
+                    <CommentThread comments={comments} />
+                  </div>
+                  <CommentInput onSubmit={handleAddComment} />
                 </div>
               </div>
               

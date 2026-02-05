@@ -1,28 +1,19 @@
 import { create } from "zustand"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
 import type { Task, TaskStatus, TaskRole } from "@/lib/db/types"
-import type { WebSocketMessage } from "@/lib/websocket/server"
+import type { Id } from "@/convex/_generated/server"
 
 interface TaskState {
-  tasks: Task[]
+  // UI state only - data comes from Convex
+  currentProjectId: string | null
   loading: boolean
   error: string | null
-  currentProjectId: string | null
-  wsConnected: boolean
   
   // Actions
-  fetchTasks: (projectId: string) => Promise<void>
-  createTask: (data: CreateTaskData) => Promise<Task>
-  updateTask: (id: string, updates: Partial<Task>) => Promise<Task>
-  deleteTask: (id: string) => Promise<void>
-  moveTask: (id: string, status: TaskStatus, newIndex?: number) => Promise<void>
-  reorderTask: (id: string, status: TaskStatus, newIndex: number) => Promise<void>
-  
-  // WebSocket handlers
-  handleWebSocketMessage: (message: WebSocketMessage) => void
-  setWebSocketConnected: (connected: boolean) => void
-  
-  // Selectors
-  getTasksByStatus: (status: TaskStatus) => Task[]
+  setCurrentProjectId: (id: string | null) => void
+  setLoading: (loading: boolean) => void
+  setError: (error: string | null) => void
 }
 
 export interface CreateTaskData {
@@ -37,207 +28,108 @@ export interface CreateTaskData {
   tags?: string[]
 }
 
-export const useTaskStore = create<TaskState>((set, get) => ({
-  tasks: [],
+export const useTaskStore = create<TaskState>((set) => ({
+  currentProjectId: null,
   loading: false,
   error: null,
-  currentProjectId: null,
-  wsConnected: false,
 
-  fetchTasks: async (projectId) => {
-    set({ loading: true, error: null, currentProjectId: projectId })
-    
-    const response = await fetch(`/api/tasks?projectId=${projectId}`)
-    
-    if (!response.ok) {
-      const data = await response.json()
-      set({ loading: false, error: data.error || "Failed to fetch tasks" })
-      throw new Error(data.error || "Failed to fetch tasks")
-    }
-    
-    const data = await response.json()
-    set({ tasks: data.tasks, loading: false })
-  },
-
-  createTask: async (taskData) => {
-    const response = await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(taskData),
-    })
-    
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to create task")
-    }
-    
-    const data = await response.json()
-    
-    set((state) => ({
-      tasks: [data.task, ...state.tasks],
-    }))
-    
-    return data.task
-  },
-
-  updateTask: async (id, updates) => {
-    const response = await fetch(`/api/tasks/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
-    })
-    
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to update task")
-    }
-    
-    const data = await response.json()
-    
-    set((state) => ({
-      tasks: state.tasks.map((t) => t.id === id ? data.task : t),
-    }))
-    
-    return data.task
-  },
-
-  deleteTask: async (id) => {
-    const response = await fetch(`/api/tasks/${id}`, {
-      method: "DELETE",
-    })
-    
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to delete task")
-    }
-    
-    set((state) => ({
-      tasks: state.tasks.filter((t) => t.id !== id),
-    }))
-  },
-
-  moveTask: async (id, status, newIndex) => {
-    const task = get().tasks.find(t => t.id === id)
-    if (!task) return
-    
-    const isSameColumn = task.status === status
-    
-    try {
-      if (isSameColumn && newIndex !== undefined) {
-        // Call reorder API - no optimistic update to avoid position conflicts
-        const response = await fetch("/api/tasks/reorder", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            project_id: get().currentProjectId,
-            status,
-            task_id: id,
-            new_index: newIndex,
-          }),
-        })
-        
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || "Failed to reorder task")
-        }
-        
-        // Refresh tasks from server to get correct positions
-        await get().fetchTasks(get().currentProjectId!)
-      } else {
-        // Moving to different column - optimistic update for status change only
-        const originalTasks = get().tasks
-        set((state) => ({
-          tasks: state.tasks.map((t) => 
-            t.id === id ? { ...t, status, updated_at: Date.now() } : t
-          )
-        }))
-        
-        try {
-          // Call move API (regular status update)
-          const response = await fetch(`/api/tasks/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status }),
-          })
-          
-          if (!response.ok) {
-            const data = await response.json()
-            throw new Error(data.error || "Failed to move task")
-          }
-          
-          // Refresh tasks from server to get updated positions for new column
-          await get().fetchTasks(get().currentProjectId!)
-        } catch (error) {
-          // Revert to original state on failure
-          set({ tasks: originalTasks })
-          throw error
-        }
-      }
-    } catch (error) {
-      throw error
-    }
-  },
-
-  reorderTask: async (id, status, newIndex) => {
-    // This is just an alias to moveTask with newIndex
-    await get().moveTask(id, status, newIndex)
-  },
-
-  handleWebSocketMessage: (message: WebSocketMessage) => {
-    const { currentProjectId } = get()
-    
-    switch (message.type) {
-      case 'task:created':
-        // Only add if it belongs to current project
-        if (message.data.project_id === currentProjectId) {
-          set((state) => ({
-            tasks: [message.data, ...state.tasks]
-          }))
-        }
-        break
-        
-      case 'task:updated':
-        // Only update if it belongs to current project
-        if (message.data.project_id === currentProjectId) {
-          set((state) => ({
-            tasks: state.tasks.map((t) => 
-              t.id === message.data.id ? message.data : t
-            )
-          }))
-        }
-        break
-        
-      case 'task:deleted':
-        // Only remove if it belongs to current project
-        if (message.data.projectId === currentProjectId) {
-          set((state) => ({
-            tasks: state.tasks.filter((t) => t.id !== message.data.id)
-          }))
-        }
-        break
-        
-      case 'task:moved':
-        // Only update if it belongs to current project
-        if (message.data.projectId === currentProjectId) {
-          set((state) => ({
-            tasks: state.tasks.map((t) => 
-              t.id === message.data.id 
-                ? { ...t, status: message.data.status, updated_at: Date.now() } 
-                : t
-            )
-          }))
-        }
-        break
-    }
-  },
-
-  setWebSocketConnected: (connected: boolean) => {
-    set({ wsConnected: connected })
-  },
-
-  getTasksByStatus: (status) => {
-    return get().tasks
-      .filter((t) => t.status === status)
-      .sort((a, b) => a.position - b.position)
-  },
+  setCurrentProjectId: (id) => set({ currentProjectId: id }),
+  setLoading: (loading) => set({ loading }),
+  setError: (error) => set({ error }),
 }))
+
+// ============================================
+// Convex Hooks for Data Fetching
+// ============================================
+
+/**
+ * Hook to fetch tasks by project with optional status filter
+ * Uses Convex for real-time subscriptions
+ */
+export function useTasks(projectId: Id<"projects"> | null, status?: TaskStatus) {
+  return useQuery(
+    api.tasks.getByProject,
+    projectId ? { projectId, status } : "skip"
+  )
+}
+
+/**
+ * Hook to fetch a single task by ID with its comments
+ */
+export function useTask(id: Id<"tasks"> | null) {
+  return useQuery(api.tasks.getById, id ? { id } : "skip")
+}
+
+/**
+ * Hook to fetch tasks assigned to a specific user
+ */
+export function useTasksByAssignee(assignee: string | null) {
+  return useQuery(
+    api.tasks.getByAssignee,
+    assignee ? { assignee } : "skip"
+  )
+}
+
+/**
+ * Hook to fetch a task with its dependencies
+ */
+export function useTaskWithDependencies(id: Id<"tasks"> | null) {
+  return useQuery(
+    api.tasks.getWithDependencies,
+    id ? { id } : "skip"
+  )
+}
+
+// ============================================
+// Convex Mutations
+// ============================================
+
+/**
+ * Hook to create a new task
+ */
+export function useCreateTask() {
+  return useMutation(api.tasks.create)
+}
+
+/**
+ * Hook to update a task
+ */
+export function useUpdateTask() {
+  return useMutation(api.tasks.update)
+}
+
+/**
+ * Hook to move a task to a different status/column
+ */
+export function useMoveTask() {
+  return useMutation(api.tasks.move)
+}
+
+/**
+ * Hook to reorder a task within its current column
+ */
+export function useReorderTask() {
+  return useMutation(api.tasks.reorder)
+}
+
+/**
+ * Hook to delete a task
+ */
+export function useDeleteTask() {
+  return useMutation(api.tasks.deleteTask)
+}
+
+// ============================================
+// Legacy selector helpers (for compatibility)
+// ============================================
+
+/**
+ * Get tasks filtered by status, sorted by position
+ * Note: This is a helper function - use useTasks() hook for reactive data
+ */
+export function getTasksByStatus(tasks: Task[] | undefined, status: TaskStatus): Task[] {
+  if (!tasks) return []
+  return tasks
+    .filter((t) => t.status === status)
+    .sort((a, b) => a.position - b.position)
+}

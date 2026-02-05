@@ -2,32 +2,28 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
-import { Plus, ChevronLeft, ChevronRight, Eye, EyeOff, Wifi, WifiOff } from "lucide-react"
+import { Plus, ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react"
 import type { Task, TaskStatus } from "@/lib/db/types"
 import { Column } from "./column"
 
 interface MobileBoardProps {
   columns: { status: TaskStatus; title: string; color: string; showAdd: boolean }[]
-  getTasksByStatus: (status: TaskStatus) => Task[]
+  tasksByStatus: Record<TaskStatus, Task[]>
   onTaskClick: (task: Task) => void
   onAddTask: (status: TaskStatus) => void
   onDragEnd: (result: DropResult) => void
   showDone?: boolean
   onToggleShowDone?: () => void
-  wsConnected?: boolean
-  subscribers?: string[]
 }
 
 export function MobileBoard({ 
   columns, 
-  getTasksByStatus, 
+  tasksByStatus, 
   onTaskClick, 
   onAddTask,
   onDragEnd,
   showDone = false,
   onToggleShowDone,
-  wsConnected = false,
-  subscribers = []
 }: MobileBoardProps) {
   const [activeColumnIndex, setActiveColumnIndex] = useState(0)
   const activeColumn = columns[activeColumnIndex]
@@ -140,22 +136,9 @@ export function MobileBoard({
           <h2 className="text-xl font-semibold text-[var(--text-primary)]">
             Board
           </h2>
-          {/* WebSocket connection status for mobile */}
-          <div className="flex items-center gap-1" title={wsConnected ? "Connected - real-time updates active" : "Disconnected - changes may not appear immediately"}>
-            {wsConnected ? (
-              <Wifi className="h-3 w-3 text-green-500" />
-            ) : (
-              <WifiOff className="h-3 w-3 text-red-500" />
-            )}
-            <span className="text-xs text-[var(--text-secondary)]">
-              {wsConnected ? 'Live' : 'Off'}
-            </span>
-            {subscribers.length > 0 && (
-              <span className="text-xs text-[var(--text-secondary)]">
-                • {subscribers.length}
-              </span>
-            )}
-          </div>
+          <span className="text-xs text-[var(--text-secondary)]">
+            Live
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {/* Show Done toggle for mobile */}
@@ -207,7 +190,7 @@ export function MobileBoard({
               />
               <span>{column.title}</span>
               <span className="text-xs opacity-75">
-                {getTasksByStatus(column.status).length}
+                {tasksByStatus[column.status].length}
               </span>
             </button>
           ))}
@@ -230,7 +213,7 @@ export function MobileBoard({
             status={activeColumn.status}
             title={activeColumn.title}
             color={activeColumn.color}
-            tasks={getTasksByStatus(activeColumn.status)}
+            tasks={tasksByStatus[activeColumn.status]}
             onTaskClick={onTaskClick}
             onAddTask={() => onAddTask(activeColumn.status)}
             showAddButton={activeColumn.showAdd}
