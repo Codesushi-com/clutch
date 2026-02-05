@@ -1,11 +1,6 @@
 import { query, mutation } from './_generated/server'
 import { v } from 'convex/values'
-import type { Chat, ChatMessage } from '../lib/db/types'
 import type { Id } from './_generated/dataModel'
-
-// ============================================
-// Type Helpers
-// ============================================
 
 // ============================================
 // Queries
@@ -31,10 +26,10 @@ export const getByProject = query({
     })),
   })),
   handler: async (ctx, args) => {
-    // Get all chats for project
+    // Get all chats for project (filter by string project_id)
     const chats = await ctx.db
       .query('chats')
-      .withIndex('by_project', q => q.eq('project_id', args.projectId))
+      .filter(q => q.eq(q.field('project_id'), args.projectId))
       .order('desc')
       .take(100)
 
@@ -76,7 +71,7 @@ export const getByProject = query({
 // Get a single chat by ID
 export const getById = query({
   args: {
-    id: v.id('chats'),
+    id: v.string(),
   },
   returns: v.union(
     v.object({
@@ -91,7 +86,10 @@ export const getById = query({
     v.null()
   ),
   handler: async (ctx, args) => {
-    const chat = await ctx.db.get(args.id)
+    const chat = await ctx.db
+      .query('chats')
+      .filter(q => q.eq(q.field('_id'), args.id))
+      .first()
     if (!chat) return null
 
     return {
@@ -124,10 +122,9 @@ export const findBySessionKey = query({
     v.null()
   ),
   handler: async (ctx, args) => {
-    // Try exact session key match first
+    // Try exact session key match first (scan all chats)
     const chat = await ctx.db
       .query('chats')
-      .withIndex('by_project', q => q.eq('project_id', '')) // Can't index by session_key, scan
       .filter(q => q.eq(q.field('session_key'), args.sessionKey))
       .first()
 
@@ -146,8 +143,11 @@ export const findBySessionKey = query({
     // Try to extract chat ID from session key format: trap:projectSlug:chatId
     const match = args.sessionKey.match(/^trap:[^:]+:(.+)$/)
     if (match) {
-      const chatId = match[1] as Id<'chats'>
-      const exists = await ctx.db.get(chatId)
+      const chatId = match[1]
+      const exists = await ctx.db
+        .query('chats')
+        .filter(q => q.eq(q.field('_id'), chatId))
+        .first()
       if (exists) {
         // Note: We can't patch here (read-only context)
         // The caller should update the session_key separately if needed
@@ -218,7 +218,7 @@ export const create = mutation({
 // Update a chat
 export const update = mutation({
   args: {
-    id: v.id('chats'),
+    id: v.string(),
     title: v.optional(v.string()),
     session_key: v.optional(v.string()),
   },
@@ -232,7 +232,10 @@ export const update = mutation({
     updated_at: v.number(),
   }),
   handler: async (ctx, args) => {
-    const chat = await ctx.db.get(args.id)
+    const chat = await ctx.db
+      .query('chats')
+      .filter(q => q.eq(q.field('_id'), args.id))
+      .first()
     if (!chat) throw new Error('Chat not found')
 
     const updates: { title?: string; session_key?: string; updated_at: number } = {
@@ -242,9 +245,12 @@ export const update = mutation({
     if (args.title !== undefined) updates.title = args.title
     if (args.session_key !== undefined) updates.session_key = args.session_key
 
-    await ctx.db.patch(args.id, updates)
+    await ctx.db.patch(args.id as any, updates)
 
-    const updated = await ctx.db.get(args.id)
+    const updated = await ctx.db
+      .query('chats')
+      .filter(q => q.eq(q.field('_id'), args.id))
+      .first()
     if (!updated) throw new Error('Failed to update chat')
 
     return {
@@ -262,17 +268,20 @@ export const update = mutation({
 // Delete a chat
 export const deleteChat = mutation({
   args: {
-    id: v.id('chats'),
+    id: v.string(),
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    const chat = await ctx.db.get(args.id)
+    const chat = await ctx.db
+      .query('chats')
+      .filter(q => q.eq(q.field('_id'), args.id))
+      .first()
     if (!chat) return false
 
     // Delete all messages first (cascade)
     const messages = await ctx.db
       .query('chatMessages')
-      .withIndex('by_chat', q => q.eq('chat_id', args.id))
+      .filter(q => q.eq(q.field('chat_id'), args.id))
       .collect()
 
     for (const message of messages) {
@@ -280,7 +289,7 @@ export const deleteChat = mutation({
     }
 
     // Delete the chat
-    await ctx.db.delete(args.id)
+    await ctx.db.delete(args.id as any)
     return true
   },
 })
@@ -292,7 +301,7 @@ export const deleteChat = mutation({
 // Get messages for a chat (paginated)
 export const getMessages = query({
   args: {
-    chatId: v.id('chats'),
+    chatId: v.string(),
     limit: v.optional(v.number()),
     before: v.optional(v.number()), // timestamp cursor
   },
@@ -317,14 +326,16 @@ export const getMessages = query({
     if (args.before) {
       messages = await ctx.db
         .query('chatMessages')
-        .withIndex('by_chat', q => q.eq('chat_id', args.chatId))
-        .filter(q => q.lt(q.field('created_at'), args.before!))
+        .filter(q => q.and(
+          q.eq(q.field('chat_id'), args.chatId),
+          q.lt(q.field('created_at'), args.before!)
+        ))
         .order('desc')
         .take(limit + 1)
     } else {
       messages = await ctx.db
         .query('chatMessages')
-        .withIndex('by_chat', q => q.eq('chat_id', args.chatId))
+        .filter(q => q.eq(q.field('chat_id'), args.chatId))
         .order('desc')
         .take(limit + 1)
     }
@@ -356,7 +367,7 @@ export const getMessages = query({
 // Create a new message
 export const createMessage = mutation({
   args: {
-    chat_id: v.id('chats'),
+    chat_id: v.string(),
     author: v.string(),
     content: v.string(),
     run_id: v.optional(v.string()),
@@ -387,7 +398,7 @@ export const createMessage = mutation({
     })
 
     // Update chat's updated_at
-    await ctx.db.patch(args.chat_id, { updated_at: now })
+    await ctx.db.patch(args.chat_id as any, { updated_at: now })
 
     const message = await ctx.db.get(id)
     if (!message) throw new Error('Failed to create message')

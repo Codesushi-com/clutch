@@ -172,9 +172,15 @@ export function useUpdateTask() {
   const updateMutation = useMutation(api.tasks.update);
 
   return async (id: string, updates: Omit<Partial<Task>, "id">) => {
+    // Convert null values to undefined for Convex compatibility
+    const convexUpdates: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(updates)) {
+      convexUpdates[key] = value === null ? undefined : value;
+    }
+
     const result = await updateMutation({
       id: id as Id<"tasks">,
-      ...updates,
+      ...convexUpdates,
     });
     return result;
   };

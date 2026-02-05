@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getConvexClient } from "@/lib/convex/server"
 import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
 import { broadcastToChat } from "@/lib/sse/connections"
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -17,7 +16,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const convex = getConvexClient()
 
     // Verify chat exists
-    const chat = await convex.query(api.chats.getById, { id: id as Id<'chats'> })
+    const chat = await convex.query(api.chats.getById, { id })
     if (!chat) {
       return NextResponse.json(
         { error: "Chat not found" },
@@ -37,7 +36,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const result = await convex.query(api.chats.getMessages, {
-      chatId: id as Id<'chats'>,
+      chatId: id,
       limit,
       before: beforeTimestamp,
     })
@@ -74,7 +73,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const convex = getConvexClient()
 
     // Verify chat exists
-    const chat = await convex.query(api.chats.getById, { id: id as Id<'chats'> })
+    const chat = await convex.query(api.chats.getById, { id })
     if (!chat) {
       return NextResponse.json(
         { error: "Chat not found" },
@@ -95,7 +94,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const message = await convex.mutation(api.chats.createMessage, {
-      chat_id: id as Id<'chats'>,
+      chat_id: id,
       author,
       content,
       run_id,
