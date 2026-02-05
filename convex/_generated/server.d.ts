@@ -16,7 +16,7 @@ import type {
 } from "convex/server";
 import type { GenericId } from "convex/values";
 
-export type TableNames = "projects" | "tasks";
+export type TableNames = "projects" | "tasks" | "comments" | "chats" | "chatMessages" | "notifications" | "events" | "signals" | "taskDependencies";
 
 export type Document = any;
 
@@ -34,6 +34,55 @@ export interface DataModel extends GenericDataModel {
     document: Document;
     fieldPaths: string;
     indexes: { by_project: string; by_status: string; by_project_status: string; by_assignee: string; by_project_position: string };
+    searchIndexes: any;
+    vectorIndexes: any;
+  };
+  comments: {
+    document: Document;
+    fieldPaths: string;
+    indexes: { by_task: string; by_type: string };
+    searchIndexes: any;
+    vectorIndexes: any;
+  };
+  chats: {
+    document: Document;
+    fieldPaths: string;
+    indexes: { by_project: string };
+    searchIndexes: any;
+    vectorIndexes: any;
+  };
+  chatMessages: {
+    document: Document;
+    fieldPaths: string;
+    indexes: { by_chat: string };
+    searchIndexes: any;
+    vectorIndexes: any;
+  };
+  notifications: {
+    document: Document;
+    fieldPaths: string;
+    indexes: { by_read: string; by_severity: string; by_created: string };
+    searchIndexes: any;
+    vectorIndexes: any;
+  };
+  events: {
+    document: Document;
+    fieldPaths: string;
+    indexes: { by_project: string; by_task: string; by_type: string; by_created: string };
+    searchIndexes: any;
+    vectorIndexes: any;
+  };
+  signals: {
+    document: Document;
+    fieldPaths: string;
+    indexes: { by_task: string; by_kind: string; by_blocking: string; by_responded: string; by_created: string };
+    searchIndexes: any;
+    vectorIndexes: any;
+  };
+  taskDependencies: {
+    document: Document;
+    fieldPaths: string;
+    indexes: { by_task: string; by_depends_on: string; by_task_depends_on: string };
     searchIndexes: any;
     vectorIndexes: any;
   };
