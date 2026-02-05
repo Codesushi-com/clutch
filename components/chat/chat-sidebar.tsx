@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
 import { TaskModal } from "@/components/board/task-modal"
+import { NewIssueDialog } from "@/components/chat/new-issue-dialog"
 import type { Task } from "@/lib/db/types"
 
 interface ChatSidebarProps {
@@ -57,6 +58,9 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   // Task modal state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskModalOpen, setTaskModalOpen] = useState(false)
+  
+  // New issue dialog state
+  const [newIssueDialogOpen, setNewIssueDialogOpen] = useState(false)
 
   // Fetch work queue tasks
   const fetchWorkQueue = useCallback(async () => {
@@ -343,8 +347,8 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
         )}
       </div>
       
-      {/* New chat button - moved up */}
-      <div className="p-2 border-b border-[var(--border)]">
+      {/* New chat and issue buttons */}
+      <div className="p-2 border-b border-[var(--border)] space-y-2">
         <Button
           variant="outline"
           size="sm"
@@ -354,6 +358,15 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
         >
           <Plus className="h-4 w-4 mr-2" />
           {creating ? "Creating..." : "New Chat"}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setNewIssueDialogOpen(true)}
+          className="w-full"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          New Issue
         </Button>
       </div>
 
@@ -501,6 +514,16 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
         task={selectedTask}
         open={taskModalOpen}
         onOpenChange={handleTaskModalClose}
+      />
+      <NewIssueDialog
+        projectId={projectId}
+        open={newIssueDialogOpen}
+        onOpenChange={setNewIssueDialogOpen}
+        onCreated={(taskId) => {
+          // Refresh work queue to show the new task
+          fetchWorkQueue()
+          console.log("New issue created:", taskId)
+        }}
       />
     </>
   )
