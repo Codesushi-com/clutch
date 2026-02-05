@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useTaskStore } from "@/lib/stores/task-store"
+import { useUpdateTask, useDeleteTask } from "@/lib/stores/task-store"
 import { CommentThread } from "./comment-thread"
 import { CommentInput } from "./comment-input"
 import { DependencyPicker } from "./dependency-picker"
@@ -60,21 +60,21 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   const [tags, setTags] = useState("")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [saving, setSaving] = useState(false)
-  
+
   // Comments state
   const [comments, setComments] = useState<Comment[]>([])
   const [loadingComments, setLoadingComments] = useState(false)
-  
+
   // Dispatch state
   const [dispatchStatus, setDispatchStatus] = useState<DispatchStatus | null>(null)
   const [dispatching, setDispatching] = useState(false)
-  
+
   // Dependency picker state
   const [pickerOpen, setPickerOpen] = useState(false)
   const [removingDepId, setRemovingDepId] = useState<string | null>(null)
-  
-  const updateTask = useTaskStore((s) => s.updateTask)
-  const deleteTask = useTaskStore((s) => s.deleteTask)
+
+  const updateTaskMutation = useUpdateTask()
+  const deleteTaskMutation = useDeleteTask()
 
   // Dependencies
   const { dependencies, refresh: refreshDependencies } = useDependencies(task?.id || null)
@@ -122,7 +122,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
       setTags(taskTags.join(", "))
       setShowDeleteConfirm(false)
       setDispatchStatus(task.dispatch_status)
-      
+
       // Fetch comments
       fetchComments(task.id)
     }
@@ -143,13 +143,13 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
 
   const handleAddComment = async (content: string) => {
     if (!task) return
-    
+
     const response = await fetch(`/api/tasks/${task.id}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content }),
     })
-    
+
     if (response.ok) {
       const data = await response.json()
       setComments((prev) => [...prev, data.comment])
@@ -158,19 +158,19 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
 
   const handleSave = async () => {
     if (!task) return
-    
+
     setSaving(true)
-    
+
     const tagArray = tags
       .split(",")
       .map((t) => t.trim())
       .filter((t) => t.length > 0)
-    
+
     const oldStatus = task.status
     const newStatus = status
-    
+
     try {
-      await updateTask(task.id, {
+      await updateTaskMutation(task.id, {
         title: title.trim(),
         description: description.trim() || null,
         status,
@@ -180,12 +180,12 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
         requires_human_review: requiresHumanReview ? 1 : 0,
         tags: tagArray.length > 0 ? JSON.stringify(tagArray) : null,
       })
-      
+
       // Auto-create status change comment if status changed
       if (oldStatus !== newStatus) {
         const oldLabel = STATUS_OPTIONS.find(s => s.value === oldStatus)?.label || oldStatus
         const newLabel = STATUS_OPTIONS.find(s => s.value === newStatus)?.label || newStatus
-        
+
         await fetch(`/api/tasks/${task.id}/comments`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -197,7 +197,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
           }),
         })
       }
-      
+
       onOpenChange(false)
     } finally {
       setSaving(false)
@@ -206,29 +206,29 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
 
   const handleDelete = async () => {
     if (!task) return
-    
-    await deleteTask(task.id)
+
+    await deleteTaskMutation(task.id)
     onDelete?.(task.id)
     onOpenChange(false)
   }
 
   const handleDispatch = async () => {
     if (!task || !assignee) return
-    
+
     setDispatching(true)
     try {
       const response = await fetch(`/api/tasks/${task.id}/dispatch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           agentId: assignee,
           requestedBy: "dan",
         }),
       })
-      
+
       if (response.ok) {
         setDispatchStatus("pending")
-        
+
         // Add a comment noting the dispatch
         await fetch(`/api/tasks/${task.id}/comments`, {
           method: "POST",
@@ -240,7 +240,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
             author_type: "human",
           }),
         })
-        
+
         // Refresh comments
         fetchComments(task.id)
       } else {
@@ -314,11 +314,11 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         {/* Backdrop */}
-        <div 
+        <div
           className="absolute inset-0 bg-black/50 backdrop-blur-sm"
           onClick={() => onOpenChange(false)}
         />
-        
+
         {/* Modal */}
         <div className="relative bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
           {/* Header */}
@@ -326,7 +326,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
             <div className="flex-1 pr-4">
               {/* Short ID */}
               <div className="mb-2">
-                <span 
+                <span
                   className="text-xs text-[var(--text-muted)] font-mono cursor-pointer hover:text-[var(--accent-blue)] transition-colors select-all"
                   title="Click to copy ID"
                   onClick={() => navigator.clipboard.writeText(task.id.substring(0, 8))}
@@ -334,7 +334,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                   #{task.id.substring(0, 8)}
                 </span>
               </div>
-              
+
               {/* Title */}
               <input
                 value={title}
@@ -342,10 +342,10 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                 className="w-full bg-transparent text-xl font-semibold text-[var(--text-primary)] border-0 border-b border-transparent hover:border-[var(--border)] focus:border-[var(--accent-blue)] focus:outline-none px-0 py-1 transition-colors"
                 placeholder="Task title"
               />
-              
+
               {/* Status badge */}
               <div className="mt-2 flex items-center gap-2">
-                <span 
+                <span
                   className="px-2 py-0.5 rounded text-xs font-medium text-white"
                   style={{ backgroundColor: STATUS_OPTIONS.find(s => s.value === status)?.color }}
                 >
@@ -358,7 +358,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                 )}
               </div>
             </div>
-            
+
             <button
               onClick={() => onOpenChange(false)}
               className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded transition-colors"
@@ -366,7 +366,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
               <X className="h-5 w-5" />
             </button>
           </div>
-          
+
           {/* Body */}
           <div className="flex-1 overflow-y-auto p-4">
             <div className="flex gap-8">
@@ -384,7 +384,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     className="w-full min-h-[200px] max-h-[400px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-y"
                   />
                 </div>
-                
+
                 {/* Comments Section */}
                 <div className="border-t border-[var(--border)] pt-4">
                   <div className="flex items-center gap-2 mb-4">
@@ -393,7 +393,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                       Comments ({comments.length})
                     </label>
                   </div>
-                  
+
                   {loadingComments ? (
                     <div className="text-sm text-[var(--text-muted)]">Loading comments...</div>
                   ) : (
@@ -406,7 +406,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                   )}
                 </div>
               </div>
-              
+
               {/* Sidebar */}
               <div className="w-64 space-y-4 flex-shrink-0">
                 {/* Status */}
@@ -424,7 +424,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     ))}
                   </select>
                 </div>
-                
+
                 {/* Priority */}
                 <div>
                   <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
@@ -474,7 +474,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     ))}
                   </select>
                 </div>
-                
+
                 {/* Dispatch to Agent */}
                 {assignee && (
                   <div>
@@ -512,7 +512,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     )}
                   </div>
                 )}
-                
+
                 {/* Tags */}
                 <div>
                   <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
@@ -525,7 +525,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)]"
                   />
                 </div>
-                
+
                 {/* Human Review Toggle */}
                 <div className="flex items-center gap-2">
                   <input
@@ -539,7 +539,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     Needs human review
                   </label>
                 </div>
-                
+
                 {/* Timestamps */}
                 <div className="border-t border-[var(--border)] pt-4 space-y-2 text-xs text-[var(--text-muted)]">
                   <div className="flex items-center gap-2">
@@ -638,11 +638,11 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                             <Link2 className="h-4 w-4 text-[var(--accent-blue)] flex-shrink-0 rotate-45" />
                             <span className="text-sm text-[var(--text-primary)] line-clamp-1 flex-1">
                               {blocked.title}
-                              </span>
-                            <span 
+                            </span>
+                            <span
                               className="w-2 h-2 rounded-full flex-shrink-0"
-                              style={{ 
-                                backgroundColor: 
+                              style={{
+                                backgroundColor:
                                   blocked.status === 'done' ? '#22c55e' :
                                   blocked.status === 'in_progress' ? '#eab308' :
                                   blocked.status === 'review' ? '#a855f7' :
@@ -659,7 +659,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
               </div>
             </div>
           </div>
-          
+
           {/* Footer */}
           <div className="flex items-center justify-between p-4 border-t border-[var(--border)]">
             <div>
@@ -691,7 +691,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                 </div>
               )}
             </div>
-            
+
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"

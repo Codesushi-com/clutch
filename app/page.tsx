@@ -1,17 +1,12 @@
 "use client"
 
-import { useEffect } from "react"
-import { useProjectStore } from "@/lib/stores/project-store"
+import { useConvexProjects, type ProjectWithCount } from "@/lib/stores/project-store"
 import { ProjectCard } from "@/components/projects/project-card"
 import { CreateProjectModal } from "@/components/projects/create-project-modal"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function Home() {
-  const { projects, loading, error, fetchProjects } = useProjectStore()
-
-  useEffect(() => {
-    fetchProjects()
-  }, [fetchProjects])
+  const { projects, loading, error } = useConvexProjects()
 
   return (
     <div className="container mx-auto py-12 px-4 max-w-6xl">
@@ -70,7 +65,7 @@ export default function Home() {
       {/* Project grid */}
       {projects.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project) => (
+          {(projects as ProjectWithCount[]).map((project) => (
             <ProjectCard key={project.id} project={project} />
           ))}
         </div>

@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useTaskStore, type CreateTaskData } from "@/lib/stores/task-store"
+import { useCreateTask, type CreateTaskData } from "@/lib/stores/task-store"
 import type { TaskStatus, TaskRole } from "@/lib/db/types"
 
 interface CreateTaskModalProps {
@@ -38,11 +38,11 @@ const ROLES = [
   { value: "security", label: "Security" },
 ] as const
 
-export function CreateTaskModal({ 
-  open, 
-  onOpenChange, 
-  projectId, 
-  initialStatus = "backlog" 
+export function CreateTaskModal({
+  open,
+  onOpenChange,
+  projectId,
+  initialStatus = "backlog"
 }: CreateTaskModalProps) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -50,8 +50,8 @@ export function CreateTaskModal({
   const [role, setRole] = useState<TaskRole | undefined>("any")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  
-  const createTask = useTaskStore((s) => s.createTask)
+
+  const createTaskMutation = useCreateTask()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -68,7 +68,7 @@ export function CreateTaskModal({
     }
 
     try {
-      await createTask(data)
+      await createTaskMutation(data)
       onOpenChange(false)
       // Reset form
       setTitle("")
@@ -92,14 +92,14 @@ export function CreateTaskModal({
               Add a new task to the {initialStatus.replace("_", " ")} column.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="grid gap-4 py-4">
             {error && (
               <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded px-3 py-2">
                 {error}
               </div>
             )}
-            
+
             <div className="grid gap-2">
               <Label htmlFor="title">Title</Label>
               <Input
@@ -110,7 +110,7 @@ export function CreateTaskModal({
                 required
               />
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="description">Description (optional)</Label>
               <textarea
@@ -121,7 +121,7 @@ export function CreateTaskModal({
                 className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
-            
+
             <div className="grid gap-2">
               <Label>Priority</Label>
               <div className="flex gap-2">
@@ -136,7 +136,7 @@ export function CreateTaskModal({
                         : "text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
                     }`}
                   >
-                    <div 
+                    <div
                       className="w-2 h-2 rounded-full"
                       style={{ backgroundColor: p.color }}
                     />
@@ -145,7 +145,7 @@ export function CreateTaskModal({
                 ))}
               </div>
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="role">Role</Label>
               <select
@@ -160,7 +160,7 @@ export function CreateTaskModal({
               </select>
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel

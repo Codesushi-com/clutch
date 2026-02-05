@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
 import { Plus, Eye, EyeOff, Wifi, WifiOff } from "lucide-react"
-import { useTaskStore } from "@/lib/stores/task-store"
+import { useConvexTasks, useMoveTask, useTaskStore } from "@/lib/stores/task-store"
 import { useWebSocket } from "@/lib/websocket/client"
 import { Column } from "./column"
 import { MobileBoard } from "./mobile-board"
@@ -25,18 +25,23 @@ const COLUMNS: { status: TaskStatus; title: string; color: string; showAdd: bool
 ]
 
 export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
-  const { 
-    tasks, 
-    loading, 
-    error, 
-    fetchTasks, 
-    getTasksByStatus, 
-    moveTask,
-    handleWebSocketMessage,
-    setWebSocketConnected
-  } = useTaskStore()
+  const { setTasks, getTasksByStatus, handleWebSocketMessage, setWebSocketConnected } = useTaskStore()
+
+  // Fetch tasks from Convex
+  const { tasks: convexTasks, loading, error } = useConvexTasks(projectId)
+
+  // Move task mutation
+  const moveTaskMutation = useMoveTask()
+
+  // Sync Convex tasks to Zustand store
+  useEffect(() => {
+    if (convexTasks) {
+      setTasks(convexTasks)
+    }
+  }, [convexTasks, setTasks])
+
   const isMobile = useMobileDetection(768)
-  
+
   // WebSocket connection for real-time updates
   const { connected: wsConnected, subscribers } = useWebSocket({
     projectId,
@@ -45,7 +50,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
     onConnect: () => setWebSocketConnected(true),
     onDisconnect: () => setWebSocketConnected(false)
   })
-  
+
   // Column visibility state - initialize from localStorage
   const [showDone, setShowDone] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -60,17 +65,13 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
     }
     return false
   })
-  
+
   // Save preferences to localStorage whenever they change
   useEffect(() => {
     const prefs = { showDone }
     localStorage.setItem(`board-prefs-${projectId}`, JSON.stringify(prefs))
   }, [projectId, showDone])
 
-  useEffect(() => {
-    fetchTasks(projectId)
-  }, [fetchTasks, projectId])
-  
   // Determine which columns should be visible
   const getVisibleColumns = () => {
     return COLUMNS.filter(col => {
@@ -78,26 +79,26 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
       if (["backlog", "ready", "in_progress"].includes(col.status)) {
         return true
       }
-      
+
       // Show Done column only if user has toggled it on
       if (col.status === "done") {
         return showDone
       }
-      
+
       // Show Review column only if it has tasks (auto-hide when empty)
       if (col.status === "review") {
         return getTasksByStatus("review").length > 0
       }
-      
+
       return true
     })
   }
-  
+
   const toggleShowDone = () => {
     setShowDone(!showDone)
   }
 
-  const handleDragEnd = (result: DropResult) => {
+  const handleDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result
 
     // Dropped outside a column
@@ -113,20 +114,15 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
 
     const newStatus = destination.droppableId as TaskStatus
 
-    // If same column, it's a reorder operation
-    if (destination.droppableId === source.droppableId) {
-      moveTask(draggableId, newStatus, destination.index)
-    } else {
-      // Moving to different column
-      moveTask(draggableId, newStatus)
-    }
+    // Call Convex mutation
+    await moveTaskMutation(draggableId, newStatus, destination.index)
   }
 
-  if (loading && tasks.length === 0) {
+  if (loading && convexTasks.length === 0) {
     return (
       <div className="flex gap-4 overflow-x-auto pb-4">
         {COLUMNS.map((col) => (
-          <div 
+          <div
             key={col.status}
             className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] min-h-[500px] w-[280px] flex-shrink-0 animate-pulse"
           />
@@ -196,7 +192,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
             {showDone ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             {showDone ? "Hide Done" : "Show Done"}
           </button>
-          
+
           <button
             onClick={() => onAddTask("backlog")}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue)]/90 transition-colors font-medium"

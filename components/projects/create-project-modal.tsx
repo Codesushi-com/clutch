@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useProjectStore, type CreateProjectData } from "@/lib/stores/project-store"
+import { useCreateProject, type CreateProjectData } from "@/lib/stores/project-store"
 import { Plus } from "lucide-react"
 
 const PROJECT_COLORS = [
@@ -48,8 +48,8 @@ export function CreateProjectModal() {
   const [githubRepo, setGithubRepo] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  
-  const createProject = useProjectStore((s) => s.createProject)
+
+  const createProjectMutation = useCreateProject()
 
   const handleNameChange = (value: string) => {
     setName(value)
@@ -79,7 +79,7 @@ export function CreateProjectModal() {
     }
 
     try {
-      await createProject(data)
+      await createProjectMutation(data)
       setOpen(false)
       // Reset form
       setName("")
@@ -113,14 +113,14 @@ export function CreateProjectModal() {
               Add a new project to track tasks and coordinate agents.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="grid gap-4 py-4">
             {error && (
               <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded px-3 py-2">
                 {error}
               </div>
             )}
-            
+
             <div className="grid gap-2">
               <Label htmlFor="name">Name</Label>
               <Input
@@ -131,7 +131,7 @@ export function CreateProjectModal() {
                 required
               />
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="slug">Slug</Label>
               <Input
@@ -145,7 +145,7 @@ export function CreateProjectModal() {
                 URL-friendly identifier. Auto-generated from name.
               </p>
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="description">Description</Label>
               <Input
@@ -155,7 +155,7 @@ export function CreateProjectModal() {
                 placeholder="What is this project about?"
               />
             </div>
-            
+
             <div className="grid gap-2">
               <Label>Color</Label>
               <div className="flex gap-2 flex-wrap">
@@ -165,8 +165,8 @@ export function CreateProjectModal() {
                     type="button"
                     onClick={() => setColor(c.value)}
                     className={`w-8 h-8 rounded-full border-2 transition-all ${
-                      color === c.value 
-                        ? "border-white scale-110" 
+                      color === c.value
+                        ? "border-white scale-110"
                         : "border-transparent hover:scale-105"
                     }`}
                     style={{ backgroundColor: c.value }}
@@ -175,7 +175,7 @@ export function CreateProjectModal() {
                 ))}
               </div>
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="repo_url">Legacy Repo URL (optional)</Label>
               <Input
@@ -185,7 +185,7 @@ export function CreateProjectModal() {
                 placeholder="https://github.com/user/repo"
               />
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="local_path">Local Path (optional)</Label>
               <Input
@@ -198,7 +198,7 @@ export function CreateProjectModal() {
                 Local file system path to the project source code.
               </p>
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="github_repo">GitHub Repository (optional)</Label>
               <Input
@@ -212,7 +212,7 @@ export function CreateProjectModal() {
               </p>
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
