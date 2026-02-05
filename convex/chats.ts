@@ -245,6 +245,7 @@ export const update = mutation({
     if (args.title !== undefined) updates.title = args.title
     if (args.session_key !== undefined) updates.session_key = args.session_key
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- String ID compat
     await ctx.db.patch(args.id as any, updates)
 
     const updated = await ctx.db
@@ -289,6 +290,7 @@ export const deleteChat = mutation({
     }
 
     // Delete the chat
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- String ID compat
     await ctx.db.delete(args.id as any)
     return true
   },
@@ -398,6 +400,7 @@ export const createMessage = mutation({
     })
 
     // Update chat's updated_at
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- String ID compat
     await ctx.db.patch(args.chat_id as any, { updated_at: now })
 
     const message = await ctx.db.get(id)
