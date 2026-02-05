@@ -10,32 +10,64 @@ export async function register() {
     
     // Initialize OpenClaw WebSocket client
     const { initializeOpenClawClient } = await import('@/lib/openclaw')
+    const { chatEvents } = await import('@/lib/sse/chat-events')
+    const { findChatBySessionKey, saveOpenClawMessage } = await import('@/lib/db/messages')
     
     const client = initializeOpenClawClient()
     
-    // Set up chat event handler to save messages
+    // Set up chat event handler
     client.onChatEvent(async (event) => {
-      // Only log non-typing events to reduce noise
-      if (!event.type.includes('typing')) {
-        console.log('[Trap] Chat event:', event.type, event.sessionKey?.substring(0, 30))
+      // Find the chat ID for this session
+      const chatId = findChatBySessionKey(event.sessionKey)
+      
+      if (!chatId) {
+        // Not a Trap chat session, ignore
+        return
       }
       
-      // Save assistant messages to database with deduplication
-      if (event.type === 'chat.message' && event.message) {
-        try {
-          const { saveOpenClawMessage } = await import('@/lib/db/messages')
-          const messageId = saveOpenClawMessage(
-            event.sessionKey,
-            event.message,
-            event.runId
-          )
+      // Handle different event types
+      switch (event.type) {
+        case 'chat.typing.start':
+          chatEvents.emitTypingStart(chatId)
+          break
           
-          if (messageId) {
-            console.log('[Trap] Saved message:', messageId)
+        case 'chat.typing.end':
+          chatEvents.emitTypingEnd(chatId)
+          break
+          
+        case 'chat.delta':
+          if (event.delta) {
+            chatEvents.emitDelta(chatId, event.delta, event.runId)
           }
-        } catch (error) {
-          console.error('[Trap] Failed to save message:', error)
-        }
+          break
+          
+        case 'chat.message':
+          if (event.message) {
+            // Save to database with deduplication
+            const messageId = saveOpenClawMessage(
+              event.sessionKey,
+              event.message,
+              event.runId
+            )
+            
+            // Emit to SSE subscribers (only if saved, i.e., not a duplicate)
+            if (messageId && event.message.content) {
+              const content = typeof event.message.content === 'string' 
+                ? event.message.content
+                : event.message.content
+                    .filter(b => b.type === 'text' && b.text)
+                    .map(b => b.text!)
+                    .join('\n')
+              
+              const author = event.message.role === 'assistant' ? 'ada' : event.message.role
+              chatEvents.emitMessage(chatId, messageId, author, content, event.runId)
+            }
+          }
+          break
+          
+        case 'chat.error':
+          console.error('[Trap] Chat error:', event.errorMessage)
+          break
       }
     })
     
