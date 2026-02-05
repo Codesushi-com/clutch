@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useTaskStore, type CreateTaskData } from "@/lib/stores/task-store"
-import type { TaskStatus } from "@/lib/db/types"
+import type { TaskStatus, TaskRole } from "@/lib/db/types"
 
 interface CreateTaskModalProps {
   open: boolean
@@ -29,6 +29,15 @@ const PRIORITIES = [
   { value: "urgent", label: "Urgent", color: "#ef4444" },
 ] as const
 
+const ROLES = [
+  { value: "any", label: "Any" },
+  { value: "pm", label: "PM" },
+  { value: "dev", label: "Dev" },
+  { value: "qa", label: "QA" },
+  { value: "research", label: "Research" },
+  { value: "security", label: "Security" },
+] as const
+
 export function CreateTaskModal({ 
   open, 
   onOpenChange, 
@@ -38,6 +47,7 @@ export function CreateTaskModal({
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium")
+  const [role, setRole] = useState<TaskRole | undefined>("any")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   
@@ -54,6 +64,7 @@ export function CreateTaskModal({
       description: description.trim() || undefined,
       status: initialStatus,
       priority,
+      role: role === "any" ? undefined : role,
     }
 
     try {
@@ -63,6 +74,7 @@ export function CreateTaskModal({
       setTitle("")
       setDescription("")
       setPriority("medium")
+      setRole("any")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create task")
     } finally {
@@ -132,6 +144,20 @@ export function CreateTaskModal({
                   </button>
                 ))}
               </div>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="role">Role</Label>
+              <select
+                id="role"
+                value={role || "any"}
+                onChange={(e) => setRole(e.target.value as TaskRole | undefined)}
+                className="flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] focus:ring-offset-2"
+              >
+                {ROLES.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
             </div>
           </div>
           

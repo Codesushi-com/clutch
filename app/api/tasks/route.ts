@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
     assignee,
     requires_human_review,
     tags,
+    role,
   } = body
   
   if (!project_id || !title) {
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
     created_at: now,
     updated_at: now,
     completed_at: null,
+    role: role || null,
   }
 
   db.prepare(`

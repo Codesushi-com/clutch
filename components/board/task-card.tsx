@@ -18,6 +18,22 @@ const PRIORITY_COLORS: Record<string, string> = {
   urgent: "#ef4444",
 }
 
+const ROLE_COLORS: Record<string, string> = {
+  pm: "#a855f7",
+  dev: "#3b82f6",
+  qa: "#22c55e",
+  research: "#f97316",
+  security: "#ef4444",
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  pm: "PM",
+  dev: "Dev",
+  qa: "QA",
+  research: "Research",
+  security: "Sec",
+}
+
 export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardProps) {
   // Get session status for in-progress tasks
   const shouldFetchSessionStatus = task.status === 'in_progress' && task.session_id
@@ -109,7 +125,17 @@ export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardPro
                 +{tags.length - 2}
               </span>
             )}
-            
+
+            {task.role && task.role !== "any" && (
+              <span 
+                className="px-1.5 py-0.5 text-xs rounded font-medium text-white"
+                style={{ backgroundColor: ROLE_COLORS[task.role] || "#52525b" }}
+                title={`Role: ${ROLE_LABELS[task.role] || task.role}`}
+              >
+                {ROLE_LABELS[task.role] || task.role}
+              </span>
+            )}
+
             {task.assignee && (
               <div 
                 className="ml-auto w-6 h-6 rounded-full bg-[var(--accent-purple)] flex items-center justify-center text-xs text-white font-medium"

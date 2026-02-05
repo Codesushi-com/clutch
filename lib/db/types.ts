@@ -19,6 +19,7 @@ export interface Project {
 
 export type TaskStatus = "backlog" | "ready" | "in_progress" | "review" | "done"
 export type TaskPriority = "low" | "medium" | "high" | "urgent"
+export type TaskRole = "any" | "pm" | "dev" | "qa" | "research" | "security"
 export type DispatchStatus = "pending" | "spawning" | "active" | "completed" | "failed"
 
 export interface Task {
@@ -28,6 +29,7 @@ export interface Task {
   description: string | null
   status: TaskStatus
   priority: TaskPriority
+  role: TaskRole | null
   assignee: string | null
   requires_human_review: number // SQLite boolean (0/1)
   tags: string | null // JSON array stored as text

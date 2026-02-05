@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { useTaskStore } from "@/lib/stores/task-store"
 import { CommentThread } from "./comment-thread"
 import { CommentInput } from "./comment-input"
-import type { Task, TaskStatus, TaskPriority, Comment, DispatchStatus } from "@/lib/db/types"
+import type { Task, TaskStatus, TaskPriority, TaskRole, Comment, DispatchStatus } from "@/lib/db/types"
 
 interface TaskModalProps {
   task: Task | null
@@ -30,6 +30,15 @@ const PRIORITY_OPTIONS: { value: TaskPriority; label: string; color: string }[] 
   { value: "urgent", label: "Urgent", color: "#ef4444" },
 ]
 
+const ROLES: { value: TaskRole; label: string }[] = [
+  { value: "any", label: "Any" },
+  { value: "pm", label: "PM" },
+  { value: "dev", label: "Dev" },
+  { value: "qa", label: "QA" },
+  { value: "research", label: "Research" },
+  { value: "security", label: "Security" },
+]
+
 const AGENT_OPTIONS = [
   { value: "", label: "Unassigned" },
   { value: "ada", label: "Ada (Coordinator)" },
@@ -43,6 +52,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   const [description, setDescription] = useState("")
   const [status, setStatus] = useState<TaskStatus>("backlog")
   const [priority, setPriority] = useState<TaskPriority>("medium")
+  const [role, setRole] = useState<TaskRole>("any")
   const [assignee, setAssignee] = useState("")
   const [requiresHumanReview, setRequiresHumanReview] = useState(false)
   const [tags, setTags] = useState("")
@@ -67,6 +77,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
       setDescription(task.description || "")
       setStatus(task.status)
       setPriority(task.priority)
+      setRole(task.role || "any")
       setAssignee(task.assignee || "")
       setRequiresHumanReview(!!task.requires_human_review)
       const taskTags = (() => {
@@ -133,6 +144,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
         description: description.trim() || null,
         status,
         priority,
+        role: role === "any" ? null : role,
         assignee: assignee || null,
         requires_human_review: requiresHumanReview ? 1 : 0,
         tags: tagArray.length > 0 ? JSON.stringify(tagArray) : null,
@@ -346,7 +358,23 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                   ))}
                 </select>
               </div>
-              
+
+              {/* Role */}
+              <div>
+                <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
+                  Role
+                </label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as TaskRole)}
+                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
+                >
+                  {ROLES.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Assignee */}
               <div>
                 <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">

@@ -27,6 +27,7 @@ addColumnIfNotExists("projects", "local_path", "TEXT")
 addColumnIfNotExists("projects", "github_repo", "TEXT")
 addColumnIfNotExists("projects", "work_loop_enabled", "INTEGER DEFAULT 0")
 addColumnIfNotExists("projects", "work_loop_schedule", "TEXT DEFAULT '*/5 * * * *'")
+addColumnIfNotExists("tasks", "role", "TEXT")
 
 // Now run schema.sql for new tables and indexes
 const schemaPath = path.join(__dirname, "../lib/db/schema.sql")

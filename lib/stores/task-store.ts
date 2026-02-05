@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Task, TaskStatus } from "@/lib/db/types"
+import type { Task, TaskStatus, TaskRole } from "@/lib/db/types"
 import type { WebSocketMessage } from "@/lib/websocket/server"
 
 interface TaskState {
@@ -31,6 +31,7 @@ export interface CreateTaskData {
   description?: string
   status?: TaskStatus
   priority?: "low" | "medium" | "high" | "urgent"
+  role?: TaskRole
   assignee?: string
   requires_human_review?: boolean
   tags?: string[]
