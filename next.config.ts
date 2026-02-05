@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
     "192.168.7.200",
     "ada.codesushi.com",
   ],
+  
+  // Instrumentation hook is enabled by default in Next.js 15+
+  // The instrumentation.ts file will be auto-detected
 };
 
 export default nextConfig;
