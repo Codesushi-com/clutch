@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import type { TaskSummary } from "@/lib/db/types"
+import type { TaskDependencySummary, TaskSummary } from "@/lib/db/types"
 
 interface DependenciesData {
-  depends_on: TaskSummary[]
+  depends_on: TaskDependencySummary[]
   blocks: TaskSummary[]
 }
 

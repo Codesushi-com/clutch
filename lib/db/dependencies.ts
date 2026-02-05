@@ -2,15 +2,20 @@
 import { db } from "@/lib/db"
 import type { TaskDependency, TaskSummary } from "@/lib/db/types"
 
+// Extended type that includes the dependency relationship ID
+export interface TaskDependencySummary extends TaskSummary {
+  dependency_id: string
+}
+
 // Get all tasks that this task depends on
-export function getTaskDependencies(taskId: string): TaskSummary[] {
+export function getTaskDependencies(taskId: string): TaskDependencySummary[] {
   const rows = db.prepare(`
-    SELECT t.id, t.title, t.status
+    SELECT t.id, t.title, t.status, td.id as dependency_id
     FROM tasks t
     JOIN task_dependencies td ON t.id = td.depends_on_id
     WHERE td.task_id = ?
     ORDER BY t.created_at DESC
-  `).all(taskId) as TaskSummary[]
+  `).all(taskId) as TaskDependencySummary[]
   
   return rows
 }
@@ -77,6 +82,14 @@ export function addDependency(taskId: string, dependsOnId: string): TaskDependen
 // Remove a dependency
 export function removeDependency(depId: string): boolean {
   const result = db.prepare("DELETE FROM task_dependencies WHERE id = ?").run(depId)
+  return result.changes > 0
+}
+
+// Remove a dependency by task relationship (alternative to using depId)
+export function removeDependencyByRelationship(taskId: string, dependsOnId: string): boolean {
+  const result = db.prepare(
+    "DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?"
+  ).run(taskId, dependsOnId)
   return result.changes > 0
 }
 

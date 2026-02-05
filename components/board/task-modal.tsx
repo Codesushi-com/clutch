@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle } from "lucide-react"
+import { useState, useEffect, useCallback } from "react"
+import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTaskStore } from "@/lib/stores/task-store"
 import { CommentThread } from "./comment-thread"
 import { CommentInput } from "./comment-input"
+import { DependencyPicker } from "./dependency-picker"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
-import type { Task, TaskStatus, TaskPriority, TaskRole, Comment, DispatchStatus } from "@/lib/db/types"
+import type { Task, TaskStatus, TaskPriority, TaskRole, Comment, DispatchStatus, TaskDependencySummary } from "@/lib/db/types"
 
 interface TaskModalProps {
   task: Task | null
@@ -68,13 +69,37 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   const [dispatchStatus, setDispatchStatus] = useState<DispatchStatus | null>(null)
   const [dispatching, setDispatching] = useState(false)
   
+  // Dependency picker state
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [removingDepId, setRemovingDepId] = useState<string | null>(null)
+  
   const updateTask = useTaskStore((s) => s.updateTask)
   const deleteTask = useTaskStore((s) => s.deleteTask)
 
   // Dependencies
-  const { dependencies } = useDependencies(task?.id || null)
+  const { dependencies, refresh: refreshDependencies } = useDependencies(task?.id || null)
   const dependsOn = dependencies.depends_on
   const blocks = dependencies.blocks
+
+  // Keyboard shortcut for dependency picker
+  useEffect(() => {
+    if (!open || !task) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 'd' key to open dependency picker (when not typing in an input)
+      if (e.key === 'd' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement
+        const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+        if (!isInput && !pickerOpen) {
+          e.preventDefault()
+          setPickerOpen(true)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [open, task, pickerOpen])
 
   // Load task data when modal opens
   useEffect(() => {
@@ -227,303 +252,373 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
     }
   }
 
+  // Add a dependency
+  const handleAddDependency = useCallback(async (dependsOnId: string) => {
+    if (!task) throw new Error("No task selected")
+
+    const response = await fetch(`/api/tasks/${task.id}/dependencies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ depends_on_id: dependsOnId }),
+    })
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to add dependency")
+    }
+
+    // Refresh dependencies
+    await refreshDependencies()
+  }, [task, refreshDependencies])
+
+  // Remove a dependency
+  const handleRemoveDependency = useCallback(async (depTask: TaskDependencySummary) => {
+    if (!task || removingDepId) return
+
+    setRemovingDepId(depTask.id)
+
+    try {
+      const deleteResponse = await fetch(
+        `/api/tasks/${task.id}/dependencies/${depTask.dependency_id}`,
+        { method: "DELETE" }
+      )
+
+      if (!deleteResponse.ok) {
+        const errorData = await deleteResponse.json()
+        throw new Error(errorData.error || "Failed to remove dependency")
+      }
+
+      await refreshDependencies()
+    } catch (error) {
+      console.error("Failed to remove dependency:", error)
+      throw error
+    } finally {
+      setRemovingDepId(null)
+    }
+  }, [task, removingDepId, refreshDependencies])
+
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleString()
   }
 
   const handleNavigateToTask = (taskId: string) => {
     // Close current modal and navigate to the dependency task
-    // This will trigger a re-fetch via the URL param handler in board/page.tsx
     window.history.pushState({}, '', `?task=${taskId}`)
     onOpenChange(false)
-    // Trigger a navigation event so the board page can handle it
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
 
   if (!open || !task) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={() => onOpenChange(false)}
-      />
-      
-      {/* Modal */}
-      <div className="relative bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
-        {/* Header */}
-        <div className="flex items-start justify-between p-4 border-b border-[var(--border)]">
-          <div className="flex-1 pr-4">
-            {/* Short ID */}
-            <div className="mb-2">
-              <span 
-                className="text-xs text-[var(--text-muted)] font-mono cursor-pointer hover:text-[var(--accent-blue)] transition-colors select-all"
-                title="Click to copy ID"
-                onClick={() => navigator.clipboard.writeText(task.id.substring(0, 8))}
-              >
-                #{task.id.substring(0, 8)}
-              </span>
-            </div>
-            
-            {/* Title */}
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-transparent text-xl font-semibold text-[var(--text-primary)] border-0 border-b border-transparent hover:border-[var(--border)] focus:border-[var(--accent-blue)] focus:outline-none px-0 py-1 transition-colors"
-              placeholder="Task title"
-            />
-            
-            {/* Status badge */}
-            <div className="mt-2 flex items-center gap-2">
-              <span 
-                className="px-2 py-0.5 rounded text-xs font-medium text-white"
-                style={{ backgroundColor: STATUS_OPTIONS.find(s => s.value === status)?.color }}
-              >
-                {STATUS_OPTIONS.find(s => s.value === status)?.label}
-              </span>
-              {requiresHumanReview && (
-                <span className="px-2 py-0.5 rounded text-xs font-medium bg-[var(--accent-red)] text-white">
-                  Needs Review
-                </span>
-              )}
-            </div>
-          </div>
-          
-          <button
-            onClick={() => onOpenChange(false)}
-            className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        {/* Backdrop */}
+        <div 
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          onClick={() => onOpenChange(false)}
+        />
         
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="flex gap-8">
-            {/* Main content */}
-            <div className="flex-1 space-y-4">
-              {/* Description */}
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
-                  Description
-                </label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Add a description..."
-                  className="w-full min-h-[200px] max-h-[400px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-y"
-                />
+        {/* Modal */}
+        <div className="relative bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
+          {/* Header */}
+          <div className="flex items-start justify-between p-4 border-b border-[var(--border)]">
+            <div className="flex-1 pr-4">
+              {/* Short ID */}
+              <div className="mb-2">
+                <span 
+                  className="text-xs text-[var(--text-muted)] font-mono cursor-pointer hover:text-[var(--accent-blue)] transition-colors select-all"
+                  title="Click to copy ID"
+                  onClick={() => navigator.clipboard.writeText(task.id.substring(0, 8))}
+                >
+                  #{task.id.substring(0, 8)}
+                </span>
               </div>
               
-              {/* Comments Section */}
-              <div className="border-t border-[var(--border)] pt-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <MessageSquare className="h-4 w-4 text-[var(--text-secondary)]" />
-                  <label className="text-sm font-medium text-[var(--text-secondary)]">
-                    Comments ({comments.length})
-                  </label>
-                </div>
-                
-                {loadingComments ? (
-                  <div className="text-sm text-[var(--text-muted)]">Loading comments...</div>
-                ) : (
-                  <>
-                    <div className="max-h-[500px] overflow-y-auto mb-4">
-                      <CommentThread comments={comments} />
-                    </div>
-                    <CommentInput onSubmit={handleAddComment} />
-                  </>
+              {/* Title */}
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full bg-transparent text-xl font-semibold text-[var(--text-primary)] border-0 border-b border-transparent hover:border-[var(--border)] focus:border-[var(--accent-blue)] focus:outline-none px-0 py-1 transition-colors"
+                placeholder="Task title"
+              />
+              
+              {/* Status badge */}
+              <div className="mt-2 flex items-center gap-2">
+                <span 
+                  className="px-2 py-0.5 rounded text-xs font-medium text-white"
+                  style={{ backgroundColor: STATUS_OPTIONS.find(s => s.value === status)?.color }}
+                >
+                  {STATUS_OPTIONS.find(s => s.value === status)?.label}
+                </span>
+                {requiresHumanReview && (
+                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-[var(--accent-red)] text-white">
+                    Needs Review
+                  </span>
                 )}
               </div>
             </div>
             
-            {/* Sidebar */}
-            <div className="w-64 space-y-4 flex-shrink-0">
-              {/* Status */}
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
-                  Status
-                </label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as TaskStatus)}
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
-              </div>
-              
-              {/* Priority */}
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
-                  Priority
-                </label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
-                >
-                  {PRIORITY_OPTIONS.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Role */}
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
-                  Role
-                </label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as TaskRole)}
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
-                >
-                  {ROLES.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Assignee */}
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
-                  Assignee
-                </label>
-                <select
-                  value={assignee}
-                  onChange={(e) => setAssignee(e.target.value)}
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
-                >
-                  {AGENT_OPTIONS.map((a) => (
-                    <option key={a.value} value={a.value}>{a.label}</option>
-                  ))}
-                </select>
-              </div>
-              
-              {/* Dispatch to Agent */}
-              {assignee && (
+            <button
+              onClick={() => onOpenChange(false)}
+              className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex gap-8">
+              {/* Main content */}
+              <div className="flex-1 space-y-4">
+                {/* Description */}
                 <div>
-                  <button
-                    onClick={handleDispatch}
-                    disabled={dispatching || dispatchStatus === "pending" || dispatchStatus === "active"}
-                    className="w-full flex items-center justify-center gap-2 bg-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/90 disabled:bg-[var(--bg-tertiary)] disabled:text-[var(--text-muted)] text-white px-3 py-2 rounded text-sm font-medium transition-colors"
-                  >
-                    {dispatching ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Dispatching...
-                      </>
-                    ) : dispatchStatus === "pending" ? (
-                      <>
-                        <Clock className="h-4 w-4" />
-                        Pending Dispatch
-                      </>
-                    ) : dispatchStatus === "active" ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Agent Working
-                      </>
-                    ) : (
-                      <>
-                        <Send className="h-4 w-4" />
-                        Dispatch to Agent
-                      </>
-                    )}
-                  </button>
-                  {dispatchStatus && (
-                    <p className="text-xs text-[var(--text-muted)] mt-1 text-center">
-                      Status: {dispatchStatus}
-                    </p>
+                  <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
+                    Description
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Add a description..."
+                    className="w-full min-h-[200px] max-h-[400px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-y"
+                  />
+                </div>
+                
+                {/* Comments Section */}
+                <div className="border-t border-[var(--border)] pt-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <MessageSquare className="h-4 w-4 text-[var(--text-secondary)]" />
+                    <label className="text-sm font-medium text-[var(--text-secondary)]">
+                      Comments ({comments.length})
+                    </label>
+                  </div>
+                  
+                  {loadingComments ? (
+                    <div className="text-sm text-[var(--text-muted)]">Loading comments...</div>
+                  ) : (
+                    <>
+                      <div className="max-h-[500px] overflow-y-auto mb-4">
+                        <CommentThread comments={comments} />
+                      </div>
+                      <CommentInput onSubmit={handleAddComment} />
+                    </>
                   )}
                 </div>
-              )}
-              
-              {/* Tags */}
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
-                  Tags
-                </label>
-                <input
-                  value={tags}
-                  onChange={(e) => setTags(e.target.value)}
-                  placeholder="tag1, tag2, tag3"
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)]"
-                />
               </div>
               
-              {/* Human Review Toggle */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="human-review"
-                  checked={requiresHumanReview}
-                  onChange={(e) => setRequiresHumanReview(e.target.checked)}
-                  className="rounded border-[var(--border)] bg-[var(--bg-primary)]"
-                />
-                <label htmlFor="human-review" className="text-sm text-[var(--text-primary)]">
-                  Needs human review
-                </label>
-              </div>
-              
-              {/* Timestamps */}
-              <div className="border-t border-[var(--border)] pt-4 space-y-2 text-xs text-[var(--text-muted)]">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-3 w-3" />
-                  Created: {formatDate(task.created_at)}
+              {/* Sidebar */}
+              <div className="w-64 space-y-4 flex-shrink-0">
+                {/* Status */}
+                <div>
+                  <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
+                    Status
+                  </label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as TaskStatus)}
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
+                  >
+                    {STATUS_OPTIONS.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-3 w-3" />
-                  Updated: {formatDate(task.updated_at)}
+                
+                {/* Priority */}
+                <div>
+                  <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
+                    Priority
+                  </label>
+                  <select
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value as TaskPriority)}
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
+                  >
+                    {PRIORITY_OPTIONS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
 
-              {/* Dependencies Section */}
-              {(dependsOn.length > 0 || blocks.length > 0) && (
+                {/* Role */}
+                <div>
+                  <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
+                    Role
+                  </label>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as TaskRole)}
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
+                  >
+                    {ROLES.map((r) => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Assignee */}
+                <div>
+                  <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
+                    Assignee
+                  </label>
+                  <select
+                    value={assignee}
+                    onChange={(e) => setAssignee(e.target.value)}
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
+                  >
+                    {AGENT_OPTIONS.map((a) => (
+                      <option key={a.value} value={a.value}>{a.label}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                {/* Dispatch to Agent */}
+                {assignee && (
+                  <div>
+                    <button
+                      onClick={handleDispatch}
+                      disabled={dispatching || dispatchStatus === "pending" || dispatchStatus === "active"}
+                      className="w-full flex items-center justify-center gap-2 bg-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/90 disabled:bg-[var(--bg-tertiary)] disabled:text-[var(--text-muted)] text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+                    >
+                      {dispatching ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Dispatching...
+                        </>
+                      ) : dispatchStatus === "pending" ? (
+                        <>
+                          <Clock className="h-4 w-4" />
+                          Pending Dispatch
+                        </>
+                      ) : dispatchStatus === "active" ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Agent Working
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4" />
+                          Dispatch to Agent
+                        </>
+                      )}
+                    </button>
+                    {dispatchStatus && (
+                      <p className="text-xs text-[var(--text-muted)] mt-1 text-center">
+                        Status: {dispatchStatus}
+                      </p>
+                    )}
+                  </div>
+                )}
+                
+                {/* Tags */}
+                <div>
+                  <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
+                    Tags
+                  </label>
+                  <input
+                    value={tags}
+                    onChange={(e) => setTags(e.target.value)}
+                    placeholder="tag1, tag2, tag3"
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)]"
+                  />
+                </div>
+                
+                {/* Human Review Toggle */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="human-review"
+                    checked={requiresHumanReview}
+                    onChange={(e) => setRequiresHumanReview(e.target.checked)}
+                    className="rounded border-[var(--border)] bg-[var(--bg-primary)]"
+                  />
+                  <label htmlFor="human-review" className="text-sm text-[var(--text-primary)]">
+                    Needs human review
+                  </label>
+                </div>
+                
+                {/* Timestamps */}
+                <div className="border-t border-[var(--border)] pt-4 space-y-2 text-xs text-[var(--text-muted)]">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-3 w-3" />
+                    Created: {formatDate(task.created_at)}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-3 w-3" />
+                    Updated: {formatDate(task.updated_at)}
+                  </div>
+                </div>
+
+                {/* Dependencies Section */}
                 <div className="border-t border-[var(--border)] pt-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Link2 className="h-4 w-4 text-[var(--text-secondary)]" />
-                    <span className="text-sm font-medium text-[var(--text-secondary)]">
-                      Dependencies
-                    </span>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Link2 className="h-4 w-4 text-[var(--text-secondary)]" />
+                      <span className="text-sm font-medium text-[var(--text-secondary)]">
+                        Dependencies
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setPickerOpen(true)}
+                      className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-blue)] rounded transition-colors"
+                      title="Add dependency (d)"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
                   </div>
 
                   {/* Depends On */}
-                  {dependsOn.length > 0 && (
+                  {dependsOn.length > 0 ? (
                     <div className="mb-4">
                       <span className="text-xs text-[var(--text-muted)] block mb-2">
                         Depends on
                       </span>
                       <div className="space-y-1.5">
                         {dependsOn.map((dep) => (
-                          <button
+                          <div
                             key={dep.id}
-                            onClick={() => handleNavigateToTask(dep.id)}
-                            className="w-full flex items-center gap-2 p-2 rounded bg-[var(--bg-primary)] hover:bg-[var(--bg-tertiary)] transition-colors text-left"
+                            className="flex items-center gap-2 p-2 rounded bg-[var(--bg-primary)] group"
                           >
-                            {dep.status === 'done' ? (
-                              <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
-                            ) : (
-                              <Circle className="h-4 w-4 text-amber-500 flex-shrink-0" />
-                            )}
-                            <span className="text-sm text-[var(--text-primary)] line-clamp-1 flex-1">
-                              {dep.title}
-                            </span>
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${
-                              dep.status === 'done' 
-                                ? 'bg-green-500/20 text-green-500' 
-                                : 'bg-amber-500/20 text-amber-500'
-                            }`}>
-                              {dep.status === 'done' ? '✓' : '⏳'}
-                            </span>
-                          </button>
+                            <button
+                              onClick={() => handleNavigateToTask(dep.id)}
+                              className="flex items-center gap-2 flex-1 text-left min-w-0"
+                            >
+                              {dep.status === 'done' ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                              ) : (
+                                <Circle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                              )}
+                              <span className="text-sm text-[var(--text-primary)] line-clamp-1">
+                                {dep.title}
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => handleRemoveDependency(dep)}
+                              disabled={removingDepId === dep.id}
+                              className="p-1 text-[var(--text-muted)] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                              title="Remove dependency"
+                            >
+                              {removingDepId === dep.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <X className="h-3 w-3" />
+                              )}
+                            </button>
+                          </div>
                         ))}
                       </div>
+                    </div>
+                  ) : (
+                    <div className="mb-4">
+                      <span className="text-xs text-[var(--text-muted)] block mb-2">
+                        Depends on
+                      </span>
+                      <p className="text-sm text-[var(--text-muted)] italic">
+                        No dependencies
+                      </p>
                     </div>
                   )}
 
@@ -543,7 +638,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                             <Link2 className="h-4 w-4 text-[var(--accent-blue)] flex-shrink-0 rotate-45" />
                             <span className="text-sm text-[var(--text-primary)] line-clamp-1 flex-1">
                               {blocked.title}
-                            </span>
+                              </span>
                             <span 
                               className="w-2 h-2 rounded-full flex-shrink-0"
                               style={{ 
@@ -561,59 +656,69 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Footer */}
+          <div className="flex items-center justify-between p-4 border-t border-[var(--border)]">
+            <div>
+              {!showDeleteConfirm ? (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="flex items-center gap-2 text-sm text-red-500 hover:text-red-400 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-red-500">Are you sure?</span>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={handleDelete}
+                  >
+                    Delete
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowDeleteConfirm(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
               )}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={saving || !title.trim()}
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </Button>
             </div>
           </div>
         </div>
-        
-        {/* Footer */}
-        <div className="flex items-center justify-between p-4 border-t border-[var(--border)]">
-          <div>
-            {!showDeleteConfirm ? (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="flex items-center gap-2 text-sm text-red-500 hover:text-red-400 transition-colors"
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-red-500">Are you sure?</span>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={handleDelete}
-                >
-                  Delete
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowDeleteConfirm(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={saving || !title.trim()}
-            >
-              {saving ? "Saving..." : "Save Changes"}
-            </Button>
-          </div>
-        </div>
       </div>
-    </div>
+
+      {/* Dependency Picker */}
+      <DependencyPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        task={task}
+        currentProjectId={task.project_id}
+        existingDependencyIds={dependsOn.map(d => d.id)}
+        onAddDependency={handleAddDependency}
+      />
+    </>
   )
 }

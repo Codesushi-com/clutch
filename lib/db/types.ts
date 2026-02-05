@@ -189,3 +189,8 @@ export interface TaskSummary {
   title: string
   status: TaskStatus
 }
+
+// Task summary with dependency relationship ID for managing dependencies
+export interface TaskDependencySummary extends TaskSummary {
+  dependency_id: string
+}
