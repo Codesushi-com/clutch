@@ -2,6 +2,7 @@
 
 import { Draggable } from "@hello-pangea/dnd"
 import type { Task } from "@/lib/db/types"
+import { useSingleSessionStatus, getSessionStatusIndicator } from "@/lib/hooks/use-session-status"
 
 interface TaskCardProps {
   task: Task
@@ -18,6 +19,11 @@ const PRIORITY_COLORS: Record<string, string> = {
 }
 
 export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardProps) {
+  // Get session status for in-progress tasks
+  const shouldFetchSessionStatus = task.status === 'in_progress' && task.session_id
+  const { sessionStatus } = useSingleSessionStatus(shouldFetchSessionStatus ? task.session_id || undefined : undefined)
+  const sessionIndicator = getSessionStatusIndicator(sessionStatus || undefined)
+
   const tags = (() => {
     if (!task.tags) return []
     try {
@@ -69,9 +75,23 @@ export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardPro
               style={{ backgroundColor: PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.medium }}
               title={`Priority: ${task.priority}`}
             />
-            <span className="text-sm text-[var(--text-primary)] line-clamp-2">
+            <span className="text-sm text-[var(--text-primary)] line-clamp-2 flex-1">
               {task.title}
             </span>
+            {/* Session status indicator for in-progress tasks */}
+            {task.status === 'in_progress' && (
+              <div 
+                className="flex-shrink-0 text-sm cursor-help"
+                style={{ color: sessionIndicator.color }}
+                title={sessionIndicator.title}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  // TODO: Could open session detail view here
+                }}
+              >
+                {sessionIndicator.emoji}
+              </div>
+            )}
           </div>
           
           {/* Tags + Assignee */}

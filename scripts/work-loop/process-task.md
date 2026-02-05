@@ -16,11 +16,14 @@ You are processing a task from the automated work loop for project **{project_na
 
 ## Instructions
 
-1. **Move task to in_progress status:**
+1. **Move task to in_progress status and claim with session ID:**
    ```bash
+   # Get current session key from environment
+   SESSION_KEY="${SESSION_KEY:-$(echo $OPENCLAW_SESSION_KEY)}"
+   
    curl -s -X PATCH http://localhost:3002/api/tasks/{task_id} \
      -H 'Content-Type: application/json' \
-     -d '{"status": "in_progress", "dispatch_status": "active"}'
+     -d "{\"status\": \"in_progress\", \"dispatch_status\": \"active\", \"session_id\": \"$SESSION_KEY\"}"
    ```
 
 2. **Work in the project directory:**
