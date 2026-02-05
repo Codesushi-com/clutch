@@ -256,18 +256,26 @@ export default function ChatPage({ params }: PageProps) {
     
     const pollSubagents = async () => {
       try {
-        const response = await listSessions({ limit: 10 })
+        // Increase limit to catch more sessions
+        const response = await listSessions({ limit: 50 })
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sessions = response.sessions as any[]
         const fiveMinutesAgo = Date.now() - 5 * 60 * 1000
         
+        // Debug logging to understand what sessions we're getting
+        console.log("[Chat] Sessions fetched:", sessions?.length || 0)
+        const cronSessions = sessions?.filter(s => s.key?.includes(":cron:")) || []
+        console.log("[Chat] Cron sessions found:", cronSessions.length, cronSessions.map(s => ({ key: s.key, updatedAt: s.updatedAt })))
+        
         // Filter for sessions that are:
         // 1. Spawned by main session (sub-agents)
         // 2. Updated in the last 5 minutes (still active)
+        // 3. NOT cron sessions (those are handled separately)
         const subagents = (sessions || [])
           .filter((s) => 
             s.spawnedBy === "agent:main:main" && 
-            s.updatedAt && s.updatedAt > fiveMinutesAgo
+            s.updatedAt && s.updatedAt > fiveMinutesAgo &&
+            !s.key?.includes(":cron:") // Exclude cron sessions
           )
           .map((s) => {
             // Calculate runtime if we have creation time
@@ -292,17 +300,16 @@ export default function ChatPage({ params }: PageProps) {
             }
           })
 
-        // Filter for cron sessions
-        // Identify cron sessions by their key pattern: agent:main:cron:UUID:trap-*
-        // We specifically look for trap-related cron jobs
+        // Filter for ALL cron sessions that are recently active
+        // Pattern: agent:main:cron:JOB_ID:LABEL or agent:main:cron:JOB_ID
         const crons = (sessions || [])
           .filter((s) => {
-            // Look for sessions with cron in their key that are recently active
             const isRecentlyActive = s.updatedAt && s.updatedAt > fiveMinutesAgo
-            const isCronSession = s.key && s.key.includes(":cron:")
-            const isTrapCron = s.key && s.key.includes(":trap-")
+            const isCronSession = s.key?.includes(":cron:")
             
-            return isRecentlyActive && isCronSession && isTrapCron
+            console.log(`[Chat] Checking session ${s.key}: active=${isRecentlyActive}, cron=${isCronSession}`)
+            
+            return isRecentlyActive && isCronSession
           })
           .map((s) => {
             // Calculate runtime if we have creation time
@@ -314,16 +321,20 @@ export default function ChatPage({ params }: PageProps) {
               runtime = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
             }
             
-            // Extract meaningful label from trap cron session key
+            // Extract meaningful label from cron session key
             let cronLabel = s.label
             if (!cronLabel && s.key) {
               // Pattern: agent:main:cron:JOB_ID:trap-TASK_ID
               const trapTaskMatch = s.key.match(/:trap-(.+)$/)
               if (trapTaskMatch) {
                 cronLabel = `Trap: ${trapTaskMatch[1]}`
+              } else if (s.key.match(/:trap-pr-review-/)) {
+                const prMatch = s.key.match(/:trap-pr-review-(\d+)$/)
+                cronLabel = prMatch ? `Trap PR Review #${prMatch[1]}` : "Trap PR Review"
               } else {
+                // Generic cron job - extract job ID
                 const cronIdMatch = s.key.match(/:cron:([^:]+)/)
-                cronLabel = cronIdMatch ? `Cron Job ${cronIdMatch[1].substring(0, 8)}...` : s.key
+                cronLabel = cronIdMatch ? `Cron Job ${cronIdMatch[1].substring(0, 8)}...` : "Cron Job"
               }
             }
             
@@ -340,6 +351,7 @@ export default function ChatPage({ params }: PageProps) {
             }
           })
 
+        console.log(`[Chat] Active subagents: ${subagents.length}, Active crons: ${crons.length}`)
         setActiveSubagents(subagents)
         setActiveCrons(crons)
       } catch (err) {
