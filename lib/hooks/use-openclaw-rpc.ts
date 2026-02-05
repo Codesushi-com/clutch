@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { useOpenClawWS } from "@/lib/providers/openclaw-ws-provider";
+import { useSessionStore } from "@/lib/stores/session-store";
 import { SessionListResponse, SessionListParams, SessionPreview, AgentListResponse, AgentListParams, AgentDetail, SessionType, Session } from "@/lib/types";
 
 export function useOpenClawRpc() {
@@ -221,8 +222,57 @@ export function useOpenClawRpc() {
   }, [rpc, listAgents]);
 
   // Get session preview with history
-  const getSessionPreview = useCallback(async (sessionKey: string, limit?: number) => {
-    return rpc<SessionPreview>("sessions.preview", { keys: [sessionKey], limit: limit || 50 });
+  const getSessionPreview = useCallback(async (sessionKey: string, limit?: number): Promise<SessionPreview> => {
+    // The API returns { ts: number, previews: Array<{ key, status, items }> }
+    // We need to transform this into our SessionPreview format
+    type PreviewResponse = {
+      ts: number;
+      previews: Array<{
+        key: string;
+        status: "ok" | "empty" | "missing" | "error";
+        items: Array<{ role: string; text: string; model?: string }>;
+      }>;
+    };
+
+    const response = await rpc<PreviewResponse>("sessions.preview", { keys: [sessionKey], limit: limit || 50 });
+
+    const previewEntry = response.previews?.[0];
+
+    if (!previewEntry || previewEntry.status === "missing") {
+      throw new Error(`Session "${sessionKey}" not found`);
+    }
+
+    if (previewEntry.status === "error") {
+      throw new Error(`Failed to load session "${sessionKey}"`);
+    }
+
+    // Transform items into SessionMessage format
+    const messages: SessionPreview["messages"] = previewEntry.items.map((item, index) => ({
+      id: `${sessionKey}-msg-${index}`,
+      role: item.role === "user" || item.role === "assistant" || item.role === "system"
+        ? item.role
+        : "assistant", // Default to assistant for tool/other roles
+      content: item.text,
+      timestamp: new Date().toISOString(), // Preview items don't include timestamps
+    }));
+
+    // Get session data from the store to build the Session object
+    const session = useSessionStore.getState().getSessionById(sessionKey);
+
+    return {
+      session: session || {
+        id: sessionKey,
+        name: sessionKey.split(":").pop() || sessionKey,
+        type: "main",
+        model: previewEntry.items.find(i => i.model)?.model || "unknown",
+        status: "idle",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        tokens: { input: 0, output: 0, total: 0 },
+      },
+      messages,
+      contextPercentage: 0, // Would need additional API call to calculate this
+    };
   }, [rpc]);
 
   // Reset session
