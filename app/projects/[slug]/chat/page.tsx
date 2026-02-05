@@ -6,7 +6,6 @@ import { useChatStore } from "@/lib/stores/chat-store"
 import { useChatEvents } from "@/lib/hooks/use-chat-events"
 import { useOpenClawChat } from "@/lib/hooks/use-openclaw-chat"
 import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
-import { useChatSSE } from "@/lib/hooks/use-chat-sse"
 import { useSettings } from "@/lib/hooks/use-settings"
 import { ChatSidebar } from "@/components/chat/chat-sidebar"
 import { ChatThread } from "@/components/chat/chat-thread"
@@ -128,74 +127,9 @@ export default function ChatPage({ params }: PageProps) {
     onTypingEnd: handleOpenClawTypingEnd,
   })
 
-  // SSE connection for RECEIVING messages from Trap backend
-  // This is more reliable than direct OpenClaw WS (handles tab switches, deduplication)
-  const handleSSEMessage = useCallback((msg: { id: string; author: string; content: string; runId?: string }) => {
-    if (!activeChat) return
-    
-    // Clear streaming message if this completes it
-    if (msg.runId && streamingMessages[activeChat.id]?.runId === msg.runId) {
-      clearStreamingMessage(activeChat.id)
-    }
-    
-    // Receive the message into the store (will dedupe by id)
-    receiveMessage(activeChat.id, {
-      id: msg.id,
-      chat_id: activeChat.id,
-      author: msg.author,
-      content: msg.content,
-      run_id: msg.runId,
-      created_at: Date.now()
-    })
-    
-    // Clear typing indicator
-    setTyping(activeChat.id, msg.author, false)
-  }, [activeChat, streamingMessages, clearStreamingMessage, receiveMessage, setTyping])
+  // Note: SSE message handling now consolidated via useChatEvents hook
 
-  const handleSSETypingStart = useCallback(() => {
-    if (activeChat) {
-      setTyping(activeChat.id, "ada", "thinking")
-    }
-  }, [activeChat, setTyping])
-
-  const handleSSETypingEnd = useCallback(() => {
-    if (activeChat) {
-      setTyping(activeChat.id, "ada", false)
-    }
-  }, [activeChat, setTyping])
-
-  const handleSSEDelta = useCallback((delta: string, runId?: string) => {
-    if (!activeChat) return
-    
-    // Switch from "thinking" to "typing" on first delta
-    setTyping(activeChat.id, "ada", "typing")
-    
-    // Handle streaming if enabled
-    if (settings.streamingEnabled && runId) {
-      if (!streamingMessages[activeChat.id] || streamingMessages[activeChat.id].runId !== runId) {
-        startStreamingMessage(activeChat.id, runId, "ada")
-      }
-      appendToStreamingMessage(activeChat.id, delta)
-    }
-  }, [activeChat, setTyping, settings.streamingEnabled, streamingMessages, startStreamingMessage, appendToStreamingMessage])
-
-  // Refresh messages when tab becomes visible (fetch any we missed while away)
-  const handleRefreshNeeded = useCallback(() => {
-    if (activeChat) {
-      console.log('[Chat] Refreshing messages after tab switch')
-      refreshMessages(activeChat.id)
-    }
-  }, [activeChat, refreshMessages])
-
-  // SSE subscription for current chat
-  const { connected: sseConnected, isTyping: sseIsTyping } = useChatSSE({
-    chatId: activeChat?.id || null,
-    onMessage: handleSSEMessage,
-    onTypingStart: handleSSETypingStart,
-    onTypingEnd: handleSSETypingEnd,
-    onDelta: handleSSEDelta,
-    onRefreshNeeded: handleRefreshNeeded,
-  })
+  // SSE subscription via useChatEvents (consolidated)
 
   // Sub-agent monitoring via RPC
   const { connected: rpcConnected, listSessions, getSessionPreview, getGatewayStatus } = useOpenClawRpc()

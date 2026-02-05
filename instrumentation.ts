@@ -10,7 +10,7 @@ export async function register() {
     
     // Initialize OpenClaw WebSocket client
     const { initializeOpenClawClient } = await import('@/lib/openclaw')
-    const { chatEvents } = await import('@/lib/sse/chat-events')
+    const { broadcastToChat } = await import('@/lib/sse/connections')
     const { findChatBySessionKey, saveOpenClawMessage } = await import('@/lib/db/messages')
     
     const client = initializeOpenClawClient()
@@ -28,16 +28,25 @@ export async function register() {
       // Handle different event types
       switch (event.type) {
         case 'chat.typing.start':
-          chatEvents.emitTypingStart(chatId)
+          broadcastToChat(chatId, {
+            type: 'typing',
+            data: { chatId, author: 'ada', typing: true }
+          })
           break
           
         case 'chat.typing.end':
-          chatEvents.emitTypingEnd(chatId)
+          broadcastToChat(chatId, {
+            type: 'typing',
+            data: { chatId, author: 'ada', typing: false }
+          })
           break
           
         case 'chat.delta':
           if (event.delta) {
-            chatEvents.emitDelta(chatId, event.delta, event.runId)
+            broadcastToChat(chatId, {
+              type: 'delta',
+              data: { delta: event.delta, runId: event.runId, timestamp: Date.now() }
+            })
           }
           break
           
@@ -60,7 +69,17 @@ export async function register() {
                     .join('\n')
               
               const author = event.message.role === 'assistant' ? 'ada' : event.message.role
-              chatEvents.emitMessage(chatId, messageId, author, content, event.runId)
+              broadcastToChat(chatId, {
+                type: 'message',
+                data: {
+                  id: messageId,
+                  chat_id: chatId,
+                  author,
+                  content,
+                  run_id: event.runId,
+                  created_at: Date.now()
+                }
+              })
             }
           }
           break
