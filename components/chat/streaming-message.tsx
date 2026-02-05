@@ -11,14 +11,6 @@ interface StreamingMessageProps {
   isOwnMessage?: boolean
 }
 
-const AUTHOR_COLORS: Record<string, string> = {
-  ada: "#a855f7",
-  "kimi-coder": "#3b82f6",
-  "sonnet-reviewer": "#22c55e",
-  "haiku-triage": "#eab308",
-  dan: "#ef4444",
-}
-
 const AUTHOR_NAMES: Record<string, string> = {
   ada: "Ada",
   "kimi-coder": "Kimi",
@@ -33,7 +25,6 @@ export function StreamingMessage({
   timestamp, 
   isOwnMessage = false,
 }: StreamingMessageProps) {
-  const authorColor = AUTHOR_COLORS[author] || "#52525b"
   const authorName = AUTHOR_NAMES[author] || author
 
   return (

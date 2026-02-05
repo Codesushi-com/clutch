@@ -34,7 +34,7 @@ const WIZARD_STEPS: WizardStep[] = [
   {
     id: 'soul',
     title: 'Soul Template',
-    description: 'Define your agent\'s personality and behavior',
+    description: 'Define your agent&apos;s personality and behavior',
     icon: Sparkles,
   },
   {
@@ -398,7 +398,7 @@ export default function CreateAgentWizard({ onClose, onSuccess }: CreateAgentWiz
                 />
                 {errors.soul && <p className="text-sm text-red-500">{errors.soul}</p>}
                 <p className="text-xs text-muted-foreground">
-                  This will be saved as the agent's SOUL.md file. You can edit it later.
+                  This will be saved as the agent&apos;s SOUL.md file. You can edit it later.
                 </p>
               </div>
             </div>

@@ -3,7 +3,7 @@
 /**
  * Sessions List Component
  * Reusable component for displaying sessions with optional project filtering
- * Used by both home /sessions page and project-specific /projects/[slug]/sessions pages
+ * Used by the global /sessions page and can be filtered by project
  */
 
 import { useEffect, useCallback, useRef } from 'react';

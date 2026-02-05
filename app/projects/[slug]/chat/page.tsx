@@ -4,7 +4,7 @@ import { useEffect, useState, use, useCallback } from "react"
 import { MessageSquare, Menu } from "lucide-react"
 import { useChatStore } from "@/lib/stores/chat-store"
 import { useChatEvents } from "@/lib/hooks/use-chat-events"
-import { useOpenClawChat } from "@/lib/hooks/use-openclaw-chat"
+import { useOpenClawWS } from "@/lib/providers/openclaw-ws-provider"
 import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
 import { useSettings } from "@/lib/hooks/use-settings"
 import { ChatSidebar } from "@/components/chat/chat-sidebar"
@@ -122,13 +122,53 @@ export default function ChatPage({ params }: PageProps) {
 
   // OpenClaw WebSocket - PRIMARY for both sending AND receiving
   // SSE is BACKUP for tab switch recovery
-  const { connected: openClawConnected, sendMessage: sendToOpenClaw, abortChat } = useOpenClawChat({
-    sessionKey,
-    onMessage: handleOpenClawMessage,
-    onDelta: handleOpenClawDelta,
-    onTypingStart: () => handleOpenClawTyping(true, "thinking"),
-    onTypingEnd: () => handleOpenClawTyping(false),
-  })
+  const { status, sendChatMessage, subscribe, rpc } = useOpenClawWS()
+  const openClawConnected = status === 'connected'
+
+  // Subscribe to OpenClaw events (replaces useOpenClawChat hook)
+  useEffect(() => {
+    const unsubscribers = [
+      subscribe('chat.typing.start', (data: { runId: string; sessionKey?: string }) => {
+        // Only handle events for our session or global events
+        if (!data.sessionKey || data.sessionKey === sessionKey) {
+          handleOpenClawTyping(true, "thinking")
+        }
+      }),
+      
+      subscribe('chat.typing.end', (data: { sessionKey?: string } | undefined) => {
+        // Only handle events for our session or global events
+        if (!data?.sessionKey || data.sessionKey === sessionKey) {
+          handleOpenClawTyping(false)
+        }
+      }),
+      
+      subscribe('chat.delta', ({ delta, runId, sessionKey: eventSessionKey }: { delta: string; runId: string; sessionKey?: string }) => {
+        // Only handle events for our session or global events
+        if (!eventSessionKey || eventSessionKey === sessionKey) {
+          handleOpenClawDelta(delta, runId)
+        }
+      }),
+      
+      subscribe('chat.message', ({ message, runId, sessionKey: eventSessionKey }: { message: { role: string; content: string | Array<{ type: string; text?: string }> }; runId: string; sessionKey?: string }) => {
+        // Only handle events for our session or global events
+        if (!eventSessionKey || eventSessionKey === sessionKey) {
+          handleOpenClawMessage(message, runId)
+        }
+      }),
+      
+      subscribe('chat.error', ({ error, sessionKey: eventSessionKey }: { error: string; runId: string; sessionKey?: string }) => {
+        // Only handle events for our session or global events
+        if (!eventSessionKey || eventSessionKey === sessionKey) {
+          console.error('[Chat] OpenClaw chat error:', error)
+          handleOpenClawTyping(false)
+        }
+      })
+    ]
+
+    return () => {
+      unsubscribers.forEach(unsub => unsub())
+    }
+  }, [subscribe, sessionKey, handleOpenClawMessage, handleOpenClawDelta, handleOpenClawTyping])
 
   // TYPING INDICATOR FLOW (simplified):
   // 1. PRIMARY: OpenClaw WebSocket → handleOpenClawTyping() → setTyping() 
@@ -256,18 +296,26 @@ export default function ChatPage({ params }: PageProps) {
     
     const pollSubagents = async () => {
       try {
-        const response = await listSessions({ limit: 10 })
+        // Increase limit to catch more sessions
+        const response = await listSessions({ limit: 50 })
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sessions = response.sessions as any[]
         const fiveMinutesAgo = Date.now() - 5 * 60 * 1000
         
+        // Debug logging to understand what sessions we're getting
+        console.log("[Chat] Sessions fetched:", sessions?.length || 0)
+        const cronSessions = sessions?.filter(s => s.key?.includes(":cron:")) || []
+        console.log("[Chat] Cron sessions found:", cronSessions.length, cronSessions.map(s => ({ key: s.key, updatedAt: s.updatedAt })))
+        
         // Filter for sessions that are:
         // 1. Spawned by main session (sub-agents)
         // 2. Updated in the last 5 minutes (still active)
+        // 3. NOT cron sessions (those are handled separately)
         const subagents = (sessions || [])
           .filter((s) => 
             s.spawnedBy === "agent:main:main" && 
-            s.updatedAt && s.updatedAt > fiveMinutesAgo
+            s.updatedAt && s.updatedAt > fiveMinutesAgo &&
+            !s.key?.includes(":cron:") // Exclude cron sessions
           )
           .map((s) => {
             // Calculate runtime if we have creation time
@@ -292,17 +340,16 @@ export default function ChatPage({ params }: PageProps) {
             }
           })
 
-        // Filter for cron sessions
-        // Identify cron sessions by their key pattern: agent:main:cron:UUID:trap-*
-        // We specifically look for trap-related cron jobs
+        // Filter for ALL cron sessions that are recently active
+        // Pattern: agent:main:cron:JOB_ID:LABEL or agent:main:cron:JOB_ID
         const crons = (sessions || [])
           .filter((s) => {
-            // Look for sessions with cron in their key that are recently active
             const isRecentlyActive = s.updatedAt && s.updatedAt > fiveMinutesAgo
-            const isCronSession = s.key && s.key.includes(":cron:")
-            const isTrapCron = s.key && s.key.includes(":trap-")
+            const isCronSession = s.key?.includes(":cron:")
             
-            return isRecentlyActive && isCronSession && isTrapCron
+            console.log(`[Chat] Checking session ${s.key}: active=${isRecentlyActive}, cron=${isCronSession}`)
+            
+            return isRecentlyActive && isCronSession
           })
           .map((s) => {
             // Calculate runtime if we have creation time
@@ -314,16 +361,20 @@ export default function ChatPage({ params }: PageProps) {
               runtime = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
             }
             
-            // Extract meaningful label from trap cron session key
+            // Extract meaningful label from cron session key
             let cronLabel = s.label
             if (!cronLabel && s.key) {
               // Pattern: agent:main:cron:JOB_ID:trap-TASK_ID
               const trapTaskMatch = s.key.match(/:trap-(.+)$/)
               if (trapTaskMatch) {
                 cronLabel = `Trap: ${trapTaskMatch[1]}`
+              } else if (s.key.match(/:trap-pr-review-/)) {
+                const prMatch = s.key.match(/:trap-pr-review-(\d+)$/)
+                cronLabel = prMatch ? `Trap PR Review #${prMatch[1]}` : "Trap PR Review"
               } else {
+                // Generic cron job - extract job ID
                 const cronIdMatch = s.key.match(/:cron:([^:]+)/)
-                cronLabel = cronIdMatch ? `Cron Job ${cronIdMatch[1].substring(0, 8)}...` : s.key
+                cronLabel = cronIdMatch ? `Cron Job ${cronIdMatch[1].substring(0, 8)}...` : "Cron Job"
               }
             }
             
@@ -340,6 +391,7 @@ export default function ChatPage({ params }: PageProps) {
             }
           })
 
+        console.log(`[Chat] Active subagents: ${subagents.length}, Active crons: ${crons.length}`)
         setActiveSubagents(subagents)
         setActiveCrons(crons)
       } catch (err) {
@@ -463,8 +515,8 @@ export default function ChatPage({ params }: PageProps) {
     if (openClawConnected) {
       try {
         console.log("[Chat] Sending to OpenClaw, sessionKey:", sessionKey)
-        const runId = await sendToOpenClaw(openClawMessage, activeChat.id)
-        console.log("[Chat] sendToOpenClaw returned runId:", runId)
+        const runId = await sendChatMessage(openClawMessage, sessionKey, activeChat.id)
+        console.log("[Chat] sendChatMessage returned runId:", runId)
       } catch (error) {
         console.error("[Chat] Failed to send to OpenClaw:", error)
       }
@@ -482,7 +534,7 @@ export default function ChatPage({ params }: PageProps) {
       // Attempt to abort via OpenClaw
       if (openClawConnected) {
         console.log("[Chat] Aborting chat via WebSocket")
-        await abortChat()
+        await rpc("chat.abort", { sessionKey })
       } else {
         console.log("[Chat] OpenClaw not connected, cleaning up local state only")
       }

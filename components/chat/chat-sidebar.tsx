@@ -30,7 +30,7 @@ const AUTHOR_COLORS: Record<string, string> = {
   "kimi-coder": "#3b82f6",
   "sonnet-reviewer": "#22c55e",
   "haiku-triage": "#eab308",
-  dan: "#ef4444",
+  dan: "#64748b",
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -51,6 +51,7 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
     { label: "Up Next", status: "ready", tasks: [], totalCount: 0, expanded: true },
   ])
   const [loadingTasks, setLoadingTasks] = useState(true)
+  const [readyCount, setReadyCount] = useState(0)
   
   // Recently shipped state
   const [recentlyShipped, setRecentlyShipped] = useState<Task[]>([])
@@ -80,6 +81,10 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
         readyRes.json(),
         doneRes.json(),
       ])
+
+      // Track full ready count for header display
+      const fullReadyTasks = readyData.tasks || []
+      setReadyCount(fullReadyTasks.length)
 
       setWorkQueueSections(prev => prev.map(section => {
         if (section.status === "in_review") {
@@ -225,6 +230,24 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
     if (diffDays === 1) return "yesterday"
     if (diffDays < 7) return `${diffDays}d ago`
     return new Date(timestamp).toLocaleDateString([], { month: "short", day: "numeric" })
+  }
+
+  const formatDuration = (timestamp: number | null) => {
+    if (!timestamp) return ""
+    
+    const now = Date.now()
+    const diffMs = now - timestamp
+    const diffMinutes = Math.floor(diffMs / (1000 * 60))
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    
+    if (diffMinutes < 1) return "just started"
+    if (diffMinutes < 60) return `${diffMinutes}m`
+    if (diffHours < 24) {
+      const remainingMinutes = diffMinutes % 60
+      return remainingMinutes > 0 ? `${diffHours}h ${remainingMinutes}m` : `${diffHours}h`
+    }
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    return `${diffDays}d`
   }
 
   // Mobile backdrop
@@ -396,6 +419,11 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
                 {totalWorkItems}
               </span>
             )}
+            {readyCount > 0 && (
+              <span className="text-xs bg-green-500/20 text-green-600 px-1.5 py-0.5 rounded font-medium">
+                {readyCount} ready
+              </span>
+            )}
           </div>
           {projectSlug && (
             <Link 
@@ -448,28 +476,40 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
                 {/* Section tasks */}
                 {section.expanded && (
                   <div className="pb-1">
-                    {section.tasks.map((task) => (
-                      <button
-                        key={task.id}
-                        onClick={() => handleTaskClick(task)}
-                        className="w-full flex items-start gap-2 px-3 py-2 hover:bg-[var(--bg-tertiary)] transition-colors group text-left"
-                      >
-                        <div 
-                          className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                          style={{ backgroundColor: STATUS_COLORS[section.status] || "#52525b" }}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono text-[var(--text-muted)]">
-                              {formatShortId(task.id)}
-                            </span>
+                    {section.tasks.map((task) => {
+                      const showId = section.status === "in_review"
+                      const showDuration = section.status === "in_progress"
+                      
+                      return (
+                        <button
+                          key={task.id}
+                          onClick={() => handleTaskClick(task)}
+                          className="w-full flex items-start gap-2 px-3 py-2 hover:bg-[var(--bg-tertiary)] transition-colors group text-left"
+                        >
+                          <div 
+                            className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                            style={{ backgroundColor: STATUS_COLORS[section.status] || "#52525b" }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            {showId && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-mono text-[var(--text-muted)]">
+                                  {formatShortId(task.id)}
+                                </span>
+                              </div>
+                            )}
+                            <p className="text-xs text-[var(--text-primary)] group-hover:text-[var(--accent-blue)] truncate">
+                              {truncateTitle(task.title)}
+                            </p>
+                            {showDuration && (
+                              <span className="text-xs text-[var(--text-muted)]">
+                                {formatDuration(task.updated_at)}
+                              </span>
+                            )}
                           </div>
-                          <p className="text-xs text-[var(--text-primary)] group-hover:text-[var(--accent-blue)] truncate">
-                            {truncateTitle(task.title)}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>

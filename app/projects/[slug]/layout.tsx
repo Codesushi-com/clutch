@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import { ArrowLeft, LayoutGrid, MessageSquare, Activity, Settings } from "lucide-react"
 import type { Project } from "@/lib/db/types"
 import { MobileProjectSwitcher } from "@/components/layout/mobile-project-switcher"
+import { DesktopProjectSwitcher } from "@/components/layout/desktop-project-switcher"
 import { useMobileDetection } from "@/components/board/use-mobile-detection"
 
 type LayoutProps = {
@@ -131,15 +132,10 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Link>
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: project.color }}
-                  />
-                  <h1 className="text-lg font-semibold text-[var(--text-primary)]">
-                    {project.name}
-                  </h1>
-                </div>
+                <DesktopProjectSwitcher 
+                  currentProject={project}
+                  projects={projects}
+                />
               </div>
               
               {/* Tab navigation */}

@@ -9,14 +9,6 @@ interface CommentThreadProps {
   comments: Comment[]
 }
 
-const AUTHOR_COLORS: Record<string, string> = {
-  ada: "#a855f7",
-  "kimi-coder": "#3b82f6",
-  "sonnet-reviewer": "#22c55e",
-  "haiku-triage": "#eab308",
-  dan: "#ef4444",
-}
-
 const TYPE_INDICATORS: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
   request_input: { 
     icon: <Zap className="h-3 w-3" />, 
@@ -48,7 +40,6 @@ export function CommentThread({ comments }: CommentThreadProps) {
   return (
     <div className="space-y-4">
       {comments.map((comment, index) => {
-        const authorColor = AUTHOR_COLORS[comment.author] || "#52525b"
         const typeIndicator = TYPE_INDICATORS[comment.type]
         const isStatusChange = comment.type === "status_change"
         

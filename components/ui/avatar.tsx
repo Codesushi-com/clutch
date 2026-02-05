@@ -7,7 +7,7 @@ const AUTHOR_COLORS: Record<string, string> = {
   "kimi-coder": "#3b82f6",
   "sonnet-reviewer": "#22c55e",
   "haiku-triage": "#eab308",
-  dan: "#ef4444",
+  dan: "#64748b",
 }
 
 interface AvatarProps {

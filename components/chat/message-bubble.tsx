@@ -31,14 +31,6 @@ interface MessageBubbleProps {
   projectSlug?: string
 }
 
-const AUTHOR_COLORS: Record<string, string> = {
-  ada: "#a855f7",
-  "kimi-coder": "#3b82f6",
-  "sonnet-reviewer": "#22c55e",
-  "haiku-triage": "#eab308",
-  dan: "#ef4444",
-}
-
 const AUTHOR_NAMES: Record<string, string> = {
   ada: "Ada",
   "kimi-coder": "Kimi",
@@ -53,10 +45,9 @@ export function MessageBubble({
   showAuthor = true,
   onCreateTask,
   activeCrons = [],
-  projectSlug,
+  projectSlug: _projectSlug, // eslint-disable-line @typescript-eslint/no-unused-vars
 }: MessageBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const authorColor = AUTHOR_COLORS[message.author] || "#52525b"
   const authorName = AUTHOR_NAMES[message.author] || message.author
 
   // Check if this is an automated (cron/sub-agent) message
@@ -183,9 +174,9 @@ export function MessageBubble({
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {/* Session link */}
-                {sessionKey && projectSlug && (
+                {sessionKey && (
                   <Link 
-                    href={`/projects/${projectSlug}/sessions/${encodeURIComponent(sessionKey)}`}
+                    href={`/sessions/${encodeURIComponent(sessionKey)}`}
                     className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center gap-1 transition-colors"
                   >
                     <ExternalLink className="h-3 w-3" />

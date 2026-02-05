@@ -5,6 +5,21 @@ import { Send, Square, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ContextIndicator } from "@/components/chat/context-indicator"
 
+// Generate a UUID with fallback for non-secure contexts
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  // Fallback for browsers/contexts without crypto.randomUUID
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(b => b.toString(16).padStart(2, "0"))
+      .join("")
+  }
+  // Last resort fallback
+  return Date.now().toString(36) + Math.random().toString(36).substr(2)
+}
+
 interface ImagePreview {
   id: string
   file: File
@@ -76,7 +91,7 @@ export function ChatInput({
         if (!file) continue
         
         // Create preview
-        const imageId = crypto.randomUUID()
+        const imageId = generateId()
         const imageUrl = URL.createObjectURL(file)
         
         const imagePreview: ImagePreview = {
