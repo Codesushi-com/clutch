@@ -6,6 +6,7 @@ import { useChatStore } from "@/lib/stores/chat-store"
 import { useChatEvents } from "@/lib/hooks/use-chat-events"
 import { useOpenClawChat } from "@/lib/hooks/use-openclaw-chat"
 import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
+import { useChatSSE } from "@/lib/hooks/use-chat-sse"
 import { useSettings } from "@/lib/hooks/use-settings"
 import { ChatSidebar } from "@/components/chat/chat-sidebar"
 import { ChatThread } from "@/components/chat/chat-thread"
@@ -72,73 +73,79 @@ export default function ChatPage({ params }: PageProps) {
   // Settings for streaming toggle
   const { settings, toggleStreaming } = useSettings()
 
-  // OpenClaw WebSocket connection for main session
-  const handleOpenClawMessage = useCallback(async (msg: { role: string; content: string | Array<{ type: string; text?: string }> }, runId: string) => {
-    console.log("[Chat] onMessage (WebSocket) received, runId:", runId)
-    if (!activeChat) {
-      console.log("[Chat] No activeChat, ignoring message")
-      return
-    }
+  // Generate session key based on project and active chat
+  // Format: trap:{projectSlug}:{chatId} - includes project for context
+  const sessionKey = activeChat ? `trap:${slug}:${activeChat.id}` : "main"
+
+  // OpenClaw WebSocket - used for SENDING messages only
+  // Receiving is handled via SSE from Trap backend (more reliable)
+  const { connected: openClawConnected, sendMessage: sendToOpenClaw, abortChat } = useOpenClawChat({
+    sessionKey,
+    // Don't handle receives here - SSE handles them
+    onMessage: undefined,
+    onDelta: undefined,
+    onTypingStart: undefined,
+    onTypingEnd: undefined,
+  })
+
+  // SSE connection for RECEIVING messages from Trap backend
+  // This is more reliable than direct OpenClaw WS (handles tab switches, deduplication)
+  const handleSSEMessage = useCallback((msg: { id: string; author: string; content: string; runId?: string }) => {
+    if (!activeChat) return
     
-    // Clear streaming message if we were streaming
-    if (settings.streamingEnabled && streamingMessages[activeChat.id]?.runId === runId) {
+    // Clear streaming message if this completes it
+    if (msg.runId && streamingMessages[activeChat.id]?.runId === msg.runId) {
       clearStreamingMessage(activeChat.id)
     }
     
-    // Extract text from content
-    const text = typeof msg.content === "string" 
-      ? msg.content 
-      : msg.content.find(c => c.type === "text")?.text || ""
+    // Receive the message into the store (will dedupe by id)
+    receiveMessage(activeChat.id, {
+      id: msg.id,
+      chat_id: activeChat.id,
+      author: msg.author,
+      content: msg.content,
+      run_id: msg.runId,
+      created_at: Date.now()
+    })
     
-    // Save Ada's response to local DB
-    console.log("[Chat] Saving message to Trap DB for chat:", activeChat.id, "runId:", runId)
-    fetch(`/api/chats/${activeChat.id}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: text, author: "ada", run_id: runId }),
-    }).catch(console.error)
-  }, [activeChat, settings.streamingEnabled, streamingMessages, clearStreamingMessage])
+    // Clear typing indicator
+    setTyping(activeChat.id, msg.author, false)
+  }, [activeChat, streamingMessages, clearStreamingMessage, receiveMessage, setTyping])
 
-  const handleOpenClawTypingStart = useCallback(() => {
+  const handleSSETypingStart = useCallback(() => {
     if (activeChat) {
       setTyping(activeChat.id, "ada", "thinking")
     }
   }, [activeChat, setTyping])
 
-  const handleOpenClawTypingEnd = useCallback(() => {
+  const handleSSETypingEnd = useCallback(() => {
     if (activeChat) {
       setTyping(activeChat.id, "ada", false)
     }
   }, [activeChat, setTyping])
 
-  const handleOpenClawDelta = useCallback((delta: string, runId: string) => {
+  const handleSSEDelta = useCallback((delta: string, runId?: string) => {
     if (!activeChat) return
     
     // Switch from "thinking" to "typing" on first delta
     setTyping(activeChat.id, "ada", "typing")
     
     // Handle streaming if enabled
-    if (settings.streamingEnabled) {
-      // If this is the first delta for this runId, start a new streaming message
+    if (settings.streamingEnabled && runId) {
       if (!streamingMessages[activeChat.id] || streamingMessages[activeChat.id].runId !== runId) {
         startStreamingMessage(activeChat.id, runId, "ada")
       }
-      
-      // Append the delta to the streaming message
       appendToStreamingMessage(activeChat.id, delta)
     }
   }, [activeChat, setTyping, settings.streamingEnabled, streamingMessages, startStreamingMessage, appendToStreamingMessage])
 
-  // Generate session key based on project and active chat
-  // Format: trap:{projectSlug}:{chatId} - includes project for context
-  const sessionKey = activeChat ? `trap:${slug}:${activeChat.id}` : "main"
-
-  const { connected: openClawConnected, sendMessage: sendToOpenClaw, abortChat } = useOpenClawChat({
-    sessionKey,
-    onMessage: handleOpenClawMessage,
-    onDelta: handleOpenClawDelta,
-    onTypingStart: handleOpenClawTypingStart,
-    onTypingEnd: handleOpenClawTypingEnd,
+  // SSE subscription for current chat
+  const { connected: sseConnected, isTyping: sseIsTyping } = useChatSSE({
+    chatId: activeChat?.id || null,
+    onMessage: handleSSEMessage,
+    onTypingStart: handleSSETypingStart,
+    onTypingEnd: handleSSETypingEnd,
+    onDelta: handleSSEDelta,
   })
 
   // Sub-agent monitoring via RPC
