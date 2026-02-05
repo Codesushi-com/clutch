@@ -24,3 +24,20 @@ Statuses: `backlog` → `ready` → `in_progress` → `in_review` → `done`
 - Don't merge your own PRs
 - Don't kill port 3002
 - Use `pnpm`, not `npm`
+
+## Ticket Verification (REQUIRED)
+
+**Before marking any ticket as `done`:**
+
+1. **Browser test required** — Actually load the UI and verify the feature works
+2. **Screenshot evidence** — Take a screenshot showing the working feature if possible
+3. **If you can't test** — Leave ticket in `in_review`, note what needs manual testing
+
+**Do NOT mark done based on:**
+- Code compiles ❌
+- Tests pass ❌
+- PR merged ❌
+
+**Only mark done when:**
+- Feature visually works in browser ✅
+- Or explicitly noted as "needs manual QA" ✅
