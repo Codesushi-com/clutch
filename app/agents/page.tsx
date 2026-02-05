@@ -140,8 +140,32 @@ export default function AgentsPage() {
       setConfigAgent(response.agent);
       setConfigModalOpen(true);
     } catch (err) {
-      console.error('Failed to load agent details:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load agent details');
+      console.error('Failed to load agent details via RPC:', err);
+      
+      // Fallback: Create minimal AgentDetail from the basic Agent
+      // This allows the configuration modal to work even if OpenClaw RPC isn't fully implemented
+      const fallbackAgentDetail: AgentDetail = {
+        ...agent,
+        configuration: {
+          maxTokens: undefined,
+          temperature: undefined,
+          systemPrompt: undefined,
+        },
+        stats: {
+          totalMessages: 0,
+          averageResponseTime: undefined,
+          uptime: undefined,
+        },
+        activeSessions: [],
+        totalTokens: undefined,
+        lastActivity: agent.updatedAt,
+      };
+      
+      setConfigAgent(fallbackAgentDetail);
+      setConfigModalOpen(true);
+      
+      // Show a warning but don't block the user
+      setError(`Warning: Agent configuration may be limited. RPC error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }, [getAgent]);
 
@@ -163,9 +187,19 @@ export default function AgentsPage() {
       // Close modal
       setConfigModalOpen(false);
       setConfigAgent(null);
+      
+      // Clear any previous warnings
+      setError(null);
     } catch (err) {
       console.error('Failed to save agent configuration:', err);
-      throw err; // Re-throw so the modal can show the error
+      
+      // Check if this is a "not implemented" error
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      if (errorMessage.includes('Method not found') || errorMessage.includes('not implemented')) {
+        throw new Error('Agent configuration is not yet supported. The OpenClaw agent management API is still in development.');
+      } else {
+        throw err; // Re-throw for other errors so the modal can show them
+      }
     }
   }, [configAgent, updateAgentConfig, fetchAgents]);
 
