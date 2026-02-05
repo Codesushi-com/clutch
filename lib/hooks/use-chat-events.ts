@@ -25,6 +25,7 @@ export function useChatEvents({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectAttemptsRef = useRef(0)
   const wasDisconnectedRef = useRef(false)
+  const connectRef = useRef<(() => void) | null>(null)
   const maxReconnectAttempts = 10
   const baseReconnectDelay = 1000
 
@@ -90,13 +91,18 @@ export function useChatEvents({
         console.log(`[ChatEvents] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`)
         
         reconnectTimeoutRef.current = setTimeout(() => {
-          connect()
+          connectRef.current?.()
         }, delay)
       } else {
         console.error("[ChatEvents] Max reconnect attempts reached")
       }
     }
   }, [chatId, enabled, onMessage, onTyping, onConnect, onRefreshMessages])
+
+  // Update the ref whenever connect changes
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
 
   useEffect(() => {
     connect()

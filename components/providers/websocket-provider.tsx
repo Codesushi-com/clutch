@@ -45,10 +45,19 @@ interface WebSocketProviderProps {
 
 export function WebSocketProvider({ children, url }: WebSocketProviderProps) {
   // Compute URL on client side only
-  const [wsUrl, setWsUrl] = useState<string>('');
-  
+  const [wsUrl, setWsUrl] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return url || getWebSocketUrl();
+  });
+  const previousUrlRef = useRef(url);
+
+  // Update URL when prop changes
   useEffect(() => {
-    setWsUrl(url || getWebSocketUrl());
+    if (typeof window !== 'undefined' && url !== previousUrlRef.current) {
+      previousUrlRef.current = url;
+      const newUrl = url || getWebSocketUrl();
+      setTimeout(() => setWsUrl(newUrl), 0);
+    }
   }, [url]);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
@@ -154,7 +163,9 @@ export function WebSocketProvider({ children, url }: WebSocketProviderProps) {
   }, [wsUrl, handleWebSocketEvent, clearTimers]);
 
   // Store connect function in ref for access in onclose handler
-  connectRef.current = connect;
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   const disconnect = useCallback(() => {
     clearTimers();
@@ -180,8 +191,12 @@ export function WebSocketProvider({ children, url }: WebSocketProviderProps) {
 
   // Connect on mount
   useEffect(() => {
-    connect();
-    return () => disconnect();
+    // Use timeout to avoid synchronous setState in effect
+    const timer = setTimeout(() => connect(), 0);
+    return () => {
+      clearTimeout(timer);
+      disconnect();
+    };
   }, [connect, disconnect]);
 
   const value: WebSocketContextValue = {

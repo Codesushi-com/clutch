@@ -18,8 +18,15 @@ type OpenClawPluginToolContext = {
   agentId?: string;
 };
 
+type OpenClawPluginTool = {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  execute: (params: unknown) => Promise<unknown>;
+};
+
 type OpenClawPluginApi = {
-  registerTool: (tool: any, opts?: { optional?: boolean }) => void;
+  registerTool: (tool: OpenClawPluginTool | ((ctx: OpenClawPluginToolContext) => OpenClawPluginTool), opts?: { optional?: boolean }) => void;
   logger: { info: (msg: string) => void };
 };
 

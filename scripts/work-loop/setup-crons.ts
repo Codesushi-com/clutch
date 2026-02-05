@@ -6,10 +6,10 @@
 
 import { db } from "../../lib/db"
 import type { Project } from "../../lib/db/types"
-import { spawn } from "child_process"
+import { spawn, exec as execCallback } from "child_process"
 import { promisify } from "util"
 
-const exec = promisify(require("child_process").exec)
+const exec = promisify(execCallback)
 
 interface CronJob {
   jobId: string
@@ -113,8 +113,8 @@ async function listExistingCrons(): Promise<string[]> {
     const { stdout } = await exec(`openclaw cron list --json`)
     const cronData = JSON.parse(stdout)
     return cronData.jobs
-      .filter((job: any) => job.jobId?.startsWith('trap-work-loop-'))
-      .map((job: any) => job.jobId.replace('trap-work-loop-', ''))
+      .filter((job: { jobId?: string }) => job.jobId?.startsWith('trap-work-loop-'))
+      .map((job: { jobId: string }) => job.jobId.replace('trap-work-loop-', ''))
   } catch (error) {
     console.error("Failed to list existing crons:", error)
     return []

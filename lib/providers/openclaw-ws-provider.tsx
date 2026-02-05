@@ -50,7 +50,7 @@ type ChatResponse = {
   errorMessage?: string;
 };
 
-type EventCallback = (data: any) => void;
+type EventCallback = (data: unknown) => void;
 type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
@@ -102,7 +102,7 @@ export function OpenClawWSProvider({ children }: OpenClawWSProviderProps) {
   }, []);
 
   // Emit event to subscribers
-  const emitEvent = useCallback((event: string, data: any) => {
+  const emitEvent = useCallback((event: string, data: unknown) => {
     const subscribers = eventSubscribers.current.get(event);
     if (subscribers) {
       subscribers.forEach(callback => {

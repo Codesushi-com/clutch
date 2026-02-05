@@ -37,7 +37,7 @@ export async function GET() {
     const { stdout } = await execAsync("openclaw cron list --json")
     const cronData = JSON.parse(stdout)
     
-    const workLoopJobs = cronData.jobs?.filter((job: any) => 
+    const workLoopJobs = cronData.jobs?.filter((job: { jobId?: string }) => 
       job.jobId?.startsWith('trap-work-loop-')
     ) || []
     

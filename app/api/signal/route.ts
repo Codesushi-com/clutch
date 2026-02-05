@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get("limit") || "50")
   
   const whereConditions: string[] = []
-  const params: any[] = []
+  const params: unknown[] = []
   
   if (taskId) {
     whereConditions.push("task_id = ?")

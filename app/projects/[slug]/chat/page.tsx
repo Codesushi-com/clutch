@@ -128,35 +128,40 @@ export default function ChatPage({ params }: PageProps) {
   // Subscribe to OpenClaw events (replaces useOpenClawChat hook)
   useEffect(() => {
     const unsubscribers = [
-      subscribe('chat.typing.start', (data: { runId: string; sessionKey?: string }) => {
+      subscribe('chat.typing.start', (data: unknown) => {
+        const typedData = data as { runId: string; sessionKey?: string }
         // Only handle events for our session or global events
-        if (!data.sessionKey || data.sessionKey === sessionKey) {
+        if (!typedData.sessionKey || typedData.sessionKey === sessionKey) {
           handleOpenClawTyping(true, "thinking")
         }
       }),
       
-      subscribe('chat.typing.end', (data: { sessionKey?: string } | undefined) => {
+      subscribe('chat.typing.end', (data: unknown) => {
+        const typedData = data as { sessionKey?: string } | undefined
         // Only handle events for our session or global events
-        if (!data?.sessionKey || data.sessionKey === sessionKey) {
+        if (!typedData?.sessionKey || typedData.sessionKey === sessionKey) {
           handleOpenClawTyping(false)
         }
       }),
       
-      subscribe('chat.delta', ({ delta, runId, sessionKey: eventSessionKey }: { delta: string; runId: string; sessionKey?: string }) => {
+      subscribe('chat.delta', (data: unknown) => {
+        const { delta, runId, sessionKey: eventSessionKey } = data as { delta: string; runId: string; sessionKey?: string }
         // Only handle events for our session or global events
         if (!eventSessionKey || eventSessionKey === sessionKey) {
           handleOpenClawDelta(delta, runId)
         }
       }),
       
-      subscribe('chat.message', ({ message, runId, sessionKey: eventSessionKey }: { message: { role: string; content: string | Array<{ type: string; text?: string }> }; runId: string; sessionKey?: string }) => {
+      subscribe('chat.message', (data: unknown) => {
+        const { message, runId, sessionKey: eventSessionKey } = data as { message: { role: string; content: string | Array<{ type: string; text?: string }> }; runId: string; sessionKey?: string }
         // Only handle events for our session or global events
         if (!eventSessionKey || eventSessionKey === sessionKey) {
           handleOpenClawMessage(message, runId)
         }
       }),
       
-      subscribe('chat.error', ({ error, sessionKey: eventSessionKey }: { error: string; runId: string; sessionKey?: string }) => {
+      subscribe('chat.error', (data: unknown) => {
+        const { error, sessionKey: eventSessionKey } = data as { error: string; runId: string; sessionKey?: string }
         // Only handle events for our session or global events
         if (!eventSessionKey || eventSessionKey === sessionKey) {
           console.error('[Chat] OpenClaw chat error:', error)
