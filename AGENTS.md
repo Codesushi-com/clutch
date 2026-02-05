@@ -25,6 +25,29 @@ Statuses: `backlog` → `ready` → `in_progress` → `in_review` → `done`
 - Don't kill port 3002
 - Use `pnpm`, not `npm`
 
+## Git Worktrees (REQUIRED)
+
+**NEVER switch branches in `/home/dan/src/trap`** — the dev server runs there on `main`.
+
+**For ALL feature work:**
+```bash
+# Create worktree for your task
+cd /home/dan/src/trap
+git worktree add /home/dan/src/trap-worktrees/<branch-name> -b <branch-name>
+
+# Work in the worktree
+cd /home/dan/src/trap-worktrees/<branch-name>
+
+# When done (after PR merged), clean up
+git worktree remove /home/dan/src/trap-worktrees/<branch-name>
+```
+
+Branch naming: `fix/<ticket-id-prefix>-<short-desc>` or `feat/<ticket-id-prefix>-<short-desc>`
+
+**Why:** Switching branches in the main repo kills the running dev server, breaking the app for users.
+
+---
+
 ## Ticket Verification (REQUIRED)
 
 **Before marking any ticket as `done`:**
