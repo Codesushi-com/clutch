@@ -2,10 +2,15 @@
 
 /**
  * OpenClaw WebSocket Provider
- * Single shared connection to OpenClaw with pub/sub pattern for chat and RPC
+ * Single shared connection to OpenClaw with pub/sub pattern for chat events.
+ * 
+ * NOTE: chat.send now uses HTTP POST directly to OpenClaw instead of WebSocket.
+ * This ensures message sending works reliably even during gateway restarts.
+ * WebSocket is kept for receiving streaming events (typing, deltas, etc.)
  */
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import { sendChatMessage as sendChatMessageHttp } from '@/lib/openclaw/rpc';
 
 // Fallback for non-secure contexts where crypto.randomUUID isn't available
 function generateUUID(): string {
@@ -494,36 +499,29 @@ export function OpenClawWSProvider({ children }: OpenClawWSProviderProps) {
     };
   }, []);
 
-  // Send chat message
+  // Send chat message via HTTP POST (not WebSocket)
+  // This ensures reliable message delivery even during gateway restarts
   const sendChatMessage = useCallback(async (message: string, sessionKey = 'main', trapChatId?: string): Promise<string> => {
     setIsSending(true);
-    const idempotencyKey = generateUUID();
-    
-    const contextMessage = trapChatId 
-      ? `[Trap Chat ID: ${trapChatId}]\n\n${message}`
-      : message;
 
     try {
-      // rpc() has HTTP fallback when WS is disconnected
-      const result = await rpc<{ runId: string; status: string }>('chat.send', {
-        sessionKey,
-        message: contextMessage,
-        idempotencyKey,
-      });
-      
-      console.log('[OpenClawWS] chat.send RPC result:', result);
+      // Use HTTP directly instead of WebSocket for sending messages
+      // This avoids issues with WS disconnections during gateway restarts
+      const result = await sendChatMessageHttp(message, sessionKey, trapChatId);
+
+      console.log('[OpenClawWS] chat.send HTTP result:', result);
       if (result.status === 'started') {
         activeRunId.current = result.runId;
         console.log('[OpenClawWS] Emitting chat.typing.start with runId:', result.runId);
-        emitEvent('chat.typing.start', result.runId);
+        emitEvent('chat.typing.start', { runId: result.runId, sessionKey });
       }
-      
+
       return result.runId;
     } catch (error) {
       setIsSending(false);
       throw error;
     }
-  }, [rpc, emitEvent]);
+  }, [emitEvent]);
 
   // Connect on mount, cleanup on unmount
   useEffect(() => {

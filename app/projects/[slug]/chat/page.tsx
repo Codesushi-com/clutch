@@ -75,10 +75,11 @@ export default function ChatPage({ params }: PageProps) {
   const sessionKey = activeChat ? `trap:${slug}:${activeChat.id}` : "main"
 
   // ==========================================================================
-  // OpenClaw WebSocket — typing indicators & streaming only
-  // Message persistence is handled server-side by the trap-channel plugin's
-  // agent_end hook, which POSTs assistant responses to Convex.
-  // Convex reactive queries update the UI automatically.
+  // OpenClaw Integration
+  // - HTTP POST for sending messages (reliable, works during gateway restarts)
+  // - WebSocket for typing indicators & streaming (best-effort, visual only)
+  // - Message persistence handled server-side by trap-channel plugin
+  // - Convex reactive queries update the UI automatically
   // ==========================================================================
 
   const handleOpenClawTyping = useCallback((isTyping: boolean, state?: "thinking" | "typing") => {
@@ -395,9 +396,9 @@ export default function ChatPage({ params }: PageProps) {
 
   const handleSendMessage = async (content: string, images?: string[]) => {
     if (!activeChat) return
-    
+
     const isFirstMessage = !activeChat.session_key
-    
+
     // Store session key on first message
     if (isFirstMessage) {
       try {
@@ -411,33 +412,30 @@ export default function ChatPage({ params }: PageProps) {
         console.error("[Chat] Failed to store session key:", error)
       }
     }
-    
+
     // Prepare message content with images
     let messageContent = content
     if (images && images.length > 0) {
       const imageMarkdown = images.map(url => `![Image](${url})`).join("\n")
       messageContent = content ? `${content}\n\n${imageMarkdown}` : imageMarkdown
     }
-    
+
     // Save user message to Convex
     await sendMessageToDb(activeChat.id, messageContent, "dan")
-    
+
     // Build message for OpenClaw (include project context on first message)
     let openClawMessage = messageContent
     if (isFirstMessage && projectContext) {
       openClawMessage = `[Project Context]\n\n${projectContext}\n\n---\n\n[User Message]\n\n${messageContent}`
     }
-    
-    // Send to OpenClaw via WebSocket
+
+    // Send to OpenClaw via HTTP POST (not WebSocket)
+    // This ensures reliable delivery even during gateway restarts
     // Response persistence is handled by the trap-channel plugin (agent_end hook)
-    if (openClawConnected) {
-      try {
-        await sendChatMessage(openClawMessage, sessionKey, activeChat.id)
-      } catch (error) {
-        console.error("[Chat] Failed to send to OpenClaw:", error)
-      }
-    } else {
-      console.warn("[Chat] OpenClaw not connected, message saved but not sent")
+    try {
+      await sendChatMessage(openClawMessage, sessionKey, activeChat.id)
+    } catch (error) {
+      console.error("[Chat] Failed to send to OpenClaw:", error)
     }
   }
 
