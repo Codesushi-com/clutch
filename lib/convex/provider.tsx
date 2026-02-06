@@ -39,7 +39,8 @@ export function ConvexProviderWrapper({ children }: ConvexProviderWrapperProps) 
     }
   }, [])
 
-  // Block rendering until Convex client is initialized
+  // Wait for client to initialize — rendering children without the provider
+  // would crash any component that calls useQuery/useMutation
   if (!client) {
     return null
   }
