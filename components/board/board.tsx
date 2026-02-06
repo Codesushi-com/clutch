@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useRef } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
 import { Plus, Settings2 } from "lucide-react"
-import { useTaskStore } from "@/lib/stores/task-store"
 import { useConvexBoardTasks } from "@/lib/hooks/use-convex-tasks"
 import { Column } from "./column"
 import { MobileBoard } from "./mobile-board"
@@ -64,14 +63,18 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
   // Use Convex for reactive task data (real-time updates)
   const { tasksByStatus, isLoading } = useConvexBoardTasks(projectId)
   
-  // Use zustand store for mutations (HTTP POST to API routes)
-  const { moveTask } = useTaskStore()
-  
   const isMobile = useMobileDetection(768)
 
   // Optimistic move overrides — applied on top of Convex data so cards
   // don't snap back while the mutation is in flight.
   const [pendingMoves, setPendingMoves] = useState<PendingMoves>(new Map())
+
+  // Optimistic reorder overrides — task id list per column while reorder is in flight.
+  // When set, overrides the Convex ordering for that column.
+  const [pendingReorders, setPendingReorders] = useState<Map<TaskStatus, string[]>>(new Map())
+
+  // Track in-flight requests to avoid stale cleanup
+  const reorderSeqRef = useRef(0)
 
   // Derive active pending moves: only those not yet reflected in Convex.
   // This is a pure derivation — no effect/setState needed for cleanup.
@@ -135,49 +138,121 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
 
     const newStatus = destination.droppableId as TaskStatus
 
-    // If same column, it's a reorder operation
     if (destination.droppableId === source.droppableId) {
-      moveTask(draggableId, newStatus, destination.index)
+      // Same column — reorder operation
+      const columnTasks = getTasksForColumn(newStatus)
+      const reordered = [...columnTasks]
+      const [moved] = reordered.splice(source.index, 1)
+      reordered.splice(destination.index, 0, moved)
+
+      // Optimistic: show reordered list immediately
+      const seq = ++reorderSeqRef.current
+      setPendingReorders(prev => new Map(prev).set(newStatus, reordered.map(t => t.id)))
+
+      fetch("/api/tasks/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: projectId,
+          status: newStatus,
+          task_id: draggableId,
+          new_index: destination.index,
+        }),
+      })
+        .then(res => {
+          if (!res.ok) throw new Error("Reorder failed")
+        })
+        .catch(() => {
+          // Revert on failure (only if no newer reorder superseded this one)
+          if (reorderSeqRef.current === seq) {
+            setPendingReorders(prev => {
+              const next = new Map(prev)
+              next.delete(newStatus)
+              return next
+            })
+          }
+        })
+        .finally(() => {
+          // Clear optimistic override after a short delay so Convex subscription
+          // has time to deliver the updated positions
+          setTimeout(() => {
+            if (reorderSeqRef.current === seq) {
+              setPendingReorders(prev => {
+                const next = new Map(prev)
+                next.delete(newStatus)
+                return next
+              })
+            }
+          }, 2000)
+        })
     } else {
       // Moving to different column — record optimistic move so the card
       // stays in the target column while the API call is in flight.
       setPendingMoves(prev => new Map(prev).set(draggableId, newStatus))
 
-      moveTask(draggableId, newStatus).catch(() => {
-        // Revert optimistic move on failure
-        setPendingMoves(prev => {
-          const next = new Map(prev)
-          next.delete(draggableId)
-          return next
-        })
+      fetch(`/api/tasks/${draggableId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
       })
+        .then(res => {
+          if (!res.ok) throw new Error("Move failed")
+        })
+        .catch(() => {
+          // Revert optimistic move on failure
+          setPendingMoves(prev => {
+            const next = new Map(prev)
+            next.delete(draggableId)
+            return next
+          })
+        })
     }
   }
 
-  // Get tasks for a specific column, applying optimistic move overrides
+  // Get tasks for a specific column, applying optimistic move and reorder overrides
   const getTasksForColumn = useCallback((status: TaskStatus): Task[] => {
+    let tasks: Task[]
+
     if (activePendingMoves.size === 0) {
-      return tasksByStatus?.[status] ?? []
+      tasks = tasksByStatus?.[status] ?? []
+    } else {
+      // Collect all tasks from Convex, then relocate any that have pending moves
+      const allTasks: Task[] = []
+      for (const col of Object.keys(tasksByStatus) as TaskStatus[]) {
+        for (const task of tasksByStatus[col]) {
+          allTasks.push(task)
+        }
+      }
+
+      tasks = allTasks.filter(task => {
+        const pendingStatus = activePendingMoves.get(task.id)
+        if (pendingStatus !== undefined) {
+          return pendingStatus === status
+        }
+        return task.status === status
+      })
     }
 
-    // Collect all tasks from Convex, then relocate any that have pending moves
-    const allTasks: Task[] = []
-    for (const col of Object.keys(tasksByStatus) as TaskStatus[]) {
-      for (const task of tasksByStatus[col]) {
-        allTasks.push(task)
+    // Apply optimistic reorder if one is pending for this column
+    const reorderIds = pendingReorders.get(status)
+    if (reorderIds) {
+      const taskMap = new Map(tasks.map(t => [t.id, t]))
+      const reordered: Task[] = []
+      for (const id of reorderIds) {
+        const task = taskMap.get(id)
+        if (task) reordered.push(task)
       }
+      // Append any tasks not in the reorder list (e.g. newly created during flight)
+      for (const task of tasks) {
+        if (!reorderIds.includes(task.id)) {
+          reordered.push(task)
+        }
+      }
+      return reordered
     }
 
-    return allTasks.filter(task => {
-      const pendingStatus = activePendingMoves.get(task.id)
-      if (pendingStatus !== undefined) {
-        // This task has a pending move — show it in the target column
-        return pendingStatus === status
-      }
-      // No pending move — show in its Convex-reported column
-      return task.status === status
-    })
-  }, [tasksByStatus, activePendingMoves])
+    return tasks
+  }, [tasksByStatus, activePendingMoves, pendingReorders])
 
   if (isLoading) {
     return (
