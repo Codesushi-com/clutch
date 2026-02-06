@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useCreateTask, type CreateTaskData } from "@/lib/stores/task-store"
-import type { TaskStatus, TaskRole } from "@/lib/db/types"
+import type { TaskStatus, TaskRole } from "@/lib/types"
 
 interface CreateTaskModalProps {
   open: boolean

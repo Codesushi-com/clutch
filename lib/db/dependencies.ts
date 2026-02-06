@@ -1,7 +1,7 @@
 // Task dependency query helpers - Convex version
 import { getConvexClient } from "@/lib/convex/server"
 import { api } from "@/convex/_generated/api"
-import type { TaskDependency, TaskSummary, TaskDependencySummary } from "@/lib/db/types"
+import type { TaskDependency, TaskSummary, TaskDependencySummary } from "@/lib/types"
 
 // Extended type that includes the dependency relationship ID
 export { TaskDependencySummary }

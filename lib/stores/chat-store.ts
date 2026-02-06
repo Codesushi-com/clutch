@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Chat, ChatMessage } from "@/lib/db/types"
+import type { Chat, ChatMessage } from "@/lib/types"
 
 export type ChatWithLastMessage = Chat & {
   lastMessage?: {

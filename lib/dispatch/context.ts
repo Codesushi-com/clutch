@@ -1,4 +1,4 @@
-import type { Task, Project, Comment } from "@/lib/db/types"
+import type { Task, Project, Comment } from "@/lib/types"
 import { getConvexClient } from "@/lib/convex/server"
 import { api } from "@/convex/_generated/api"
 import { getAgent } from "@/lib/agents"

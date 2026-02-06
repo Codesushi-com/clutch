@@ -5,7 +5,7 @@ import { MessageSquare } from "lucide-react"
 import { MessageBubble } from "./message-bubble"
 import { StreamingMessage } from "./streaming-message"
 import { useChatStore } from "@/lib/stores/chat-store"
-import type { ChatMessage } from "@/lib/db/types"
+import type { ChatMessage } from "@/lib/types"
 
 interface TypingIndicator {
   author: string

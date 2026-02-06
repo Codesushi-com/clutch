@@ -8,7 +8,7 @@ import { CommentThread } from "./comment-thread"
 import { CommentInput } from "./comment-input"
 import { DependencyPicker } from "./dependency-picker"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
-import type { Task, TaskStatus, TaskPriority, TaskRole, Comment, DispatchStatus, TaskDependencySummary } from "@/lib/db/types"
+import type { Task, TaskStatus, TaskPriority, TaskRole, Comment, DispatchStatus, TaskDependencySummary } from "@/lib/types"
 
 interface TaskModalProps {
   task: Task | null

@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Task, TaskStatus, TaskRole } from "@/lib/db/types"
+import type { Task, TaskStatus, TaskRole } from "@/lib/types"
 
 interface TaskState {
   tasks: Task[]

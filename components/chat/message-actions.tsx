@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { MoreHorizontal, ClipboardList, Copy, Check } from "lucide-react"
-import type { ChatMessage } from "@/lib/db/types"
+import type { ChatMessage } from "@/lib/types"
 
 interface MessageActionsProps {
   message: ChatMessage

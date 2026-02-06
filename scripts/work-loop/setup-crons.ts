@@ -6,7 +6,7 @@
 
 import { getConvexClient } from "../../lib/convex/server"
 import { api } from "../../convex/_generated/api"
-import type { Project } from "../../lib/db/types"
+import type { Project } from "../../lib/types"
 import { spawn, exec as execCallback } from "child_process"
 import { promisify } from "util"
 

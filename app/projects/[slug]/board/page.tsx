@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { Board } from "@/components/board/board"
 import { CreateTaskModal } from "@/components/board/create-task-modal"
 import { TaskModal } from "@/components/board/task-modal"
-import type { Task, TaskStatus, Project } from "@/lib/db/types"
+import type { Task, TaskStatus, Project } from "@/lib/types"
 
 type PageProps = {
   params: Promise<{ slug: string }>

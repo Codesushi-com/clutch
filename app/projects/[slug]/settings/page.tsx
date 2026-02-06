@@ -5,7 +5,7 @@ import { Settings, MessageSquare, Save, Loader2, Folder, AlertCircle, CheckCircl
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import type { Project } from "@/lib/db/types"
+import type { Project } from "@/lib/types"
 
 type PageProps = {
   params: Promise<{ slug: string }>

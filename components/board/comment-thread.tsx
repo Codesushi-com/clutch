@@ -1,6 +1,6 @@
 "use client"
 
-import type { Comment } from "@/lib/db/types"
+import type { Comment } from "@/lib/types"
 import { formatDistanceToNow } from "date-fns"
 import { Zap, CheckCircle, ArrowRight, MessageSquare } from "lucide-react"
 import { Avatar } from "@/components/ui/avatar"

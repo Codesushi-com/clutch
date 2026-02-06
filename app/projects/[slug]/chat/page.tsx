@@ -15,7 +15,7 @@ import { CreateTaskFromMessage } from "@/components/chat/create-task-from-messag
 import { StreamingToggle } from "@/components/chat/streaming-toggle"
 import { SessionInfoDropdown } from "@/components/chat/session-info-dropdown"
 import { Button } from "@/components/ui/button"
-import type { ChatMessage } from "@/lib/db/types"
+import type { ChatMessage } from "@/lib/types"
 
 type PageProps = {
   params: Promise<{ slug: string }>

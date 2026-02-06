@@ -7,7 +7,7 @@ import { useTaskStore } from "@/lib/stores/task-store"
 import { Column } from "./column"
 import { MobileBoard } from "./mobile-board"
 import { useMobileDetection } from "./use-mobile-detection"
-import type { Task, TaskStatus } from "@/lib/db/types"
+import type { Task, TaskStatus } from "@/lib/types"
 
 interface BoardProps {
   projectId: string

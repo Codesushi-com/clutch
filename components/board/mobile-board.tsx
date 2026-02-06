@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
 import { Plus, ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react"
-import type { Task, TaskStatus } from "@/lib/db/types"
+import type { Task, TaskStatus } from "@/lib/types"
 import { Column } from "./column"
 
 interface MobileBoardProps {
