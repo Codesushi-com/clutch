@@ -15,7 +15,6 @@ import { sessionsPoller } from "./sessions"
 import { runReview } from "./phases/review"
 import type { Project } from "../lib/types"
 import { runWork } from "./phases/work"
-import { childManager } from "./children"
 
 // ============================================
 // Types

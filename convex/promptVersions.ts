@@ -6,14 +6,14 @@ import { generateId } from './_helpers'
 // Types
 // ============================================
 
-export type PromptVersion = {
+type PromptVersion = {
   id: string
   role: string
-  model: string | null
+  model?: string
   version: number
   content: string
-  change_summary: string | null
-  parent_version_id: string | null
+  change_summary?: string
+  parent_version_id?: string
   created_by: string
   active: boolean
   created_at: number
@@ -24,70 +24,83 @@ export type PromptVersion = {
 // ============================================
 
 /**
- * Get the active prompt version for a role + model combo
- * If model is not specified, returns the default (model=null) active version
+ * Get the latest (highest version) prompt for a role+model combo.
+ * If model is not specified, returns the latest for any model (null model).
  */
-export const getActive = query({
+export const getLatest = query({
   args: {
     role: v.string(),
     model: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<PromptVersion | null> => {
-    // First try to find a version for the specific model
-    if (args.model) {
-      const specificVersion = await ctx.db
+    const { role, model } = args
+
+    // Query by role+model if model specified, otherwise get any for this role
+    let versions
+    if (model !== undefined) {
+      versions = await ctx.db
         .query('promptVersions')
-        .withIndex('by_role_model', (q) =>
-          q.eq('role', args.role).eq('model', args.model)
-        )
-        .filter((q) => q.eq(q.field('active'), true))
-        .unique()
-
-      if (specificVersion) {
-        return toPromptVersion(specificVersion)
-      }
+        .withIndex('by_role_model', (q) => q.eq('role', role).eq('model', model))
+        .order('desc')
+        .take(1)
+    } else {
+      versions = await ctx.db
+        .query('promptVersions')
+        .withIndex('by_role', (q) => q.eq('role', role))
+        .order('desc')
+        .take(1)
     }
 
-    // Fall back to default (model=null) version
-    const defaultVersion = await ctx.db
-      .query('promptVersions')
-      .withIndex('by_role_model', (q) =>
-        q.eq('role', args.role).eq('model', undefined)
-      )
-      .filter((q) => q.eq(q.field('active'), true))
-      .unique()
-
-    if (defaultVersion) {
-      return toPromptVersion(defaultVersion)
-    }
-
-    return null
+    return (versions[0] as PromptVersion | undefined) ?? null
   },
 })
 
 /**
- * Get a specific version by its UUID
+ * Get a specific version by role+model+version number.
  */
 export const getByVersion = query({
+  args: {
+    role: v.string(),
+    model: v.optional(v.string()),
+    version: v.number(),
+  },
+  handler: async (ctx, args): Promise<PromptVersion | null> => {
+    const { role, model, version } = args
+
+    const versions = await ctx.db
+      .query('promptVersions')
+      .filter((q) =>
+        q.and(
+          q.eq(q.field('role'), role),
+          model !== undefined ? q.eq(q.field('model'), model) : q.eq(q.field('model'), undefined),
+          q.eq(q.field('version'), version)
+        )
+      )
+      .take(1)
+
+    return (versions[0] as PromptVersion | undefined) ?? null
+  },
+})
+
+/**
+ * Get a prompt version by its UUID (id field).
+ */
+export const getById = query({
   args: {
     id: v.string(),
   },
   handler: async (ctx, args): Promise<PromptVersion | null> => {
-    const version = await ctx.db
+    const versions = await ctx.db
       .query('promptVersions')
       .withIndex('by_uuid', (q) => q.eq('id', args.id))
-      .unique()
-
-    if (!version) {
-      return null
-    }
-
-    return toPromptVersion(version)
+      .take(1)
+    return (versions[0] as PromptVersion | undefined) ?? null
   },
 })
 
 /**
- * List all versions for a role, ordered by version number descending
+ * List all versions for a role, ordered by version desc.
+ * Optionally filter by model.
  */
 export const listByRole = query({
   args: {
@@ -95,47 +108,44 @@ export const listByRole = query({
     model: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<PromptVersion[]> => {
-    let versions
+    const { role, model } = args
 
-    if (args.model) {
+    let versions
+    if (model !== undefined) {
       versions = await ctx.db
         .query('promptVersions')
-        .withIndex('by_role_model', (q) =>
-          q.eq('role', args.role).eq('model', args.model)
-        )
+        .withIndex('by_role_model', (q) => q.eq('role', role).eq('model', model))
+        .order('desc')
         .collect()
     } else {
       versions = await ctx.db
         .query('promptVersions')
-        .withIndex('by_role', (q) => q.eq('role', args.role))
+        .withIndex('by_role', (q) => q.eq('role', role))
+        .order('desc')
         .collect()
     }
 
-    return versions
-      .sort((a, b) => b.version - a.version)
-      .map((v) => toPromptVersion(v))
+    return versions as PromptVersion[]
   },
 })
 
 /**
- * Get all distinct roles that have prompt templates
+ * List all distinct roles that have prompt templates.
  */
 export const listRoles = query({
   args: {},
   handler: async (ctx): Promise<string[]> => {
-    const allVersions = await ctx.db.query('promptVersions').collect()
+    const versions = await ctx.db.query('promptVersions').collect()
     const roles = new Set<string>()
-
-    for (const version of allVersions) {
-      roles.add(version.role)
+    for (const v of versions) {
+      roles.add(v.role)
     }
-
     return Array.from(roles).sort()
   },
 })
 
 /**
- * Check if a role already has any versions (for idempotent seeding)
+ * Check if a role already has any versions (for idempotency).
  */
 export const hasVersionsForRole = query({
   args: {
@@ -146,8 +156,36 @@ export const hasVersionsForRole = query({
       .query('promptVersions')
       .withIndex('by_role', (q) => q.eq('role', args.role))
       .take(1)
-
     return versions.length > 0
+  },
+})
+
+/**
+ * Get the currently active version for a role.
+ */
+export const getActive = query({
+  args: {
+    role: v.string(),
+    model: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<PromptVersion | null> => {
+    const { role, model } = args
+
+    let versions
+    if (model !== undefined) {
+      versions = await ctx.db
+        .query('promptVersions')
+        .withIndex('by_role_model', (q) => q.eq('role', role).eq('model', model))
+        .filter((q) => q.eq(q.field('active'), true))
+        .take(1)
+    } else {
+      versions = await ctx.db
+        .query('promptVersions')
+        .withIndex('by_role_active', (q) => q.eq('role', role).eq('active', true))
+        .take(1)
+    }
+
+    return (versions[0] as PromptVersion | undefined) ?? null
   },
 })
 
@@ -156,8 +194,8 @@ export const hasVersionsForRole = query({
 // ============================================
 
 /**
- * Create a new prompt version
- * Automatically deactivates the previous active version for this role+model combo
+ * Create a new prompt version.
+ * Auto-increments version number for the role+model combo.
  */
 export const create = mutation({
   args: {
@@ -169,82 +207,182 @@ export const create = mutation({
     created_by: v.string(),
   },
   handler: async (ctx, args): Promise<PromptVersion> => {
-    const now = Date.now()
+    const { role, content, model, change_summary, parent_version_id, created_by } = args
 
-    // Find the current active version to deactivate it and get next version number
-    const existingVersions = await ctx.db
-      .query('promptVersions')
-      .withIndex('by_role_model', (q) =>
-        q.eq('role', args.role).eq('model', args.model)
-      )
-      .collect()
+    // Get the latest version for this role+model to determine next version number
+    let latestVersion = 0
 
-    const maxVersion = existingVersions.length > 0
-      ? Math.max(...existingVersions.map((v) => v.version))
-      : 0
-
-    // Deactivate all existing active versions for this role+model
-    for (const existing of existingVersions) {
-      if (existing.active) {
-        await ctx.db.patch(existing._id, { active: false })
+    if (model !== undefined) {
+      const existing = await ctx.db
+        .query('promptVersions')
+        .withIndex('by_role_model', (q) => q.eq('role', role).eq('model', model))
+        .order('desc')
+        .take(1)
+      if (existing.length > 0) {
+        latestVersion = existing[0].version
+      }
+    } else {
+      const existing = await ctx.db
+        .query('promptVersions')
+        .withIndex('by_role', (q) => q.eq('role', role))
+        .order('desc')
+        .take(1)
+      if (existing.length > 0) {
+        latestVersion = existing[0].version
       }
     }
 
-    // Create new version
-    const id = generateId()
-    const newVersion = maxVersion + 1
+    const newVersion = latestVersion + 1
 
-    const internalId = await ctx.db.insert('promptVersions', {
-      id,
-      role: args.role,
-      model: args.model,
-      version: newVersion,
-      content: args.content,
-      change_summary: args.change_summary,
-      parent_version_id: args.parent_version_id,
-      created_by: args.created_by,
-      active: true,
-      created_at: now,
-    })
+    // Deactivate previous active versions for this role+model
+    if (model !== undefined) {
+      const activeVersions = await ctx.db
+        .query('promptVersions')
+        .withIndex('by_role_model', (q) => q.eq('role', role).eq('model', model))
+        .filter((q) => q.eq(q.field('active'), true))
+        .collect()
 
-    const created = await ctx.db.get(internalId)
-    if (!created) {
-      throw new Error('Failed to create prompt version')
+      for (const v of activeVersions) {
+        await ctx.db.patch(v._id, { active: false })
+      }
+    } else {
+      const activeVersions = await ctx.db
+        .query('promptVersions')
+        .withIndex('by_role_active', (q) => q.eq('role', role).eq('active', true))
+        .collect()
+
+      for (const v of activeVersions) {
+        await ctx.db.patch(v._id, { active: false })
+      }
     }
 
-    return toPromptVersion(created)
+    // Create the new version as active
+    const id = generateId()
+    const now = Date.now()
+
+    const promptVersion: Omit<PromptVersion, '_id' | '_creationTime'> = {
+      id,
+      role,
+      model,
+      version: newVersion,
+      content,
+      change_summary,
+      parent_version_id,
+      created_by,
+      active: true,
+      created_at: now,
+    }
+
+    await ctx.db.insert('promptVersions', promptVersion)
+
+    return {
+      ...promptVersion,
+      _id: undefined as unknown as string,
+      _creationTime: undefined as unknown as number,
+    } as PromptVersion
   },
 })
 
-// ============================================
-// Helper Functions
-// ============================================
+/**
+ * Set a specific version as active (deactivates others for that role+model).
+ */
+export const setActive = mutation({
+  args: {
+    id: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    // Find the version by its UUID (id field)
+    const versions = await ctx.db
+      .query('promptVersions')
+      .withIndex('by_uuid', (q) => q.eq('id', args.id))
+      .take(1)
+
+    if (versions.length === 0) {
+      throw new Error(`Prompt version ${args.id} not found`)
+    }
+
+    const version = versions[0]
+    const { role, model } = version
+
+    // Deactivate all other versions for this role+model
+    if (model !== undefined) {
+      const activeVersions = await ctx.db
+        .query('promptVersions')
+        .withIndex('by_role_model', (q) => q.eq('role', role).eq('model', model))
+        .filter((q) => q.eq(q.field('active'), true))
+        .collect()
+
+      for (const v of activeVersions) {
+        if (v.id !== args.id) {
+          await ctx.db.patch(v._id, { active: false })
+        }
+      }
+    } else {
+      const activeVersions = await ctx.db
+        .query('promptVersions')
+        .withIndex('by_role_active', (q) => q.eq('role', role).eq('active', true))
+        .collect()
+
+      for (const v of activeVersions) {
+        if (v.id !== args.id) {
+          await ctx.db.patch(v._id, { active: false })
+        }
+      }
+    }
+
+    // Activate the target version
+    await ctx.db.patch(version._id, { active: true })
+  },
+})
 
 /**
- * Convert Convex document to PromptVersion type
+ * Update the content of a version (rarely used - prefer creating new versions).
  */
-function toPromptVersion(doc: {
-  id: string
-  role: string
-  model?: string
-  version: number
-  content: string
-  change_summary?: string
-  parent_version_id?: string
-  created_by: string
-  active: boolean
-  created_at: number
-}): PromptVersion {
-  return {
-    id: doc.id,
-    role: doc.role,
-    model: doc.model ?? null,
-    version: doc.version,
-    content: doc.content,
-    change_summary: doc.change_summary ?? null,
-    parent_version_id: doc.parent_version_id ?? null,
-    created_by: doc.created_by,
-    active: doc.active,
-    created_at: doc.created_at,
-  }
-}
+export const update = mutation({
+  args: {
+    id: v.string(),
+    content: v.optional(v.string()),
+    change_summary: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    // Find the version by its UUID (id field)
+    const versions = await ctx.db
+      .query('promptVersions')
+      .withIndex('by_uuid', (q) => q.eq('id', args.id))
+      .take(1)
+
+    if (versions.length === 0) {
+      throw new Error(`Prompt version ${args.id} not found`)
+    }
+
+    const updates: Partial<Pick<PromptVersion, 'content' | 'change_summary'>> = {}
+    if (args.content !== undefined) updates.content = args.content
+    if (args.change_summary !== undefined) updates.change_summary = args.change_summary
+
+    if (Object.keys(updates).length > 0) {
+      await ctx.db.patch(versions[0]._id, updates)
+    }
+  },
+})
+
+/**
+ * Delete a prompt version (use with caution).
+ */
+export const remove = mutation({
+  args: {
+    id: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    // Find the version by its UUID (id field)
+    const versions = await ctx.db
+      .query('promptVersions')
+      .withIndex('by_uuid', (q) => q.eq('id', args.id))
+      .take(1)
+
+    if (versions.length === 0) {
+      throw new Error(`Prompt version ${args.id} not found`)
+    }
+
+    await ctx.db.delete(versions[0]._id)
+  },
+})
