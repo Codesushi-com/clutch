@@ -239,20 +239,52 @@ export function SessionsList({
   }, [listSessionsWithEffectiveModel, setSessions, setLoading, setInitialized, setError]);
 
   // Reset stuck loading state on mount (in case component unmounted during fetch)
+  // Also reset if we've been loading for too long without making progress
   useEffect(() => {
-    if (isLoading && allSessions.length > 0) {
-      setLoading(false);
+    if (isLoading) {
+      // If we have sessions, we're definitely not loading anymore
+      if (allSessions.length > 0) {
+        setLoading(false);
+        return;
+      }
+
+      // If we're initialized but have no sessions, we're also not loading
+      if (isInitialized) {
+        setLoading(false);
+        return;
+      }
     }
-  }, [isLoading, allSessions.length, setLoading]);
+  }, [isLoading, allSessions.length, isInitialized, setLoading]);
+
+  // Safety timeout: force reset loading state after 15 seconds to prevent infinite skeleton
+  useEffect(() => {
+    if (isLoading) {
+      const timeoutId = setTimeout(() => {
+        console.warn('[SessionsList] Loading timeout reached, forcing loading state reset');
+        setLoading(false);
+      }, 15000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isLoading, setLoading]);
 
   // Initial load - fetch on mount if not initialized or if we have no sessions
   const hasLoadedRef = useRef(false);
+  const initialLoadStartedRef = useRef(false);
+  
   useEffect(() => {
-    if (!hasLoadedRef.current && (!isInitialized || allSessions.length === 0)) {
-      hasLoadedRef.current = true;
-      fetchSessions(true);
+    // Prevent double fetch on mount and ensure we always try to load
+    if (!initialLoadStartedRef.current) {
+      initialLoadStartedRef.current = true;
+      
+      // Always fetch on mount to ensure fresh data
+      // The hasLoadedRef prevents duplicate fetches if the effect re-runs
+      if (!hasLoadedRef.current) {
+        hasLoadedRef.current = true;
+        fetchSessions(true);
+      }
     }
-  }, [fetchSessions, isInitialized, allSessions.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only run on mount, fetchSessions is stable
+  }, []);
 
   // Auto-refresh every 30 seconds (reduced from 10s to prevent excessive CLI spawns)
   useEffect(() => {
