@@ -28,7 +28,7 @@ export type { GatewayStatus } from './rpc';
  * Works from both client and server contexts.
  */
 async function fetchSessionsFromApi(params?: SessionListParams): Promise<SessionListResponse> {
-  const limit = params?.limit ?? 100;
+  const limit = params?.limit ?? 50;
   const activeMinutes = 60;
   const url = `/api/sessions/list?activeMinutes=${activeMinutes}&limit=${limit}`;
 

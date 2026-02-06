@@ -36,7 +36,7 @@ interface OpenClawSession {
 }
 
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
-const STUCK_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
+const COMPLETED_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
 
 /**
  * Fetch all active sessions from the OpenClaw CLI.
@@ -70,12 +70,12 @@ function toStatusInfo(session: OpenClawSession): SessionStatusInfo {
   const timeSinceActivity = now - lastActivityMs
 
   const isActive = timeSinceActivity < IDLE_THRESHOLD_MS
-  const isIdle = timeSinceActivity >= IDLE_THRESHOLD_MS && timeSinceActivity < STUCK_THRESHOLD_MS
-  const isStuck = timeSinceActivity >= STUCK_THRESHOLD_MS
+  const isIdle = timeSinceActivity >= IDLE_THRESHOLD_MS && timeSinceActivity < COMPLETED_THRESHOLD_MS
+  const isStuck = timeSinceActivity >= COMPLETED_THRESHOLD_MS
 
   let status: SessionStatusInfo['status'] = 'idle'
   if (isActive) status = 'running'
-  else if (isStuck) status = 'error'
+  else if (isStuck) status = 'completed'
 
   const updatedAt = session.updatedAt
     ? new Date(session.updatedAt).toISOString()

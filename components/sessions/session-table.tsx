@@ -73,14 +73,19 @@ interface SessionRowData {
 type EnhancedStatus = 'working' | 'idle' | 'stuck' | 'done';
 
 // Helper functions
-function formatDuration(startTime: string, endTime?: string): string {
-  const start = new Date(startTime);
-  const end = endTime ? new Date(endTime) : new Date();
-  const diffMs = end.getTime() - start.getTime();
-  
-  const minutes = Math.floor(diffMs / 60000);
-  const seconds = Math.floor((diffMs % 60000) / 1000);
-  
+/**
+ * Format a duration in milliseconds to a human-readable string.
+ * Uses static computation — no live-ticking.
+ */
+function formatDurationMs(ms: number): string {
+  if (ms < 0) ms = 0;
+  const hours = Math.floor(ms / 3600000);
+  const minutes = Math.floor((ms % 3600000) / 60000);
+  const seconds = Math.floor((ms % 60000) / 1000);
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
   if (minutes > 0) {
     return `${minutes}m ${seconds}s`;
   }
@@ -557,12 +562,25 @@ export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps
   // Use filtered sessions if provided, otherwise use store sessions
   const rawSessions = filteredSessions || storeSessions;
 
-  // Transform sessions for table
-  const data: SessionRowData[] = (filteredSessions || rawSessions).map((session) => ({
-    ...session,
-    duration: formatDuration(session.createdAt, session.completedAt),
-    task: session.task,
-  }));
+  // Transform sessions for table — compute duration once from timestamps, no live ticking.
+  // Since we only have updatedAt (not true createdAt), "duration" shows time since
+  // last activity for running sessions, or "—" for completed ones.
+  const now = Date.now();
+  const data: SessionRowData[] = (filteredSessions || rawSessions).map((session) => {
+    const updatedMs = new Date(session.updatedAt).getTime();
+    const ageMs = now - updatedMs;
+    // For completed sessions, duration is meaningless without a true start time — show "—"
+    // For running/idle, show how long ago the session was last active
+    const duration = session.completedAt
+      ? "—"
+      : formatDurationMs(ageMs);
+
+    return {
+      ...session,
+      duration,
+      task: session.task,
+    };
+  });
 
   const columns = getColumns();
 
