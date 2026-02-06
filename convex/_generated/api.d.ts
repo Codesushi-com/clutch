@@ -18,6 +18,7 @@ import type * as promptVersions from "../promptVersions.js";
 import type * as seed from "../seed.js";
 import type * as signals from "../signals.js";
 import type * as stuckTickets from "../stuckTickets.js";
+import type * as taskAnalyses from "../taskAnalyses.js";
 import type * as taskDependencies from "../taskDependencies.js";
 import type * as tasks from "../tasks.js";
 import type * as workLoop from "../workLoop.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   seed: typeof seed;
   signals: typeof signals;
   stuckTickets: typeof stuckTickets;
+  taskAnalyses: typeof taskAnalyses;
   taskDependencies: typeof taskDependencies;
   tasks: typeof tasks;
   workLoop: typeof workLoop;

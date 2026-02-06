@@ -1,13 +1,16 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus } from "lucide-react"
+import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useUpdateTask, useDeleteTask } from "@/lib/stores/task-store"
 import { CommentThread } from "./comment-thread"
 import { CommentInput } from "./comment-input"
 import { DependencyPicker } from "./dependency-picker"
+import { TaskAnalysisContent } from "./task-analysis-content"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
+import { useParams } from "next/navigation"
 import type { Task, TaskStatus, TaskPriority, TaskRole, Comment, DispatchStatus, TaskDependencySummary } from "@/lib/types"
 
 interface TaskModalProps {
@@ -72,6 +75,13 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   // Dependency picker state
   const [pickerOpen, setPickerOpen] = useState(false)
   const [removingDepId, setRemovingDepId] = useState<string | null>(null)
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState("description")
+
+  // Project slug for links
+  const params = useParams()
+  const projectSlug = params.slug as string
 
   const updateTaskMutation = useUpdateTask()
   const deleteTaskMutation = useDeleteTask()
@@ -368,44 +378,63 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="flex gap-8">
-              {/* Main content */}
-              <div className="flex-1 space-y-4">
-                {/* Description */}
-                <div>
-                  <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">
-                    Description
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Add a description..."
-                    className="w-full min-h-[200px] max-h-[400px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-y"
-                  />
-                </div>
-
-                {/* Comments Section */}
-                <div className="border-t border-[var(--border)] pt-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <MessageSquare className="h-4 w-4 text-[var(--text-secondary)]" />
-                    <label className="text-sm font-medium text-[var(--text-secondary)]">
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+              <div className="px-4 pt-4">
+                <TabsList>
+                  <TabsTrigger value="description">
+                    <span className="flex items-center gap-2">
+                      Description
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger value="comments">
+                    <span className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
                       Comments ({comments.length})
-                    </label>
-                  </div>
-
-                  {loadingComments ? (
-                    <div className="text-sm text-[var(--text-muted)]">Loading comments...</div>
-                  ) : (
-                    <>
-                      <div className="max-h-[500px] overflow-y-auto mb-4">
-                        <CommentThread comments={comments} />
-                      </div>
-                      <CommentInput onSubmit={handleAddComment} />
-                    </>
-                  )}
-                </div>
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger value="analysis">
+                    <span className="flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" />
+                      Analysis
+                    </span>
+                  </TabsTrigger>
+                </TabsList>
               </div>
+
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex gap-8">
+                  {/* Main content */}
+                  <div className="flex-1 min-h-0">
+                    {/* Description Tab */}
+                    <TabsContent value="description" className="mt-0">
+                      <textarea
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="Add a description..."
+                        className="w-full min-h-[400px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-y"
+                      />
+                    </TabsContent>
+
+                    {/* Comments Tab */}
+                    <TabsContent value="comments" className="mt-0">
+                      {loadingComments ? (
+                        <div className="text-sm text-[var(--text-muted)]">Loading comments...</div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="max-h-[500px] overflow-y-auto">
+                            <CommentThread comments={comments} />
+                          </div>
+                          <CommentInput onSubmit={handleAddComment} />
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    {/* Analysis Tab */}
+                    <TabsContent value="analysis" className="mt-0">
+                      <TaskAnalysisContent taskId={task.id} projectSlug={projectSlug} />
+                    </TabsContent>
+                  </div>
 
               {/* Sidebar */}
               <div className="w-64 space-y-4 flex-shrink-0">
@@ -658,6 +687,8 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                 </div>
               </div>
             </div>
+            </div>
+          </Tabs>
           </div>
 
           {/* Footer */}
