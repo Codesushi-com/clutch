@@ -1,14 +1,21 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
-import { Plus, Eye, EyeOff } from "lucide-react"
+import { Plus, Settings2 } from "lucide-react"
 import { useTaskStore } from "@/lib/stores/task-store"
 import { useConvexBoardTasks } from "@/lib/hooks/use-convex-tasks"
 import { Column } from "./column"
 import { MobileBoard } from "./mobile-board"
 import { useMobileDetection } from "./use-mobile-detection"
 import type { Task, TaskStatus } from "@/lib/types"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Button } from "@/components/ui/button"
 
 interface BoardProps {
   projectId: string
@@ -20,9 +27,35 @@ const COLUMNS: { status: TaskStatus; title: string; color: string; showAdd: bool
   { status: "backlog", title: "Backlog", color: "#52525b", showAdd: true },
   { status: "ready", title: "Ready", color: "#3b82f6", showAdd: true },
   { status: "in_progress", title: "In Progress", color: "#eab308", showAdd: false },
-  { status: "in_review", title: "Review", color: "#a855f7", showAdd: false },
+  { status: "in_review", title: "In Review", color: "#a855f7", showAdd: false },
   { status: "done", title: "Done", color: "#22c55e", showAdd: false },
 ]
+
+const STORAGE_KEY = (projectId: string) => `board-column-visibility-${projectId}`
+
+// Default visibility: all columns visible
+const DEFAULT_VISIBILITY: Record<TaskStatus, boolean> = {
+  backlog: true,
+  ready: true,
+  in_progress: true,
+  in_review: true,
+  done: true,
+}
+
+function getInitialVisibility(projectId: string): Record<TaskStatus, boolean> {
+  if (typeof window === 'undefined') return DEFAULT_VISIBILITY
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY(projectId))
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      // Merge with defaults to handle new columns
+      return { ...DEFAULT_VISIBILITY, ...parsed }
+    }
+  } catch (error) {
+    console.error('Failed to parse column visibility:', error)
+  }
+  return DEFAULT_VISIBILITY
+}
 
 export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
   // Use Convex for reactive task data (real-time updates)
@@ -34,49 +67,36 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
   const isMobile = useMobileDetection(768)
   
   // Column visibility state - initialize from localStorage
-  const [showDone, setShowDone] = useState(() => {
-    if (typeof window === 'undefined') return false
-    try {
-      const savedPrefs = localStorage.getItem(`board-prefs-${projectId}`)
-      if (savedPrefs) {
-        const prefs = JSON.parse(savedPrefs)
-        return prefs.showDone ?? false
-      }
-    } catch (error) {
-      console.error('Failed to parse board preferences:', error)
-    }
-    return false
-  })
+  const [columnVisibility, setColumnVisibility] = useState<Record<TaskStatus, boolean>>(
+    () => getInitialVisibility(projectId)
+  )
   
-  // Save preferences to localStorage whenever they change
-  const handleToggleShowDone = () => {
-    const newValue = !showDone
-    setShowDone(newValue)
-    const prefs = { showDone: newValue }
-    localStorage.setItem(`board-prefs-${projectId}`, JSON.stringify(prefs))
-  }
+  // Save visibility to localStorage whenever it changes
+  const updateColumnVisibility = useCallback((status: TaskStatus, visible: boolean) => {
+    setColumnVisibility(prev => {
+      const next = { ...prev, [status]: visible }
+      localStorage.setItem(STORAGE_KEY(projectId), JSON.stringify(next))
+      return next
+    })
+  }, [projectId])
+  
+  // Toggle all columns at once
+  const toggleAllColumns = useCallback((visible: boolean) => {
+    const next: Record<TaskStatus, boolean> = {
+      backlog: visible,
+      ready: visible,
+      in_progress: visible,
+      in_review: visible,
+      done: visible,
+    }
+    setColumnVisibility(next)
+    localStorage.setItem(STORAGE_KEY(projectId), JSON.stringify(next))
+  }, [projectId])
 
   // Determine which columns should be visible
   const visibleColumns = useMemo(() => {
-    return COLUMNS.filter(col => {
-      // Always show backlog, ready, and in_progress
-      if (["backlog", "ready", "in_progress"].includes(col.status)) {
-        return true
-      }
-      
-      // Show Done column only if user has toggled it on
-      if (col.status === "done") {
-        return showDone
-      }
-      
-      // Show Review column only if it has tasks (auto-hide when empty)
-      if (col.status === "in_review") {
-        return (tasksByStatus?.in_review?.length ?? 0) > 0
-      }
-      
-      return true
-    })
-  }, [tasksByStatus, showDone])
+    return COLUMNS.filter(col => columnVisibility[col.status])
+  }, [columnVisibility])
 
   const handleDragEnd = (result: DropResult) => {
     const { destination, source, draggableId } = result
@@ -130,8 +150,8 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
         onTaskClick={onTaskClick}
         onAddTask={onAddTask}
         onDragEnd={handleDragEnd}
-        showDone={showDone}
-        onToggleShowDone={handleToggleShowDone}
+        columnVisibility={columnVisibility}
+        onToggleColumn={updateColumnVisibility}
       />
     )
   }
@@ -147,23 +167,78 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
           </h2>
         </div>
         <div className="flex items-center gap-3">
-          {/* Show Done toggle */}
-          <button
-            onClick={handleToggleShowDone}
-            className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors text-sm"
-            title={showDone ? "Hide completed tasks" : "Show completed tasks"}
-          >
-            {showDone ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            {showDone ? "Hide Done" : "Show Done"}
-          </button>
+          {/* Column Visibility Dropdown */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+              >
+                <Settings2 className="h-4 w-4" />
+                Columns
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 bg-[var(--bg-secondary)] border-[var(--border)] p-3" align="end">
+              <div className="space-y-3">
+                <div className="text-sm font-medium text-[var(--text-primary)] border-b border-[var(--border)] pb-2">
+                  Show Columns
+                </div>
+                <div className="space-y-2">
+                  {COLUMNS.map((col) => (
+                    <label
+                      key={col.status}
+                      className="flex items-center gap-3 cursor-pointer hover:bg-[var(--bg-tertiary)] rounded px-1 py-1 transition-colors"
+                    >
+                      <Checkbox
+                        checked={columnVisibility[col.status]}
+                        onCheckedChange={(checked) => 
+                          updateColumnVisibility(col.status, checked === true)
+                        }
+                        id={`col-${col.status}`}
+                      />
+                      <div className="flex items-center gap-2 flex-1">
+                        <div 
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: col.color }}
+                        />
+                        <span className="text-sm text-[var(--text-primary)]">
+                          {col.title}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <div className="pt-2 border-t border-[var(--border)] flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1 text-xs h-7 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    onClick={() => toggleAllColumns(true)}
+                  >
+                    Show All
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1 text-xs h-7 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    onClick={() => toggleAllColumns(false)}
+                  >
+                    Hide All
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
           
-          <button
+          <Button
             onClick={() => onAddTask("backlog")}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue)]/90 transition-colors font-medium"
+            size="sm"
+            className="flex items-center gap-2 bg-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/90 text-white"
           >
             <Plus className="h-4 w-4" />
             New Ticket
-          </button>
+          </Button>
         </div>
       </div>
 

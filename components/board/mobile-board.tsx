@@ -2,9 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
-import { Plus, ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react"
+import { Plus, ChevronLeft, ChevronRight, Settings2 } from "lucide-react"
 import type { Task, TaskStatus } from "@/lib/types"
 import { Column } from "./column"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Button } from "@/components/ui/button"
 
 interface MobileBoardProps {
   columns: { status: TaskStatus; title: string; color: string; showAdd: boolean }[]
@@ -12,8 +19,8 @@ interface MobileBoardProps {
   onTaskClick: (task: Task) => void
   onAddTask: (status: TaskStatus) => void
   onDragEnd: (result: DropResult) => void
-  showDone?: boolean
-  onToggleShowDone?: () => void
+  columnVisibility: Record<TaskStatus, boolean>
+  onToggleColumn: (status: TaskStatus, visible: boolean) => void
 }
 
 export function MobileBoard({
@@ -22,8 +29,8 @@ export function MobileBoard({
   onTaskClick,
   onAddTask,
   onDragEnd,
-  showDone = false,
-  onToggleShowDone
+  columnVisibility,
+  onToggleColumn,
 }: MobileBoardProps) {
   const [activeColumnIndex, setActiveColumnIndex] = useState(0)
   const activeColumn = columns[activeColumnIndex]
@@ -138,25 +145,76 @@ export function MobileBoard({
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          {/* Show Done toggle for mobile */}
-          {onToggleShowDone && (
-            <button
-              onClick={onToggleShowDone}
-              className="flex items-center gap-1 px-2 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors text-xs"
-              title={showDone ? "Hide completed tasks" : "Show completed tasks"}
-            >
-              {showDone ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-              {showDone ? "Hide" : "Show"}
-            </button>
-          )}
+          {/* Column Visibility Dropdown */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-1 px-2 bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] h-9"
+              >
+                <Settings2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Columns</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 bg-[var(--bg-secondary)] border-[var(--border)] p-3" align="end">
+              <div className="space-y-3">
+                <div className="text-sm font-medium text-[var(--text-primary)] border-b border-[var(--border)] pb-2">
+                  Show Columns
+                </div>
+                <div className="space-y-2">
+                  {(["backlog", "ready", "in_progress", "in_review", "done"] as TaskStatus[]).map((status) => {
+                    const colTitles: Record<TaskStatus, string> = {
+                      backlog: "Backlog",
+                      ready: "Ready",
+                      in_progress: "In Progress",
+                      in_review: "In Review",
+                      done: "Done",
+                    }
+                    const colColors: Record<TaskStatus, string> = {
+                      backlog: "#52525b",
+                      ready: "#3b82f6",
+                      in_progress: "#eab308",
+                      in_review: "#a855f7",
+                      done: "#22c55e",
+                    }
+                    return (
+                      <label
+                        key={status}
+                        className="flex items-center gap-3 cursor-pointer hover:bg-[var(--bg-tertiary)] rounded px-1 py-1 transition-colors"
+                      >
+                        <Checkbox
+                          checked={columnVisibility[status]}
+                          onCheckedChange={(checked) => 
+                            onToggleColumn(status, checked === true)
+                          }
+                          id={`mobile-col-${status}`}
+                        />
+                        <div className="flex items-center gap-2 flex-1">
+                          <div 
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: colColors[status] }}
+                          />
+                          <span className="text-sm text-[var(--text-primary)]">
+                            {colTitles[status]}
+                          </span>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
           
-          <button
+          <Button
             onClick={() => onAddTask("backlog")}
-            className="flex items-center gap-2 px-3 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue)]/90 transition-colors font-medium text-sm"
+            size="sm"
+            className="flex items-center gap-2 bg-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/90 text-white h-9"
           >
             <Plus className="h-4 w-4" />
-            New Ticket
-          </button>
+            <span className="hidden sm:inline">New Ticket</span>
+          </Button>
         </div>
       </div>
 
