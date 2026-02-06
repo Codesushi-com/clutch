@@ -2,11 +2,12 @@
 
 /**
  * Session Table Component
- * Responsive data table displaying sessions with sorting and filtering
- * Shows table view on desktop, card view on mobile
+ * Responsive data table displaying sessions with enhanced status indicators,
+ * agent type badges, and task associations
  */
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ColumnDef,
   flexRender,
@@ -15,7 +16,7 @@ import {
   SortingState,
   useReactTable,
 } from '@tanstack/react-table';
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { SessionStatus, SessionType, Session } from '@/lib/types';
 import { useSessionStore } from '@/lib/stores/session-store';
@@ -52,8 +53,24 @@ interface SessionRowData {
   duration: string;
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
   parentId?: string;
+  task?: {
+    id: string;
+    title: string;
+    status: string;
+    projectSlug?: string;
+  };
 }
+
+/**
+ * Enhanced status type that maps session status to user-friendly labels
+ * - working: Session is actively processing (running)
+ * - idle: Session is waiting/idle
+ * - stuck: Session has an error or is stuck
+ * - done: Session completed successfully
+ */
+type EnhancedStatus = 'working' | 'idle' | 'stuck' | 'done';
 
 // Helper functions
 function formatDuration(startTime: string, endTime?: string): string {
@@ -80,13 +97,75 @@ function formatTokens(count: number): string {
   return count.toString();
 }
 
-const statusVariants: Record<SessionStatus, 'default' | 'secondary' | 'destructive' | 'outline' | 'success'> = {
-  running: 'default',
-  idle: 'secondary',
-  completed: 'success',
-  error: 'destructive',
-  cancelled: 'outline',
-};
+/**
+ * Map session status to enhanced status
+ */
+function getEnhancedStatus(session: SessionRowData): EnhancedStatus {
+  if (session.status === 'running') return 'working';
+  if (session.status === 'error') return 'stuck';
+  if (session.status === 'completed') return 'done';
+  if (session.status === 'cancelled') return 'done';
+  return 'idle';
+}
+
+/**
+ * Get display label for enhanced status
+ */
+function getStatusLabel(status: EnhancedStatus): string {
+  const labels: Record<EnhancedStatus, string> = {
+    working: 'Working',
+    idle: 'Idle',
+    stuck: 'Stuck',
+    done: 'Done',
+  };
+  return labels[status];
+}
+
+/**
+ * Get badge variant for enhanced status
+ */
+function getStatusVariant(status: EnhancedStatus): 'default' | 'secondary' | 'destructive' | 'outline' | 'success' {
+  const variants: Record<EnhancedStatus, 'default' | 'secondary' | 'destructive' | 'outline' | 'success'> = {
+    working: 'default',   // Blue (default)
+    idle: 'secondary',    // Gray
+    stuck: 'destructive', // Red
+    done: 'success',      // Green
+  };
+  return variants[status];
+}
+
+/**
+ * Get color styles for agent type badge
+ */
+function getAgentTypeStyles(type: SessionType): { bg: string; text: string; border: string } {
+  const styles: Record<SessionType, { bg: string; text: string; border: string }> = {
+    main: {
+      bg: 'bg-blue-500/10',
+      text: 'text-blue-600',
+      border: 'border-blue-500/30',
+    },
+    isolated: {
+      bg: 'bg-purple-500/10',
+      text: 'text-purple-600',
+      border: 'border-purple-500/30',
+    },
+    subagent: {
+      bg: 'bg-amber-500/10',
+      text: 'text-amber-600',
+      border: 'border-amber-500/30',
+    },
+  };
+  return styles[type];
+}
+
+/**
+ * Get display label for agent type
+ */
+function getAgentTypeLabel(type: SessionType, parentId?: string): string {
+  if (type === 'subagent' || parentId) return 'Agent';
+  if (type === 'isolated') return 'Isolated';
+  return 'Main';
+}
 
 // Sort header component
 function SortHeader({
@@ -117,22 +196,115 @@ function SortHeader({
   );
 }
 
+// Status badge with dot indicator
+function StatusBadge({ status }: { status: EnhancedStatus }) {
+  const variant = getStatusVariant(status);
+  const dotColors: Record<EnhancedStatus, string> = {
+    working: 'bg-blue-500',
+    idle: 'bg-gray-400',
+    stuck: 'bg-red-500',
+    done: 'bg-green-500',
+  };
+
+  return (
+    <Badge variant={variant} className="capitalize flex items-center gap-1.5">
+      <span className="relative flex h-1.5 w-1.5">
+        {status === 'working' && (
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+        )}
+        <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${dotColors[status]}`} />
+      </span>
+      {getStatusLabel(status)}
+    </Badge>
+  );
+}
+
+// Agent type badge with custom colors
+function AgentTypeBadge({ type, parentId }: { type: SessionType; parentId?: string }) {
+  const styles = getAgentTypeStyles(type);
+  const label = getAgentTypeLabel(type, parentId);
+
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${styles.bg} ${styles.text} ${styles.border}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+// Task link component
+function TaskLink({ task }: { task?: SessionRowData['task'] }) {
+  const router = useRouter();
+
+  if (!task) {
+    return (
+      <span className="text-sm text-muted-foreground italic">
+        No task
+      </span>
+    );
+  }
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const projectSlug = task.projectSlug || 'default';
+    router.push(`/projects/${projectSlug}/board?task=${task.id}`);
+  };
+
+  const statusColors: Record<string, string> = {
+    backlog: 'text-gray-500',
+    ready: 'text-blue-500',
+    in_progress: 'text-amber-500',
+    in_review: 'text-purple-500',
+    done: 'text-green-500',
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 hover:underline transition-colors"
+      title={`Open task: ${task.title}`}
+    >
+      <span className="truncate max-w-[150px]">{task.title}</span>
+      <ExternalLink className="h-3 w-3 flex-shrink-0" />
+      <span className={`text-xs ${statusColors[task.status] || 'text-gray-500'}`}>
+        ({task.status.replace('_', ' ')})
+      </span>
+    </button>
+  );
+}
+
 // Define columns
-const columns: ColumnDef<SessionRowData>[] = [
+const getColumns = (): ColumnDef<SessionRowData>[] => [
   {
     accessorKey: 'name',
     header: ({ column }) => <SortHeader column={column}>Session</SortHeader>,
     cell: ({ row }) => (
-      <div className="flex flex-col">
-        <span className="font-medium">{row.original.name}</span>
-        <span className="text-xs text-muted-foreground capitalize">
-          {row.original.type}
-          {row.original.parentId && (
-            <span className="ml-1">(sub-agent)</span>
-          )}
+      <div className="flex flex-col gap-1">
+        <span className="font-medium truncate max-w-[200px]" title={row.original.name}>
+          {row.original.name}
         </span>
+        <div className="flex items-center gap-2">
+          <AgentTypeBadge type={row.original.type} parentId={row.original.parentId} />
+          {row.original.parentId && (
+            <span className="text-xs text-muted-foreground">(sub)</span>
+          )}
+        </div>
       </div>
     ),
+  },
+  {
+    accessorKey: 'status',
+    header: ({ column }) => <SortHeader column={column}>Status</SortHeader>,
+    cell: ({ row }) => {
+      const enhancedStatus = getEnhancedStatus(row.original);
+      return <StatusBadge status={enhancedStatus} />;
+    },
+  },
+  {
+    accessorKey: 'task',
+    header: ({ column }) => <SortHeader column={column}>Task</SortHeader>,
+    cell: ({ row }) => <TaskLink task={row.original.task} />,
   },
   {
     accessorKey: 'effectiveModel',
@@ -142,22 +314,13 @@ const columns: ColumnDef<SessionRowData>[] = [
       const hasOverride = row.original.effectiveModel && row.original.effectiveModel !== row.original.model;
       return (
         <span
-          className={`text-sm truncate max-w-[180px] inline-block ${hasOverride ? 'text-primary font-medium' : ''}`}
+          className={`text-sm truncate max-w-[150px] inline-block ${hasOverride ? 'text-primary font-medium' : ''}`}
           title={effectiveModel}
         >
-          {effectiveModel}
+          {effectiveModel.split('/').pop() || effectiveModel}
         </span>
       );
     },
-  },
-  {
-    accessorKey: 'status',
-    header: ({ column }) => <SortHeader column={column}>Status</SortHeader>,
-    cell: ({ row }) => (
-      <Badge variant={statusVariants[row.original.status]} className="capitalize">
-        {row.original.status}
-      </Badge>
-    ),
   },
   {
     accessorKey: 'totalTokens',
@@ -166,7 +329,7 @@ const columns: ColumnDef<SessionRowData>[] = [
       const tokens = row.original.tokens?.total || 0;
       return (
         <div className="flex flex-col">
-          <span className="tabular-nums">{formatTokens(tokens)}</span>
+          <span className="tabular-nums text-sm">{formatTokens(tokens)}</span>
         </div>
       );
     },
@@ -202,6 +365,16 @@ function SessionCard({
   onRowClick?: (sessionId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const router = useRouter();
+  const enhancedStatus = getEnhancedStatus(session);
+
+  const handleTaskClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (session.task) {
+      const projectSlug = session.task.projectSlug || 'default';
+      router.push(`/projects/${projectSlug}/board?task=${session.task.id}`);
+    }
+  };
 
   return (
     <Card 
@@ -212,17 +385,9 @@ function SessionCard({
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
             <h3 className="font-medium truncate">{session.name}</h3>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs text-muted-foreground capitalize">
-                {session.type}
-                {session.parentId && <span className="ml-1">(sub-agent)</span>}
-              </span>
-              <Badge 
-                variant={statusVariants[session.status]} 
-                className="capitalize text-xs"
-              >
-                {session.status}
-              </Badge>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <AgentTypeBadge type={session.type} parentId={session.parentId} />
+              <StatusBadge status={enhancedStatus} />
             </div>
           </div>
           <Button
@@ -242,7 +407,20 @@ function SessionCard({
           </Button>
         </div>
         
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
+        {/* Task info on card header */}
+        {session.task && (
+          <div className="mt-2">
+            <button
+              onClick={handleTaskClick}
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <span className="truncate max-w-[200px]">{session.task.title}</span>
+              <ExternalLink className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+        
+        <div className="flex items-center justify-between text-sm text-muted-foreground mt-2">
           <span>
             {session.updatedAt 
               ? formatDistanceToNow(new Date(session.updatedAt), { addSuffix: true })
@@ -262,7 +440,7 @@ function SessionCard({
                 className={`text-right truncate ml-2 ${session.effectiveModel && session.effectiveModel !== session.model ? 'text-primary font-medium' : ''}`}
                 title={session.effectiveModel || session.model}
               >
-                {session.effectiveModel || session.model}
+                {(session.effectiveModel || session.model).split('/').pop()}
               </span>
             </div>
             <div className="flex justify-between">
@@ -277,6 +455,12 @@ function SessionCard({
                 {session.id.slice(0, 8)}...
               </span>
             </div>
+            {!session.task && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Task:</span>
+                <span className="text-muted-foreground italic">No task linked</span>
+              </div>
+            )}
           </div>
         </CardContent>
       )}
@@ -293,9 +477,10 @@ function TableSkeleton() {
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="flex items-center gap-4 p-4 border-b">
             <Skeleton className="h-4 w-[200px]" />
+            <Skeleton className="h-4 w-[80px]" />
+            <Skeleton className="h-4 w-[150px]" />
             <Skeleton className="h-4 w-[150px]" />
             <Skeleton className="h-4 w-[80px]" />
-            <Skeleton className="h-4 w-[100px]" />
             <Skeleton className="h-4 w-[80px]" />
             <Skeleton className="h-4 w-[100px]" />
           </div>
@@ -376,7 +561,10 @@ export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps
   const data: SessionRowData[] = (filteredSessions || rawSessions).map((session) => ({
     ...session,
     duration: formatDuration(session.createdAt, session.completedAt),
+    task: session.task,
   }));
+
+  const columns = getColumns();
 
   const table = useReactTable({
     data,

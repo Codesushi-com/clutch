@@ -731,3 +731,79 @@ async function shiftTasksInColumn(
     }
   }
 }
+
+// ============================================
+// Session Association Queries
+// ============================================
+
+/**
+ * Get tasks by session IDs
+ * Used to associate sessions with their related tasks
+ */
+export const getBySessionIds = query({
+  args: {
+    sessionIds: v.array(v.string()),
+  },
+  handler: async (ctx, args): Promise<Array<{
+    id: string;
+    title: string;
+    status: TaskStatus;
+    project_id: string;
+    session_id: string;
+  }>> => {
+    const tasks = []
+
+    for (const sessionId of args.sessionIds) {
+      // Use the by_session_id index for efficient lookup
+      const task = await ctx.db
+        .query('tasks')
+        .withIndex('by_session_id', (q) => q.eq('session_id', sessionId))
+        .unique()
+
+      if (task && task.session_id) {
+        tasks.push({
+          id: task.id,
+          title: task.title,
+          status: task.status as TaskStatus,
+          project_id: task.project_id,
+          session_id: task.session_id,
+        })
+      }
+    }
+
+    return tasks
+  },
+})
+
+/**
+ * Get a single task by session ID
+ */
+export const getBySessionId = query({
+  args: {
+    sessionId: v.string(),
+  },
+  handler: async (ctx, args): Promise<{
+    id: string;
+    title: string;
+    status: TaskStatus;
+    project_id: string;
+    session_id: string;
+  } | null> => {
+    const task = await ctx.db
+      .query('tasks')
+      .withIndex('by_session_id', (q) => q.eq('session_id', args.sessionId))
+      .unique()
+
+    if (task && task.session_id) {
+      return {
+        id: task.id,
+        title: task.title,
+        status: task.status as TaskStatus,
+        project_id: task.project_id,
+        session_id: task.session_id,
+      }
+    }
+
+    return null
+  },
+})

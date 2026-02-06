@@ -7,6 +7,16 @@ export type SessionStatus = 'running' | 'idle' | 'completed' | 'error' | 'cancel
 
 export type SessionType = 'main' | 'isolated' | 'subagent';
 
+/**
+ * Task information associated with a session
+ */
+export interface SessionTaskInfo {
+  id: string;
+  title: string;
+  status: 'backlog' | 'ready' | 'in_progress' | 'in_review' | 'done';
+  projectSlug?: string;
+}
+
 export interface Session {
   id: string;
   name: string;
@@ -29,6 +39,10 @@ export interface Session {
   };
   cost?: number;
   metadata?: Record<string, unknown>;
+  /**
+   * Associated task information if this session is linked to a task
+   */
+  task?: SessionTaskInfo;
 }
 
 export interface SessionListResponse {

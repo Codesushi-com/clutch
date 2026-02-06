@@ -3,15 +3,16 @@
 /**
  * Sessions List Component
  * Reusable component for displaying sessions with optional project filtering
- * Uses HTTP API instead of WebSocket for session management
+ * Uses HTTP API for session management and Convex for task associations
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, RefreshCw, Activity } from 'lucide-react';
 import { SessionTable } from '@/components/sessions/session-table';
 import { useSessionStore } from '@/lib/stores/session-store';
 import { useOpenClawHttpRpc } from '@/lib/hooks/use-openclaw-http';
+import { useTasksBySessionIds } from '@/lib/hooks/use-convex-sessions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Session } from '@/lib/types';
@@ -102,6 +103,68 @@ function filterProjectSessions(sessions: Session[], projectSlug: string): Sessio
   });
 }
 
+/**
+ * Extract task ID from session ID for cron work loop sessions
+ * Pattern: agent:main:cron:*:trap-{ticketId}
+ */
+function extractTaskIdFromSessionId(sessionId: string): string | null {
+  // Direct project chat sessions don't have task IDs in the session key
+  if (sessionId.startsWith('trap:')) {
+    return null;
+  }
+  
+  // Work loop sessions: agent:main:cron:*:trap-{ticketId}
+  const trapMatch = sessionId.match(/trap-([a-f0-9-]+)/);
+  if (trapMatch) {
+    return trapMatch[1];
+  }
+  
+  return null;
+}
+
+/**
+ * Enrich sessions with task information
+ */
+function enrichSessionsWithTasks(
+  sessions: Session[],
+  tasksBySessionId: Map<string, { id: string; title: string; status: 'backlog' | 'ready' | 'in_progress' | 'in_review' | 'done'; project_id: string }>
+): Session[] {
+  return sessions.map(session => {
+    // First check if we have a task directly associated via session_id
+    const taskFromSessionId = tasksBySessionId.get(session.id);
+    if (taskFromSessionId) {
+      return {
+        ...session,
+        task: {
+          id: taskFromSessionId.id,
+          title: taskFromSessionId.title,
+          status: taskFromSessionId.status,
+        },
+      };
+    }
+    
+    // Try to extract task ID from session ID pattern
+    const taskId = extractTaskIdFromSessionId(session.id);
+    if (taskId) {
+      // Look for task with this ID
+      for (const [, task] of tasksBySessionId) {
+        if (task.id === taskId) {
+          return {
+            ...session,
+            task: {
+              id: task.id,
+              title: task.title,
+              status: task.status,
+            },
+          };
+        }
+      }
+    }
+    
+    return session;
+  });
+}
+
 export function SessionsList({
   projectSlug,
   onSessionClick,
@@ -111,6 +174,7 @@ export function SessionsList({
 }: SessionsListProps) {
   const router = useRouter();
   const { connected, listSessionsWithEffectiveModel } = useOpenClawHttpRpc();
+  const [enrichedSessions, setEnrichedSessions] = useState<Session[]>([]);
   
   const {
     sessions: allSessions,
@@ -121,6 +185,31 @@ export function SessionsList({
     setInitialized,
     setError,
   } = useSessionStore();
+
+  // Get all session IDs for task lookup
+  const sessionIds = useMemo(() => allSessions.map(s => s.id), [allSessions]);
+  
+  // Fetch tasks associated with these sessions using Convex
+  const { tasks: tasksData } = useTasksBySessionIds(sessionIds);
+
+  // Build task lookup map with useMemo to prevent re-creation on every render
+  const tasksBySessionId = useMemo(() => {
+    const map = new Map<string, { id: string; title: string; status: 'backlog' | 'ready' | 'in_progress' | 'in_review' | 'done'; project_id: string }>();
+    if (tasksData) {
+      for (const task of tasksData) {
+        map.set(task.session_id, task);
+      }
+    }
+    return map;
+  }, [tasksData]);
+
+  // Enrich sessions with task data
+  useEffect(() => {
+    if (allSessions.length > 0) {
+      const enriched = enrichSessionsWithTasks(allSessions, tasksBySessionId);
+      setEnrichedSessions(enriched);
+    }
+  }, [allSessions, tasksBySessionId]);
 
   // Fetch sessions via HTTP API with effective model
   const fetchSessions = useCallback(async (isInitialLoad = false) => {
@@ -147,12 +236,21 @@ export function SessionsList({
 
   // Initial load - only once
   const hasLoadedRef = useRef(false);
-  useCallback(() => {
+  useEffect(() => {
     if (!hasLoadedRef.current && !isInitialized) {
       hasLoadedRef.current = true;
       fetchSessions(true);
     }
-  }, [fetchSessions, isInitialized])();
+  }, [fetchSessions, isInitialized]);
+
+  // Auto-refresh every 10 seconds
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      fetchSessions(false);
+    }, 10000);
+    
+    return () => clearInterval(intervalId);
+  }, [fetchSessions]);
 
   const handleRefresh = async () => {
     setLoading(true);
@@ -179,8 +277,8 @@ export function SessionsList({
 
   // Filter sessions if projectSlug is provided
   const sessions = projectSlug 
-    ? filterProjectSessions(allSessions, projectSlug)
-    : allSessions;
+    ? filterProjectSessions(enrichedSessions, projectSlug)
+    : enrichedSessions;
 
   // Calculate stats from filtered sessions
   const runningCount = sessions.filter((s) => s.status === 'running').length;
@@ -254,7 +352,7 @@ export function SessionsList({
       <div className="bg-background rounded-lg">
         <SessionTable 
           onRowClick={handleRowClick}
-          filteredSessions={projectSlug ? sessions : undefined}
+          filteredSessions={sessions}
         />
       </div>
 
