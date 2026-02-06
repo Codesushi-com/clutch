@@ -55,6 +55,7 @@ export default defineSchema({
     requires_human_review: v.boolean(),
     tags: v.optional(v.string()), // JSON string from SQLite
     session_id: v.optional(v.string()),
+    prompt_version_id: v.optional(v.string()), // ref to promptVersions
     dispatch_status: v.optional(v.union(
       v.literal("pending"),
       v.literal("spawning"),

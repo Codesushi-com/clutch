@@ -407,6 +407,7 @@ export const update = mutation({
     requires_human_review: v.optional(v.boolean()),
     tags: v.optional(v.string()),
     session_id: v.optional(v.string()),
+    prompt_version_id: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<Task> => {
     const existing = await ctx.db
@@ -440,6 +441,7 @@ export const update = mutation({
     if (args.requires_human_review !== undefined) updates.requires_human_review = args.requires_human_review
     if (args.tags !== undefined) updates.tags = args.tags
     if (args.session_id !== undefined) updates.session_id = args.session_id
+    if (args.prompt_version_id !== undefined) updates.prompt_version_id = args.prompt_version_id
 
     await ctx.db.patch(existing._id, updates)
 

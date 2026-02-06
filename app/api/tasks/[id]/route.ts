@@ -44,6 +44,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     requires_human_review,
     tags,
     session_id,
+    prompt_version_id,
   } = body
 
   try {
@@ -64,6 +65,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if (requires_human_review !== undefined) otherUpdates.requires_human_review = !!requires_human_review
       if (tags !== undefined) otherUpdates.tags = tags ? (typeof tags === "string" ? tags : JSON.stringify(tags)) : undefined
       if (session_id !== undefined) otherUpdates.session_id = session_id || undefined
+      if (prompt_version_id !== undefined) otherUpdates.prompt_version_id = prompt_version_id || undefined
 
       if (Object.keys(otherUpdates).length > 0) {
         const task = await convex.mutation(api.tasks.update, { id, ...otherUpdates })
@@ -83,6 +85,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (requires_human_review !== undefined) updates.requires_human_review = !!requires_human_review
     if (tags !== undefined) updates.tags = tags ? (typeof tags === "string" ? tags : JSON.stringify(tags)) : undefined
     if (session_id !== undefined) updates.session_id = session_id || undefined
+    if (prompt_version_id !== undefined) updates.prompt_version_id = prompt_version_id || undefined
 
     const task = await convex.mutation(api.tasks.update, {
       id,
