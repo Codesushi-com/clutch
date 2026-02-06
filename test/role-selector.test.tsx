@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { CreateTaskModal } from '@/components/board/create-task-modal'
 import { TaskCard } from '@/components/board/task-card'
 import { TaskModal } from '@/components/board/task-modal'
-import type { Task } from '@/lib/db/types'
+import type { Task } from '@/lib/types'
 import { DragDropContext, Droppable } from '@hello-pangea/dnd'
 import React from 'react'
 

@@ -26,21 +26,21 @@ PORT=3002 npm run start
 ### Core Concept
 - **Ada (Opus)** - Coordinator agent, maintains state via board
 - **Worker Agents** - Stateless, fresh session per task (kimi-coder, sonnet-reviewer, haiku-triage)
-- **Board** - SQLite-backed task management (replaces GitHub Projects)
+- **Board** - Convex-backed task management (replaces GitHub Projects)
 - **Chat** - Bidirectional communication with OpenClaw main session
 
 ### Tech Stack
 - Next.js 15, TypeScript, React 19
-- SQLite (better-sqlite3, WAL mode)
+- Convex (self-hosted) for real-time data
 - Zustand for state management
 - Tailwind + shadcn/ui
-- WebSocket for real-time updates
+- Convex reactivity for real-time updates
 
 ## Database
 
-Location: `~/.trap/trap.db`
+Trap uses **Convex** (self-hosted) for real-time data synchronization.
 
-Tables:
+### Tables
 - `projects` - Project metadata, repo links
 - `tasks` - Kanban tasks with status, priority, assignee
 - `comments` - Task comments for agent communication
@@ -50,10 +50,18 @@ Tables:
 - `notifications` - System notifications
 - `events` - Activity log
 
-Run migrations:
+### Convex Setup
+
+Convex runs locally via Docker:
 ```bash
-npm run migrate
+# Start Convex (if not already running)
+docker start convex-local  # or check docker-compose
+
+# Deploy schema changes
+npx convex deploy --url http://127.0.0.1:3210 --admin-key '<admin-key>'
 ```
+
+The Convex URL is configured via `NEXT_PUBLIC_CONVEX_URL` (defaults to `http://127.0.0.1:3210`).
 
 ## OpenClaw Integration
 

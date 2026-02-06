@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { X, Search, AlertCircle, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { Task, TaskSummary, TaskStatus } from "@/lib/db/types"
+import type { Task, TaskSummary, TaskStatus } from "@/lib/types"
 
 interface DependencyPickerProps {
   open: boolean

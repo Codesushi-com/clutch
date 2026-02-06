@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
 import { TaskModal } from "@/components/board/task-modal"
 import { NewIssueDialog } from "@/components/chat/new-issue-dialog"
-import type { Task } from "@/lib/db/types"
+import type { Task } from "@/lib/types"
 
 interface ChatSidebarProps {
   projectId: string

@@ -3,8 +3,8 @@
  */
 
 import { NextResponse } from 'next/server'
-import { db } from '../../../../lib/db'
-import { findStuckTickets, markTicketDone, markTicketReady } from '../../../../lib/cleanup/stuck-tickets'
+import { getConvexClient } from '@/lib/convex/server'
+import { api } from '@/convex/_generated/api'
 
 /**
  * GET /api/cleanup/stuck-tickets?projectId=xxx
@@ -14,17 +14,18 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
-    
+
     if (!projectId) {
       return NextResponse.json(
         { error: 'projectId parameter is required' },
         { status: 400 }
       )
     }
-    
-    const stuckTickets = findStuckTickets(db, projectId)
-    
-    return NextResponse.json({ 
+
+    const convex = getConvexClient()
+    const stuckTickets = await convex.query(api.stuckTickets.findStuck, { projectId })
+
+    return NextResponse.json({
       stuck_tickets: stuckTickets,
       count: stuckTickets.length
     })
@@ -45,30 +46,31 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { ticketId, action } = body
-    
+
     if (!ticketId || !action) {
       return NextResponse.json(
         { error: 'ticketId and action are required' },
         { status: 400 }
       )
     }
-    
+
     if (action !== 'done' && action !== 'ready') {
       return NextResponse.json(
         { error: 'action must be "done" or "ready"' },
         { status: 400 }
       )
     }
-    
+
+    const convex = getConvexClient()
     if (action === 'done') {
-      markTicketDone(db, ticketId)
+      await convex.mutation(api.stuckTickets.markDone, { ticketId })
     } else {
-      markTicketReady(db, ticketId)
+      await convex.mutation(api.stuckTickets.markReady, { ticketId })
     }
-    
-    return NextResponse.json({ 
-      success: true, 
-      ticketId, 
+
+    return NextResponse.json({
+      success: true,
+      ticketId,
       action,
       message: `Ticket marked as ${action}`
     })

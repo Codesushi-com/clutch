@@ -2,7 +2,7 @@
 
 import { Draggable } from "@hello-pangea/dnd"
 import { Link2, Lock } from "lucide-react"
-import type { Task } from "@/lib/db/types"
+import type { Task } from "@/lib/types"
 import { useSingleSessionStatus, getSessionStatusIndicator } from "@/lib/hooks/use-session-status"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
 

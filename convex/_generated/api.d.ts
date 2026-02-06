@@ -16,6 +16,8 @@ import type * as notifications from "../notifications.js";
 import type * as projects from "../projects.js";
 import type * as seed from "../seed.js";
 import type * as signals from "../signals.js";
+import type * as stuckTickets from "../stuckTickets.js";
+import type * as taskDependencies from "../taskDependencies.js";
 import type * as tasks from "../tasks.js";
 
 import type {
@@ -33,6 +35,8 @@ declare const fullApi: ApiFromModules<{
   projects: typeof projects;
   seed: typeof seed;
   signals: typeof signals;
+  stuckTickets: typeof stuckTickets;
+  taskDependencies: typeof taskDependencies;
   tasks: typeof tasks;
 }>;
 

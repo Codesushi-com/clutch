@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { X, Send, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import type { TaskPriority } from "@/lib/db/types"
+import type { TaskPriority } from "@/lib/types"
 
 interface NewIssueDialogProps {
   projectId: string

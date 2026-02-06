@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import type { ChatMessage } from "@/lib/db/types"
+import type { ChatMessage } from "@/lib/types"
 import { formatDistanceToNow } from "date-fns"
 import { MessageActions } from "./message-actions"
 import { Avatar } from "@/components/ui/avatar"

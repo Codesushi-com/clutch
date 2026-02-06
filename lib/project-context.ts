@@ -7,7 +7,7 @@
 
 import fs from "fs"
 import path from "path"
-import type { Project } from "@/lib/db/types"
+import type { Project } from "@/lib/types"
 
 // Key files to look for in project directories (in priority order)
 const KEY_FILES = [

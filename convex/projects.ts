@@ -1,7 +1,7 @@
 import { query, mutation } from './_generated/server'
 import { v } from 'convex/values'
 import { generateId } from './_helpers'
-import type { Project } from '../lib/db/types'
+import type { Project } from '../lib/types'
 
 // Helper to generate a unique slug from a name
 function generateSlug(name: string): string {

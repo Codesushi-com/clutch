@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import type { TaskDependencySummary, TaskSummary } from "@/lib/db/types"
+import type { TaskDependencySummary, TaskSummary } from "@/lib/types"
 
 interface DependenciesData {
   depends_on: TaskDependencySummary[]

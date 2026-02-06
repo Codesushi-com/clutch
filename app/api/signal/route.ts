@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getConvexClient } from "@/lib/convex/server"
 import { api } from "@/convex/_generated/api"
-import type { SignalKind, SignalSeverity } from "@/lib/db/types"
+import type { SignalKind, SignalSeverity } from "@/lib/types"
 
 // GET /api/signal — List pending signals (for gate)
 export async function GET(request: NextRequest) {

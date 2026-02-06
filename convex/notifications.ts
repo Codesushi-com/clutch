@@ -1,7 +1,7 @@
 import { query, mutation } from './_generated/server'
 import { v } from 'convex/values'
 import { generateId } from './_helpers'
-import type { Notification } from '../lib/db/types'
+import type { Notification } from '../lib/types'
 
 // ============================================
 // Type Helpers

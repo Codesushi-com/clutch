@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getConvexClient } from "@/lib/convex/server"
 import { api } from "@/convex/_generated/api"
-import type { Task, Project } from "@/lib/db/types"
+import type { Task, Project } from "@/lib/types"
 import { getAgent } from "@/lib/agents"
 import { buildTaskContext, buildTaskLabel } from "@/lib/dispatch/context"
 
@@ -56,6 +56,7 @@ export async function GET() {
       const agent = getAgent(agentId)
       if (!agent) continue
 
+      const context = await buildTaskContext(task, project, agentId)
       pending.push({
         task,
         project,
@@ -65,7 +66,7 @@ export async function GET() {
           model: agent.model,
           role: agent.role,
         },
-        context: buildTaskContext(task, project, agentId),
+        context,
         label: buildTaskLabel(task),
       })
     }

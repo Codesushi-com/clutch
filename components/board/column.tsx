@@ -1,7 +1,7 @@
 "use client"
 
 import { Droppable } from "@hello-pangea/dnd"
-import type { Task, TaskStatus } from "@/lib/db/types"
+import type { Task, TaskStatus } from "@/lib/types"
 import { TaskCard } from "./task-card"
 import { Plus } from "lucide-react"
 

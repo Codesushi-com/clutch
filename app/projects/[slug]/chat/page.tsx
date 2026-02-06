@@ -3,7 +3,6 @@
 import { useEffect, useState, use, useCallback } from "react"
 import { MessageSquare, Menu } from "lucide-react"
 import { useChatStore } from "@/lib/stores/chat-store"
-import { useChatEvents } from "@/lib/hooks/use-chat-events"
 import { useOpenClawWS } from "@/lib/providers/openclaw-ws-provider"
 import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
 import { useSettings } from "@/lib/hooks/use-settings"
@@ -16,7 +15,7 @@ import { CreateTaskFromMessage } from "@/components/chat/create-task-from-messag
 import { StreamingToggle } from "@/components/chat/streaming-toggle"
 import { SessionInfoDropdown } from "@/components/chat/session-info-dropdown"
 import { Button } from "@/components/ui/button"
-import type { ChatMessage } from "@/lib/db/types"
+import type { ChatMessage } from "@/lib/types"
 
 type PageProps = {
   params: Promise<{ slug: string }>
@@ -209,12 +208,9 @@ export default function ChatPage({ params }: PageProps) {
     }
   }, [subscribe, sessionKey, handleOpenClawMessage, handleOpenClawDelta, handleOpenClawTyping])
 
-  // TYPING INDICATOR FLOW (simplified):
-  // 1. PRIMARY: OpenClaw WebSocket → handleOpenClawTyping() → setTyping() 
+  // TYPING INDICATOR FLOW:
+  // OpenClaw WebSocket → handleOpenClawTyping() → setTyping()
   //    - thinking (agent processing) → typing (streaming response) → false (done)
-  // 2. BACKUP: SSE → handleSSETyping() → setTyping() (only when WebSocket disconnected)
-  // 3. trap-channel plugin broadcasts typing via POST /api/chats/[id]/typing → SSE
-  //    This creates a feedback loop but SSE is only used as backup when WS is down.
 
   // Sub-agent monitoring via RPC
   const { connected: rpcConnected, listSessions, getSessionPreview, getGatewayStatus } = useOpenClawRpc()
@@ -266,6 +262,10 @@ export default function ChatPage({ params }: PageProps) {
     }
 
     fetchSessionInfo()
+    
+    // Refresh session info periodically to keep context percentage up to date
+    const interval = setInterval(fetchSessionInfo, 30000)
+    return () => clearInterval(interval)
   }, [activeChat?.session_key, rpcConnected, getSessionPreview])
 
   // Fetch gateway status and format uptime
@@ -443,39 +443,18 @@ export default function ChatPage({ params }: PageProps) {
     return () => clearInterval(interval)
   }, [rpcConnected, listSessions])
 
-  // SSE subscription for real-time local updates and backup recovery
-  const handleNewMessage = useCallback((message: ChatMessage) => {
-    if (activeChat) {
-      receiveMessage(activeChat.id, message)
-    }
-  }, [activeChat, receiveMessage])
-
-  // SSE typing handler - used as backup/recovery for typing state
-  // Primary typing state comes from OpenClaw WebSocket
-  const handleSSETyping = useCallback((author: string, typing: boolean) => {
-    if (activeChat && !openClawConnected) {
-      // Only use SSE typing when WebSocket is disconnected (backup mode)
-      console.log("[Chat] Using SSE typing indicator (WebSocket disconnected)")
-      setTyping(activeChat.id, author, typing ? "typing" : false)
-    }
-  }, [activeChat, setTyping, openClawConnected])
-
   // Refetch messages when tab becomes visible (after being hidden)
-  const handleRefreshMessages = useCallback(() => {
-    if (activeChat) {
-      console.log("[Chat] Refetching messages due to tab visibility change")
-      // Seamlessly refresh messages without loading state
-      refreshMessages(activeChat.id)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && activeChat) {
+        console.log("[Chat] Refetching messages due to tab visibility change")
+        refreshMessages(activeChat.id)
+      }
     }
-  }, [activeChat, refreshMessages])
 
-  useChatEvents({
-    chatId: activeChat?.id || "",
-    onMessage: handleNewMessage,
-    onTyping: handleSSETyping,
-    onRefreshMessages: handleRefreshMessages,
-    enabled: Boolean(activeChat),
-  })
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [activeChat, refreshMessages])
 
   // Fetch project to get ID, settings, and context, then fetch chats
   useEffect(() => {

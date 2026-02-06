@@ -4,8 +4,9 @@
  * Usage: npx tsx scripts/work-loop/setup-crons.ts
  */
 
-import { db } from "../../lib/db"
-import type { Project } from "../../lib/db/types"
+import { getConvexClient } from "../../lib/convex/server"
+import { api } from "../../convex/_generated/api"
+import type { Project } from "../../lib/types"
 import { spawn, exec as execCallback } from "child_process"
 import { promisify } from "util"
 
@@ -36,19 +37,20 @@ interface CronJob {
 }
 
 async function getProjects(): Promise<Project[]> {
-  return db.prepare(`
-    SELECT * FROM projects 
-    WHERE work_loop_enabled = 1 
-    AND local_path IS NOT NULL 
-    AND github_repo IS NOT NULL
-    ORDER BY name
-  `).all() as Project[]
+  const convex = getConvexClient()
+  const allProjects = await convex.query(api.projects.getAll, {})
+  // Filter projects with work_loop_enabled, local_path, and github_repo
+  return allProjects.filter((p: Project & { task_count?: number }) =>
+    p.work_loop_enabled &&
+    p.local_path &&
+    p.github_repo
+  ) as Project[]
 }
 
 async function createCronJob(project: Project): Promise<void> {
   const jobId = `trap-work-loop-${project.slug}`
   const gatePath = "/home/dan/src/trap/scripts/work-loop/project-gate.sh"
-  
+
   const cronJob: CronJob = {
     jobId,
     name: `Work loop for ${project.name}`,
@@ -59,7 +61,7 @@ async function createCronJob(project: Project): Promise<void> {
       tz: "America/Los_Angeles"
     },
     payload: {
-      kind: "script", 
+      kind: "script",
       command: `${gatePath} ${project.id}`,
       timeout: 30,
       model: "moonshot/kimi-for-coding",
@@ -83,7 +85,7 @@ async function createCronJob(project: Project): Promise<void> {
   // Create new cron job
   const jobJson = JSON.stringify(cronJob)
   const command = `openclaw cron add --job '${jobJson.replace(/'/g, "\\'")}'`
-  
+
   try {
     const { stdout, stderr } = await exec(command)
     if (stderr) {
@@ -98,7 +100,7 @@ async function createCronJob(project: Project): Promise<void> {
 
 async function removeCronJob(projectSlug: string): Promise<void> {
   const jobId = `trap-work-loop-${projectSlug}`
-  
+
   try {
     await exec(`openclaw cron remove --job-id "${jobId}"`)
     console.log(`✓ Removed cron job for ${projectSlug}`)
@@ -123,29 +125,29 @@ async function listExistingCrons(): Promise<string[]> {
 
 async function main() {
   console.log("Setting up work loop cron jobs...")
-  
+
   const projects = await getProjects()
   console.log(`Found ${projects.length} projects with work loop enabled`)
-  
+
   // Get existing cron jobs
   const existingCrons = await listExistingCrons()
   console.log(`Found ${existingCrons.length} existing work loop cron jobs`)
-  
+
   // Create/update cron jobs for enabled projects
   for (const project of projects) {
     await createCronJob(project)
   }
-  
+
   // Remove cron jobs for projects that are no longer enabled
   const currentProjectSlugs = new Set(projects.map(p => p.slug))
   const cronsToRemove = existingCrons.filter(slug => !currentProjectSlugs.has(slug))
-  
+
   for (const slug of cronsToRemove) {
     await removeCronJob(slug)
   }
-  
+
   console.log("\n✓ Work loop cron jobs setup complete")
-  
+
   if (projects.length > 0) {
     console.log("\nActive work loops:")
     for (const project of projects) {

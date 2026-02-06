@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Project } from "@/lib/db/types"
+import type { Project } from "@/lib/types"
 
 export type ProjectWithCount = Project & { task_count: number }
 
