@@ -455,3 +455,113 @@ export const getMessageByRunId = query({
     }
   },
 })
+
+// ============================================
+// Typing State (reactive via Convex)
+// ============================================
+
+// Get typing state for a chat
+export const getTypingState = query({
+  args: {
+    chatId: v.string(),
+  },
+  returns: v.array(v.object({
+    chat_id: v.string(),
+    author: v.string(),
+    state: v.union(v.literal("thinking"), v.literal("typing")),
+    updated_at: v.number(),
+  })),
+  handler: async (ctx, args) => {
+    const typingStates = await ctx.db
+      .query('typingState')
+      .withIndex('by_chat', (q) => q.eq('chat_id', args.chatId))
+      .collect()
+
+    return typingStates.map((ts) => ({
+      chat_id: ts.chat_id,
+      author: ts.author,
+      state: ts.state,
+      updated_at: ts.updated_at,
+    }))
+  },
+})
+
+// Set typing state for a user in a chat
+export const setTyping = mutation({
+  args: {
+    chat_id: v.string(),
+    author: v.string(),
+    state: v.union(v.literal("thinking"), v.literal("typing")),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const now = Date.now()
+
+    // Check if entry exists
+    const existing = await ctx.db
+      .query('typingState')
+      .withIndex('by_chat_author', (q) =>
+        q.eq('chat_id', args.chat_id).eq('author', args.author)
+      )
+      .unique()
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        state: args.state,
+        updated_at: now,
+      })
+    } else {
+      await ctx.db.insert('typingState', {
+        chat_id: args.chat_id,
+        author: args.author,
+        state: args.state,
+        updated_at: now,
+      })
+    }
+
+    return true
+  },
+})
+
+// Clear typing state for a user in a chat
+export const clearTyping = mutation({
+  args: {
+    chat_id: v.string(),
+    author: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query('typingState')
+      .withIndex('by_chat_author', (q) =>
+        q.eq('chat_id', args.chat_id).eq('author', args.author)
+      )
+      .unique()
+
+    if (existing) {
+      await ctx.db.delete(existing._id)
+    }
+
+    return true
+  },
+})
+
+// Clear stale typing states (older than 30 seconds)
+export const clearStaleTyping = mutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const staleThreshold = Date.now() - 30000 // 30 seconds
+
+    const staleStates = await ctx.db
+      .query('typingState')
+      .filter((q) => q.lt(q.field('updated_at'), staleThreshold))
+      .collect()
+
+    for (const state of staleStates) {
+      await ctx.db.delete(state._id)
+    }
+
+    return staleStates.length
+  },
+})

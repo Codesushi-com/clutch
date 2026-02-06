@@ -53,7 +53,8 @@ interface ChatState {
   // Convex sync
   syncMessages: (chatId: string, messages: ChatMessage[]) => void
   syncChats: (chats: ChatWithLastMessage[]) => void
-  
+  syncTyping: (chatId: string, typingState: { author: string; state: "thinking" | "typing" }[]) => void
+
   // Scroll position tracking
   setScrollPosition: (chatId: string, position: number) => void
   getScrollPosition: (chatId: string) => number
@@ -437,6 +438,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
         loading: false,
       }
     })
+  },
+
+  // Sync typing state from Convex reactive query
+  syncTyping: (chatId, typingState) => {
+    set((state) => ({
+      typingIndicators: {
+        ...state.typingIndicators,
+        [chatId]: typingState,
+      },
+    }))
   },
 
   // Store scroll position for a chat
