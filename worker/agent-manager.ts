@@ -176,8 +176,14 @@ export class AgentManager {
           // Session exists — check if it's stale
           const lastActive = session.updatedAt ?? handle.spawnedAt
           const idleMs = now - lastActive
+          const hasProducedOutput = (session.totalTokens ?? 0) > 0
 
-          if (idleMs >= staleMs) {
+          // Don't reap agents that haven't produced any output yet —
+          // they may still be in their first turn (reading codebase, thinking).
+          // Use a much longer grace period for agents still on their first turn.
+          const effectiveStaleMs = hasProducedOutput ? staleMs : staleMs * 6
+
+          if (idleMs >= effectiveStaleMs) {
             reason = "stale"
 
             // Kill the stuck session on the gateway
