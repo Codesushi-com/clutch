@@ -238,14 +238,21 @@ export function SessionsList({
     }
   }, [listSessionsWithEffectiveModel, setSessions, setLoading, setInitialized, setError]);
 
-  // Initial load - only once
+  // Reset stuck loading state on mount (in case component unmounted during fetch)
+  useEffect(() => {
+    if (isLoading && allSessions.length > 0) {
+      setLoading(false);
+    }
+  }, [isLoading, allSessions.length, setLoading]);
+
+  // Initial load - fetch on mount if not initialized or if we have no sessions
   const hasLoadedRef = useRef(false);
   useEffect(() => {
-    if (!hasLoadedRef.current && !isInitialized) {
+    if (!hasLoadedRef.current && (!isInitialized || allSessions.length === 0)) {
       hasLoadedRef.current = true;
       fetchSessions(true);
     }
-  }, [fetchSessions, isInitialized]);
+  }, [fetchSessions, isInitialized, allSessions.length]);
 
   // Auto-refresh every 30 seconds (reduced from 10s to prevent excessive CLI spawns)
   useEffect(() => {
@@ -280,9 +287,10 @@ export function SessionsList({
   };
 
   // Filter sessions if projectSlug is provided
+  // Fallback to allSessions if enrichedSessions is empty (e.g., on initial load)
   const sessions = projectSlug 
-    ? filterProjectSessions(enrichedSessions, projectSlug)
-    : enrichedSessions;
+    ? filterProjectSessions(enrichedSessions.length > 0 ? enrichedSessions : allSessions, projectSlug)
+    : (enrichedSessions.length > 0 ? enrichedSessions : allSessions);
 
   // Calculate stats from filtered sessions
   const runningCount = sessions.filter((s) => s.status === 'running').length;
