@@ -152,6 +152,18 @@ export default function register(api: OpenClawPluginApi) {
     } else {
       api.logger.warn(`Trap: failed to save response to chat ${chatId}: ${result.error}`);
     }
+
+    // Clear typing indicator after response is saved
+    const trapUrl = getTrapUrl(api);
+    try {
+      await fetch(`${trapUrl}/api/chats/${chatId}/typing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ typing: false, author: "ada" }),
+      });
+    } catch (error) {
+      api.logger.warn(`Trap: failed to clear typing indicator for chat ${chatId}: ${error}`);
+    }
   });
 
   // =========================================================================

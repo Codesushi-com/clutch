@@ -358,6 +358,9 @@ export default function ChatPage({ params }: PageProps) {
     // Save user message to Convex
     await sendMessageToDb(activeChat.id, messageContent, "dan")
 
+    // Show thinking indicator immediately (optimistic)
+    setTyping(activeChat.id, "ada", "thinking")
+
     // Build message for OpenClaw (include project context on first message)
     let openClawMessage = messageContent
     if (isFirstMessage && projectContext) {
@@ -370,6 +373,8 @@ export default function ChatPage({ params }: PageProps) {
       await sendChatMessage(sessionKey, openClawMessage)
     } catch (error) {
       console.error("[Chat] Failed to send to OpenClaw:", error)
+      // Clear typing indicator on send failure
+      setTyping(activeChat.id, "ada", false)
     }
   }
 
