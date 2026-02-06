@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useMemo } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
 import { Plus, Eye, EyeOff } from "lucide-react"
 import { useTaskStore } from "@/lib/stores/task-store"
+import { useConvexBoardTasks } from "@/lib/hooks/use-convex-tasks"
 import { Column } from "./column"
 import { MobileBoard } from "./mobile-board"
 import { useMobileDetection } from "./use-mobile-detection"
@@ -24,14 +25,12 @@ const COLUMNS: { status: TaskStatus; title: string; color: string; showAdd: bool
 ]
 
 export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
-  const {
-    tasks,
-    loading,
-    error,
-    fetchTasks,
-    getTasksByStatus,
-    moveTask
-  } = useTaskStore()
+  // Use Convex for reactive task data (real-time updates)
+  const { tasksByStatus, isLoading } = useConvexBoardTasks(projectId)
+  
+  // Use zustand store for mutations (HTTP POST to API routes)
+  const { moveTask } = useTaskStore()
+  
   const isMobile = useMobileDetection(768)
   
   // Column visibility state - initialize from localStorage
@@ -50,17 +49,15 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
   })
   
   // Save preferences to localStorage whenever they change
-  useEffect(() => {
-    const prefs = { showDone }
+  const handleToggleShowDone = () => {
+    const newValue = !showDone
+    setShowDone(newValue)
+    const prefs = { showDone: newValue }
     localStorage.setItem(`board-prefs-${projectId}`, JSON.stringify(prefs))
-  }, [projectId, showDone])
+  }
 
-  useEffect(() => {
-    fetchTasks(projectId)
-  }, [fetchTasks, projectId])
-  
   // Determine which columns should be visible
-  const getVisibleColumns = () => {
+  const visibleColumns = useMemo(() => {
     return COLUMNS.filter(col => {
       // Always show backlog, ready, and in_progress
       if (["backlog", "ready", "in_progress"].includes(col.status)) {
@@ -74,16 +71,12 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
       
       // Show Review column only if it has tasks (auto-hide when empty)
       if (col.status === "in_review") {
-        return getTasksByStatus("in_review").length > 0
+        return (tasksByStatus?.in_review?.length ?? 0) > 0
       }
       
       return true
     })
-  }
-  
-  const toggleShowDone = () => {
-    setShowDone(!showDone)
-  }
+  }, [tasksByStatus, showDone])
 
   const handleDragEnd = (result: DropResult) => {
     const { destination, source, draggableId } = result
@@ -110,7 +103,12 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
     }
   }
 
-  if (loading && tasks.length === 0) {
+  // Get tasks for a specific column from Convex data
+  const getTasksForColumn = (status: TaskStatus): Task[] => {
+    return tasksByStatus?.[status] ?? []
+  }
+
+  if (isLoading) {
     return (
       <div className="flex gap-4 overflow-x-auto pb-4">
         {COLUMNS.map((col) => (
@@ -123,25 +121,17 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
     )
   }
 
-  if (error) {
-    return (
-      <div className="text-center py-8 text-red-500">
-        {error}
-      </div>
-    )
-  }
-
   // Mobile view
   if (isMobile) {
     return (
       <MobileBoard
-        columns={getVisibleColumns()}
-        getTasksByStatus={getTasksByStatus}
+        columns={visibleColumns}
+        getTasksByStatus={getTasksForColumn}
         onTaskClick={onTaskClick}
         onAddTask={onAddTask}
         onDragEnd={handleDragEnd}
         showDone={showDone}
-        onToggleShowDone={toggleShowDone}
+        onToggleShowDone={handleToggleShowDone}
       />
     )
   }
@@ -159,7 +149,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
         <div className="flex items-center gap-3">
           {/* Show Done toggle */}
           <button
-            onClick={toggleShowDone}
+            onClick={handleToggleShowDone}
             className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors text-sm"
             title={showDone ? "Hide completed tasks" : "Show completed tasks"}
           >
@@ -180,15 +170,15 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
       {/* Board Columns */}
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4 lg:grid lg:overflow-visible" style={{
-          gridTemplateColumns: `repeat(${getVisibleColumns().length}, minmax(280px, 1fr))`
+          gridTemplateColumns: `repeat(${visibleColumns.length}, minmax(280px, 1fr))`
         }}>
-          {getVisibleColumns().map((col) => (
+          {visibleColumns.map((col) => (
             <Column
               key={col.status}
               status={col.status}
               title={col.title}
               color={col.color}
-              tasks={getTasksByStatus(col.status)}
+              tasks={getTasksForColumn(col.status)}
               onTaskClick={onTaskClick}
               onAddTask={() => onAddTask(col.status)}
               showAddButton={col.showAdd}
