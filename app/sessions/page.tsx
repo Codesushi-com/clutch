@@ -2,7 +2,7 @@
 
 /**
  * Sessions List Page
- * Real-time session monitoring with WebSocket updates
+ * Session monitoring using HTTP API instead of WebSocket
  */
 
 import { SessionsList } from '@/components/sessions/sessions-list';
@@ -13,7 +13,7 @@ export default function SessionsPage() {
       <SessionsList 
         showStats={true}
         title="Sessions"
-        description="Monitor and manage OpenClaw sessions in real-time"
+        description="Monitor and manage OpenClaw sessions via HTTP API"
       />
     </div>
   );

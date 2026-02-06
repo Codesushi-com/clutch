@@ -3,24 +3,23 @@
 /**
  * Sessions List Component
  * Reusable component for displaying sessions with optional project filtering
- * Used by the global /sessions page and can be filtered by project
+ * Uses HTTP API instead of WebSocket for session management
  */
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, RefreshCw, Activity } from 'lucide-react';
 import { SessionTable } from '@/components/sessions/session-table';
 import { useSessionStore } from '@/lib/stores/session-store';
-import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
+import { useOpenClawHttpRpc } from '@/lib/hooks/use-openclaw-http';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Session } from '@/lib/types';
 
-function ConnectionBadge({ connected, connecting }: { connected: boolean; connecting: boolean }) {
-  const status = connected ? 'connected' : connecting ? 'connecting' : 'disconnected';
+function ConnectionBadge({ connected }: { connected: boolean }) {
+  const status = connected ? 'connected' : 'disconnected';
   const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
     connected: 'default',
-    connecting: 'secondary',
     disconnected: 'destructive',
   };
 
@@ -32,15 +31,11 @@ function ConnectionBadge({ connected, connecting }: { connected: boolean; connec
         ) : null}
         <span
           className={`relative inline-flex rounded-full h-2 w-2 ${
-            status === 'connected'
-              ? 'bg-green-500'
-              : status === 'disconnected'
-              ? 'bg-red-500'
-              : 'bg-yellow-500'
+            status === 'connected' ? 'bg-green-500' : 'bg-red-500'
           }`}
         />
       </span>
-      {status}
+      HTTP API
     </Badge>
   );
 }
@@ -115,8 +110,7 @@ export function SessionsList({
   description,
 }: SessionsListProps) {
   const router = useRouter();
-  const { connected, connecting, listSessionsWithEffectiveModel } = useOpenClawRpc();
-  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { connected, listSessionsWithEffectiveModel } = useOpenClawHttpRpc();
   
   const {
     sessions: allSessions,
@@ -128,21 +122,14 @@ export function SessionsList({
     setError,
   } = useSessionStore();
 
-  // Filter sessions if projectSlug is provided
-  const sessions = projectSlug 
-    ? filterProjectSessions(allSessions, projectSlug)
-    : allSessions;
-
-  // Fetch sessions via WebSocket RPC with effective model
+  // Fetch sessions via HTTP API with effective model
   const fetchSessions = useCallback(async (isInitialLoad = false) => {
-    if (!connected) return;
-
     if (isInitialLoad) {
       setLoading(true);
     }
 
     try {
-      const response = await listSessionsWithEffectiveModel({ limit: 10 });
+      const response = await listSessionsWithEffectiveModel({ limit: 100 });
       setSessions(response.sessions);
       if (isInitialLoad) {
         setInitialized(true);
@@ -156,47 +143,21 @@ export function SessionsList({
         setLoading(false);
       }
     }
-  }, [connected, listSessionsWithEffectiveModel, setSessions, setLoading, setInitialized, setError]);
+  }, [listSessionsWithEffectiveModel, setSessions, setLoading, setInitialized, setError]);
 
-  // Reset initialization on mount to ensure fresh data
-  useEffect(() => {
-    setInitialized(false);
-  }, [setInitialized]);
-
-  // Load sessions when connected and set up auto-refresh
-  useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    
-    if (connected && !isInitialized) {
-      // Small delay to let connection stabilize
-      timeoutId = setTimeout(() => {
-        console.log("[SessionsList] Connected, fetching sessions...");
-        fetchSessions(true);
-      }, 500);
+  // Initial load - only once
+  const hasLoadedRef = useRef(false);
+  useCallback(() => {
+    if (!hasLoadedRef.current && !isInitialized) {
+      hasLoadedRef.current = true;
+      fetchSessions(true);
     }
-    
-    // Set up auto-refresh every 10 seconds when connected
-    if (connected) {
-      refreshIntervalRef.current = setInterval(() => {
-        fetchSessions(false);
-      }, 10000);
-    }
-    
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-    };
-  }, [connected, isInitialized, fetchSessions]);
+  }, [fetchSessions, isInitialized])();
 
   const handleRefresh = async () => {
-    if (!connected) return;
-
     setLoading(true);
     try {
-      const response = await listSessionsWithEffectiveModel({ limit: 10 });
+      const response = await listSessionsWithEffectiveModel({ limit: 100 });
       setSessions(response.sessions);
       setError(null);
     } catch (err) {
@@ -216,13 +177,18 @@ export function SessionsList({
     }
   };
 
+  // Filter sessions if projectSlug is provided
+  const sessions = projectSlug 
+    ? filterProjectSessions(allSessions, projectSlug)
+    : allSessions;
+
   // Calculate stats from filtered sessions
   const runningCount = sessions.filter((s) => s.status === 'running').length;
   const totalTokens = sessions.reduce((acc, s) => acc + (s.tokens?.total || 0), 0);
 
   const defaultDescription = projectSlug 
     ? `Sessions related to ${projectSlug} project`
-    : 'Monitor and manage OpenClaw sessions in real-time';
+    : 'Monitor and manage OpenClaw sessions via HTTP API';
 
   return (
     <div className="space-y-6">
@@ -239,12 +205,12 @@ export function SessionsList({
         </div>
         
         <div className="flex items-center gap-3">
-          <ConnectionBadge connected={connected} connecting={connecting} />
+          <ConnectionBadge connected={connected} />
           <Button
             variant="outline"
             size="sm"
             onClick={handleRefresh}
-            disabled={isLoading || !connected}
+            disabled={isLoading}
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

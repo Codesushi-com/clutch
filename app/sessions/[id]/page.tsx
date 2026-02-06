@@ -3,6 +3,7 @@
 /**
  * Session Detail Page
  * View detailed information about a specific session
+ * Uses HTTP API instead of WebSocket
  */
 
 import { useEffect, useState } from 'react';
@@ -10,7 +11,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, RotateCcw, Archive, AlertCircle, X, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSessionStore } from '@/lib/stores/session-store';
-import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
+import { useOpenClawHttpRpc } from '@/lib/hooks/use-openclaw-http';
 import { SessionPreview } from '@/lib/types';
 import {
   Dialog,
@@ -67,7 +68,7 @@ export default function SessionDetailPage() {
   };
   
   const session = useSessionStore((state) => state.getSessionById(sessionId));
-  const { getSessionPreview, resetSession, compactSession, cancelSession, connected } = useOpenClawRpc();
+  const { getSessionPreview, resetSession, compactSession, cancelSession } = useOpenClawHttpRpc();
 
   // Load session preview data with timeout and retry logic
   useEffect(() => {
@@ -77,17 +78,6 @@ export default function SessionDetailPage() {
       try {
         setIsLoading(true);
         setLoadError(null);
-        
-        // If not connected and it's the first attempt, wait a bit for connection
-        if (!connected && attempt === 0) {
-          console.log('[SessionDetail] Waiting for WebSocket connection...');
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-        
-        // If still not connected after waiting, or if this is a retry, try anyway
-        if (!connected && attempt > 0) {
-          console.log('[SessionDetail] WebSocket not connected, attempting RPC call anyway (will use HTTP fallback)');
-        }
         
         // Add timeout to prevent hanging
         const timeoutPromise = new Promise<never>((_, reject) => {
@@ -123,8 +113,7 @@ export default function SessionDetailPage() {
     };
 
     loadSessionPreview();
-  }, [sessionId, getSessionPreview]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Note: 'connected' dependency intentionally removed to allow HTTP fallback when WebSocket unavailable
+  }, [sessionId, getSessionPreview]);
 
   // Add manual retry function
   const retryLoad = () => {
@@ -221,11 +210,6 @@ export default function SessionDetailPage() {
               Retry attempt {retryCount}/3
             </span>
           )}
-          {!connected && (
-            <span className="block text-sm mt-2 text-yellow-600">
-              WebSocket connecting...
-            </span>
-          )}
         </p>
       </div>
     );
@@ -301,7 +285,7 @@ export default function SessionDetailPage() {
                 variant="outline"
                 size="sm"
                 onClick={handleCancelSession}
-                disabled={!connected || isCanceling}
+                disabled={isCanceling}
                 title="Cancel running session"
               >
                 {isCanceling ? (
@@ -317,7 +301,7 @@ export default function SessionDetailPage() {
               variant="outline"
               size="sm"
               onClick={handleCompactSession}
-              disabled={!connected || isCompacting}
+              disabled={isCompacting}
             >
               {isCompacting ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -332,7 +316,7 @@ export default function SessionDetailPage() {
                 <Button
                   variant="destructive"
                   size="sm"
-                  disabled={!connected || isResetting}
+                  disabled={isResetting}
                 >
                   {isResetting ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -486,18 +470,15 @@ export default function SessionDetailPage() {
           </div>
         )}
 
-        {/* Connection Status Warning */}
-        {!connected && (
-          <div className="border-t pt-6 mt-6">
-            <div className="flex items-center gap-2 text-yellow-600">
-              <AlertCircle className="h-4 w-4" />
-              <span className="text-sm">
-                WebSocket connection unavailable. Using HTTP fallback for session operations.
-                Some real-time features may be limited.
-              </span>
-            </div>
+        {/* HTTP API Note */}
+        <div className="border-t pt-6 mt-6">
+          <div className="flex items-center gap-2 text-blue-600">
+            <AlertCircle className="h-4 w-4" />
+            <span className="text-sm">
+              Using HTTP API for session operations. No WebSocket connection required.
+            </span>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Notification Toast */}
