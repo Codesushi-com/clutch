@@ -271,4 +271,14 @@ export default defineSchema({
     .index("by_uuid", ["id"])
     .index("by_project", ["project_id"])
     .index("by_status", ["status"]),
+
+  // Typing State (per chat, reactive via Convex)
+  typingState: defineTable({
+    chat_id: v.string(), // UUID ref to chats
+    author: v.string(), // who is typing (e.g., "ada")
+    state: v.union(v.literal("thinking"), v.literal("typing")), // typing state
+    updated_at: v.number(), // last update timestamp
+  })
+    .index("by_chat", ["chat_id"])
+    .index("by_chat_author", ["chat_id", "author"]),
 })
