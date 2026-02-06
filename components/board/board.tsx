@@ -370,7 +370,24 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
 
       {/* Board Columns */}
       <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="flex gap-4 overflow-x-auto pb-4 lg:grid lg:overflow-visible" style={{
+        {/* Mobile: horizontal scroll flex layout */}
+        <div className="flex lg:hidden gap-4 overflow-x-auto pb-4">
+          {visibleColumns.map((col) => (
+            <Column
+              key={col.status}
+              status={col.status}
+              title={col.title}
+              color={col.color}
+              tasks={getTasksForColumn(col.status)}
+              onTaskClick={onTaskClick}
+              onAddTask={() => onAddTask(col.status)}
+              showAddButton={col.showAdd}
+              isMobile={true}
+            />
+          ))}
+        </div>
+        {/* Desktop: grid layout */}
+        <div className="hidden lg:grid gap-4 pb-4" style={{
           gridTemplateColumns: `repeat(${visibleColumns.length}, minmax(280px, 1fr))`
         }}>
           {visibleColumns.map((col) => (
