@@ -92,6 +92,10 @@ export async function register() {
       }
     })
 
+    // Start the work loop if enabled
+    const { startWorkLoop } = await import('@/worker/loop')
+    startWorkLoop()
+
     console.log('[Trap] Backend services initialized')
   }
 }
