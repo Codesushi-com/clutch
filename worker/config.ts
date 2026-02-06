@@ -28,8 +28,8 @@ const DEFAULT_CONFIG: WorkLoopConfig = {
   cycleIntervalMs: 30000,
   maxAgentsPerProject: 2,
   maxAgentsGlobal: 5,
-  staleTaskMinutes: 60,
-  staleReviewMinutes: 30,
+  staleTaskMinutes: 5,
+  staleReviewMinutes: 5,
 }
 
 /**
