@@ -556,6 +556,100 @@ export default function ChatPage({ params }: PageProps) {
         console.log("[Chat] Sending to OpenClaw, sessionKey:", sessionKey)
         const runId = await sendChatMessage(openClawMessage, sessionKey, activeChat.id)
         console.log("[Chat] sendChatMessage returned runId:", runId)
+        
+        // Poll for assistant response as fallback
+        // The WebSocket chat.message event may not be delivered to this client
+        // (OpenClaw broadcasts to the session owner, which may be a different WS connection)
+        // Polling catches the response via Convex and ensures it's saved
+        const chatId = activeChat.id
+        const pollForResponse = async () => {
+          const maxAttempts = 60  // 60 seconds max
+          const pollInterval = 1000  // 1 second
+          
+          for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise(r => setTimeout(r, pollInterval))
+            
+            // Check if we already got the response via WebSocket event
+            const currentMessages = useChatStore.getState().messages[chatId] || []
+            const hasResponse = currentMessages.some(
+              m => m.run_id === runId && m.author !== "dan"
+            )
+            if (hasResponse) {
+              console.log("[Chat] Response already received via WebSocket/Convex for runId:", runId)
+              setTyping(chatId, "ada", false)
+              return
+            }
+            
+            // Poll OpenClaw for the run status
+            try {
+              const preview = await rpc<{ 
+                session?: { lastAssistantMessage?: string }
+                lastRunId?: string
+                done?: boolean
+              }>("sessions.preview", { sessionKey })
+              
+              // If the session has completed this run, fetch the response
+              if (preview?.done || preview?.lastRunId === runId) {
+                // Check if response appeared in Convex via the reactive query
+                const updatedMessages = useChatStore.getState().messages[chatId] || []
+                const responseExists = updatedMessages.some(
+                  m => m.run_id === runId && m.author !== "dan"
+                )
+                if (responseExists) {
+                  console.log("[Chat] Response found in Convex for runId:", runId)
+                  setTyping(chatId, "ada", false)
+                  return
+                }
+              }
+            } catch {
+              // RPC failed, keep polling
+            }
+            
+            // Also check typing state — if typing stopped and no response saved,
+            // the WebSocket event was likely missed
+            const typingState = useChatStore.getState().typingIndicators[chatId] || []
+            const isStillTyping = typingState.some(t => t.author === "ada")
+            
+            // After 5 seconds with no typing indicator, try fetching messages directly
+            if (attempt > 5 && !isStillTyping) {
+              try {
+                const messagesResp = await fetch(`/api/chats/${chatId}/messages?limit=5`)
+                if (messagesResp.ok) {
+                  const data = await messagesResp.json()
+                  const assistantMsg = data.messages?.find(
+                    (m: { run_id?: string; author: string }) => m.run_id === runId && m.author !== "dan"
+                  )
+                  if (assistantMsg) {
+                    console.log("[Chat] Response found via API poll for runId:", runId)
+                    setTyping(chatId, "ada", false)
+                    return
+                  }
+                  
+                  // Check if there's a newer assistant message (response without run_id match)
+                  const latestAssistant = [...(data.messages || [])].reverse().find(
+                    (m: { author: string; created_at: number }) => m.author === "ada" || m.author === "assistant"
+                  )
+                  const userMsg = [...(data.messages || [])].reverse().find(
+                    (m: { author: string }) => m.author === "dan"
+                  )
+                  if (latestAssistant && userMsg && latestAssistant.created_at > userMsg.created_at) {
+                    console.log("[Chat] Found assistant response after user message, response likely delivered")
+                    setTyping(chatId, "ada", false)
+                    return
+                  }
+                }
+              } catch {
+                // Fetch failed, keep polling
+              }
+            }
+          }
+          
+          console.warn("[Chat] Polling timeout - no response received for runId:", runId)
+          setTyping(chatId, "ada", false)
+        }
+        
+        // Start polling in background (don't await — it runs alongside WS events)
+        pollForResponse()
       } catch (error) {
         console.error("[Chat] Failed to send to OpenClaw:", error)
       }

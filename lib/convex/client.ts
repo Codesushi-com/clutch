@@ -10,38 +10,36 @@
 
 import { ConvexReactClient } from "convex/react"
 
-// Self-hosted Convex — use the server's LAN IP so browsers on other machines can connect.
-// Turbopack doesn't inline NEXT_PUBLIC_ env vars reliably, so we derive the URL at runtime
-// from the current page origin (same host, port 3210).
-function getConvexUrl(): string {
-  if (process.env.NEXT_PUBLIC_CONVEX_URL) {
+/**
+ * Resolve the Convex URL at call time (not module load time).
+ * 
+ * Must be called inside a browser context (useEffect, event handler, etc.)
+ * so that window.location is available. Falls back to 127.0.0.1 for SSR.
+ */
+function resolveConvexUrl(): string {
+  // Explicit env var takes priority
+  if (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_CONVEX_URL) {
     return process.env.NEXT_PUBLIC_CONVEX_URL
   }
-  // In the browser, use the same hostname the page was loaded from
-  if (typeof window !== "undefined") {
+  // In the browser: same host as the page, port 3210
+  if (typeof window !== "undefined" && window.location?.hostname) {
     return `http://${window.location.hostname}:3210`
   }
-  // Server-side fallback
+  // Server-side / SSR fallback
   return "http://127.0.0.1:3210"
-}
-
-const CONVEX_URL = getConvexUrl()
-
-if (typeof window !== "undefined" && !CONVEX_URL) {
-  console.error("NEXT_PUBLIC_CONVEX_URL environment variable is required for client-side Convex")
 }
 
 /**
  * Convex React client for browser use.
  * 
- * This client is lazy-initialized to avoid errors during SSR.
- * The provider component in provider.tsx handles the actual initialization.
+ * Called from the provider's useEffect (client-side only), so
+ * window.location is always available when this runs.
  */
 export function createConvexClient(): ConvexReactClient | null {
-  if (!CONVEX_URL) {
-    return null
-  }
-  return new ConvexReactClient(CONVEX_URL)
+  const url = resolveConvexUrl()
+  if (!url) return null
+  console.log("[Convex] Creating client with URL:", url)
+  return new ConvexReactClient(url)
 }
 
 export { ConvexReactClient }
