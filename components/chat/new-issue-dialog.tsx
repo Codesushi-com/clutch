@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { X, Send, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { generateUUID } from "@/lib/utils/uuid"
 import type { TaskPriority } from "@/lib/types"
 
 interface NewIssueDialogProps {
@@ -62,7 +63,7 @@ export function NewIssueDialog({
   useEffect(() => {
     if (open && messages.length === 0) {
       const welcomeMessage: Message = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         role: "assistant",
         content: "Hi! I'll help you create a new issue. What would you like to build or fix?",
         timestamp: Date.now(),
@@ -88,7 +89,7 @@ export function NewIssueDialog({
 
   const addMessage = (role: "user" | "assistant" | "system", content: string) => {
     const message: Message = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       role,
       content,
       timestamp: Date.now(),
