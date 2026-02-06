@@ -35,7 +35,7 @@ export async function POST(
     const { task } = result
 
     // Determine new status - 'review' if PR created, 'done' otherwise
-    const newStatus = prUrl ? "review" : "done"
+    const newStatus = prUrl ? "in_review" : "done"
 
     // Build completion comment content
     let commentContent = `## Task Completed\n\n${summary}`

@@ -21,7 +21,7 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string; color: string }[] = [
   { value: "backlog", label: "Backlog", color: "#52525b" },
   { value: "ready", label: "Ready", color: "#3b82f6" },
   { value: "in_progress", label: "In Progress", color: "#eab308" },
-  { value: "review", label: "Review", color: "#a855f7" },
+  { value: "in_review", label: "Review", color: "#a855f7" },
   { value: "done", label: "Done", color: "#22c55e" },
 ]
 
@@ -645,7 +645,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                                 backgroundColor:
                                   blocked.status === 'done' ? '#22c55e' :
                                   blocked.status === 'in_progress' ? '#eab308' :
-                                  blocked.status === 'review' ? '#a855f7' :
+                                  blocked.status === 'in_review' ? '#a855f7' :
                                   '#3b82f6'
                               }}
                               title={blocked.status}

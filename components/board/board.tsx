@@ -20,7 +20,7 @@ const COLUMNS: { status: TaskStatus; title: string; color: string; showAdd: bool
   { status: "backlog", title: "Backlog", color: "#52525b", showAdd: true },
   { status: "ready", title: "Ready", color: "#3b82f6", showAdd: true },
   { status: "in_progress", title: "In Progress", color: "#eab308", showAdd: false },
-  { status: "review", title: "Review", color: "#a855f7", showAdd: false },
+  { status: "in_review", title: "Review", color: "#a855f7", showAdd: false },
   { status: "done", title: "Done", color: "#22c55e", showAdd: false },
 ]
 
@@ -85,8 +85,8 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
       }
       
       // Show Review column only if it has tasks (auto-hide when empty)
-      if (col.status === "review") {
-        return getTasksByStatus("review").length > 0
+      if (col.status === "in_review") {
+        return getTasksByStatus("in_review").length > 0
       }
       
       return true

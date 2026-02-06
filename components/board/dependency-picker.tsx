@@ -19,7 +19,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   backlog: "#52525b",
   ready: "#3b82f6",
   in_progress: "#eab308",
-  review: "#a855f7",
+  in_review: "#a855f7",
   done: "#22c55e",
 }
 
@@ -27,7 +27,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",
   ready: "Ready",
   in_progress: "In Progress",
-  review: "Review",
+  in_review: "Review",
   done: "Done",
 }
 

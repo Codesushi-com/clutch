@@ -76,7 +76,7 @@ export const getStatus = query({
     )
 
     // Count review tasks
-    const reviewTasks = allTasks.filter((t) => t.status === 'review')
+    const reviewTasks = allTasks.filter((t) => t.status === 'in_review')
 
     // Count pending dispatch tasks
     const pendingDispatchTasks = allTasks.filter((t) => t.dispatch_status === 'pending')
@@ -267,7 +267,7 @@ export const getCounts = query({
       (t) => t.status === 'in_progress' && t.updated_at < twoHoursAgo
     ).length
 
-    const reviewTasks = allTasks.filter((t) => t.status === 'review').length
+    const reviewTasks = allTasks.filter((t) => t.status === 'in_review').length
 
     const pendingDispatch = allTasks.filter((t) => t.dispatch_status === 'pending').length
 

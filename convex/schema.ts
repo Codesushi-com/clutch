@@ -33,7 +33,7 @@ export default defineSchema({
       v.literal("backlog"),
       v.literal("ready"),
       v.literal("in_progress"),
-      v.literal("review"),
+      v.literal("in_review"),
       v.literal("done")
     ),
     priority: v.union(

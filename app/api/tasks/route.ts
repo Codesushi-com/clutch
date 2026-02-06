@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const convex = getConvexClient()
     
     // Map status names if needed (app uses in_review, Convex may use review)
-    const convexStatus = (status || undefined) as "backlog" | "ready" | "in_progress" | "review" | "done" | undefined
+    const convexStatus = (status || undefined) as "backlog" | "ready" | "in_progress" | "in_review" | "done" | undefined
 
     let tasks = await convex.query(api.tasks.getByProject, {
       projectId,

@@ -17,7 +17,7 @@ export interface Project {
   updated_at: number
 }
 
-export type TaskStatus = "backlog" | "ready" | "in_progress" | "review" | "done"
+export type TaskStatus = "backlog" | "ready" | "in_progress" | "in_review" | "done"
 export type TaskPriority = "low" | "medium" | "high" | "urgent"
 export type TaskRole = "any" | "pm" | "dev" | "qa" | "research" | "security"
 export type DispatchStatus = "pending" | "spawning" | "active" | "completed" | "failed"
