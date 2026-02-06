@@ -13,7 +13,6 @@ export async function register() {
 
     // Initialize OpenClaw WebSocket client
     const { initializeOpenClawClient } = await import('@/lib/openclaw')
-    const { broadcastToChat } = await import('@/lib/sse/connections')
 
     const client = initializeOpenClawClient()
 
@@ -21,8 +20,8 @@ export async function register() {
     client.onChatEvent(async (event) => {
       // Find the chat ID for this session using Convex
       const convex = getConvexClient()
-      const chat = await convex.query(api.chats.findBySessionKey, { 
-        sessionKey: event.sessionKey 
+      const chat = await convex.query(api.chats.findBySessionKey, {
+        sessionKey: event.sessionKey
       })
 
       if (!chat) {
@@ -35,26 +34,15 @@ export async function register() {
       // Handle different event types
       switch (event.type) {
         case 'chat.typing.start':
-          broadcastToChat(chatId, {
-            type: 'typing',
-            data: { chatId, author: 'ada', typing: true }
-          })
+          // Typing indicators handled by OpenClaw WebSocket and Convex reactivity
           break
 
         case 'chat.typing.end':
-          broadcastToChat(chatId, {
-            type: 'typing',
-            data: { chatId, author: 'ada', typing: false }
-          })
+          // Typing indicators handled by OpenClaw WebSocket and Convex reactivity
           break
 
         case 'chat.delta':
-          if (event.delta) {
-            broadcastToChat(chatId, {
-              type: 'delta',
-              data: { delta: event.delta, runId: event.runId, timestamp: Date.now() }
-            })
-          }
+          // Deltas streamed via OpenClaw WebSocket
           break
 
         case 'chat.message':
@@ -70,8 +58,8 @@ export async function register() {
             // Check for duplicate via run_id using Convex
             let messageId: string | null = null
             if (event.runId) {
-              const existing = await convex.query(api.chats.getMessageByRunId, { 
-                runId: event.runId 
+              const existing = await convex.query(api.chats.getMessageByRunId, {
+                runId: event.runId
               })
               if (existing) {
                 console.log('[Messages] Skipping duplicate message with run_id:', event.runId)
@@ -94,21 +82,7 @@ export async function register() {
               console.log('[Messages] Saved message:', { id: messageId, chatId, author, runId: event.runId })
             }
 
-            // Emit to SSE subscribers (only if saved, i.e., not a duplicate)
-            if (messageId && content.trim()) {
-              const author = event.message.role === 'assistant' ? 'ada' : event.message.role
-              broadcastToChat(chatId, {
-                type: 'message',
-                data: {
-                  id: messageId,
-                  chat_id: chatId,
-                  author,
-                  content,
-                  run_id: event.runId,
-                  created_at: Date.now()
-                }
-              })
-            }
+            // Real-time updates handled by Convex reactivity
           }
           break
 
