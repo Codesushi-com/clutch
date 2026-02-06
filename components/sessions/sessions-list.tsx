@@ -186,8 +186,12 @@ export function SessionsList({
     setError,
   } = useSessionStore();
 
-  // Get all session IDs for task lookup
-  const sessionIds = useMemo(() => allSessions.map(s => s.id), [allSessions]);
+  // Stabilize the session IDs array: only change the reference when the
+  // actual set of IDs changes, not when the sessions array ref changes
+  // (which happens every poll cycle, triggering Convex re-subscriptions).
+  const sessionIdsKey = allSessions.map(s => s.id).join(',');
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable by joined key
+  const sessionIds = useMemo(() => allSessions.map(s => s.id), [sessionIdsKey]);
   
   // Fetch tasks associated with these sessions using Convex
   const { tasks: tasksData } = useTasksBySessionIds(sessionIds);
@@ -218,7 +222,7 @@ export function SessionsList({
     }
 
     try {
-      const response = await listSessionsWithEffectiveModel({ limit: 100 });
+      const response = await listSessionsWithEffectiveModel({ limit: 50 });
       setSessions(response.sessions);
       if (isInitialLoad) {
         setInitialized(true);
@@ -243,11 +247,11 @@ export function SessionsList({
     }
   }, [fetchSessions, isInitialized]);
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh every 30 seconds (reduced from 10s to prevent excessive CLI spawns)
   useEffect(() => {
     const intervalId = setInterval(() => {
       fetchSessions(false);
-    }, 10000);
+    }, 30_000);
     
     return () => clearInterval(intervalId);
   }, [fetchSessions]);
@@ -255,7 +259,7 @@ export function SessionsList({
   const handleRefresh = async () => {
     setLoading(true);
     try {
-      const response = await listSessionsWithEffectiveModel({ limit: 100 });
+      const response = await listSessionsWithEffectiveModel({ limit: 50 });
       setSessions(response.sessions);
       setError(null);
     } catch (err) {

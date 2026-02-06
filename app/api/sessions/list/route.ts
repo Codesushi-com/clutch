@@ -19,8 +19,12 @@ interface OpenClawSession {
   systemSent?: boolean
 }
 
+// Status thresholds:
+// < 5min since last activity → running (actively working)
+// 5-15min → idle (paused but may resume)
+// > 15min → completed (done, no longer active)
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
-const STUCK_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
+const COMPLETED_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
 
 /**
  * Fetch all active sessions from the OpenClaw CLI.
@@ -58,38 +62,44 @@ function mapKind(kind: string): "main" | "isolated" | "subagent" {
   }
 }
 
-function deriveStatus(session: OpenClawSession): "running" | "idle" | "error" {
+function deriveStatus(session: OpenClawSession): "running" | "idle" | "completed" {
   const timeSinceActivity = session.ageMs ?? (Date.now() - (session.updatedAt || Date.now()))
   if (timeSinceActivity < IDLE_THRESHOLD_MS) return "running"
-  if (timeSinceActivity >= STUCK_THRESHOLD_MS) return "error"
+  if (timeSinceActivity >= COMPLETED_THRESHOLD_MS) return "completed"
   return "idle"
 }
 
 /**
- * GET /api/sessions/list?activeMinutes=60&limit=100
+ * GET /api/sessions/list?activeMinutes=60&limit=50
  *
  * Returns sessions from the OpenClaw CLI, formatted for the frontend Session type.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const activeMinutes = parseInt(searchParams.get("activeMinutes") || "60", 10)
-  const limit = parseInt(searchParams.get("limit") || "100", 10)
+  const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200)
 
   const rawSessions = fetchOpenClawSessions(activeMinutes)
+  const now = Date.now()
 
   const sessions = rawSessions.slice(0, limit).map((s) => {
-    const updatedAt = s.updatedAt
-      ? new Date(s.updatedAt).toISOString()
-      : new Date().toISOString()
+    const updatedAtMs = s.updatedAt || now
+    const updatedAt = new Date(updatedAtMs).toISOString()
+    const status = deriveStatus(s)
+
+    // Estimate session duration from ageMs (time since last activity).
+    // For completed sessions, updatedAt is the effective end time.
+    const completedAt = status === "completed" ? updatedAt : undefined
 
     return {
       id: s.key,
       name: s.key?.split(":").pop() || "unknown",
       type: mapKind(s.kind || "main"),
       model: s.model || "unknown",
-      status: deriveStatus(s),
+      status,
       updatedAt,
       createdAt: updatedAt,
+      completedAt,
       tokens: {
         input: s.inputTokens || 0,
         output: s.outputTokens || 0,

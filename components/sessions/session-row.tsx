@@ -50,8 +50,11 @@ const statusConfig: Record<SessionStatus, { label: string; variant: 'default' | 
 };
 
 function formatDuration(startTime: string, endTime?: string): string {
+  // Without a true createdAt, we can't compute meaningful duration.
+  // Show "—" for sessions without a completion time instead of live-ticking.
+  if (!endTime) return '—';
   const start = new Date(startTime);
-  const end = endTime ? new Date(endTime) : new Date();
+  const end = new Date(endTime);
   const diffMs = end.getTime() - start.getTime();
   
   const minutes = Math.floor(diffMs / 60000);

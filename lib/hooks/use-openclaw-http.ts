@@ -25,7 +25,7 @@ export { openclawApi };
 /**
  * Hook for session list with auto-refresh
  */
-export function useSessionList(refreshIntervalMs = 10000) {
+export function useSessionList(refreshIntervalMs = 30000) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
