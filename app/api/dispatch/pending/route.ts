@@ -56,6 +56,7 @@ export async function GET() {
       const agent = getAgent(agentId)
       if (!agent) continue
 
+      const context = await buildTaskContext(task, project, agentId)
       pending.push({
         task,
         project,
@@ -65,7 +66,7 @@ export async function GET() {
           model: agent.model,
           role: agent.role,
         },
-        context: buildTaskContext(task, project, agentId),
+        context,
         label: buildTaskLabel(task),
       })
     }

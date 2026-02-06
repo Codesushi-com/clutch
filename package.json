@@ -20,7 +20,6 @@
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
     "@tanstack/react-table": "^8.21.3",
-    "better-sqlite3": "^12.6.2",
     "convex": "^1.31.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -41,7 +40,6 @@
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
