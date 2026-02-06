@@ -132,7 +132,7 @@ function calculateContextPercentage(tokensTotal: number, model: string): number 
 
 /**
  * Get session preview with message history.
- * 
+ *
  * @param sessionKey - The session key (e.g., 'agent:main')
  * @param limit - Maximum number of messages to return
  * @returns Session metadata and message history
@@ -150,52 +150,57 @@ export async function getSessionPreview(
     }>;
   };
 
-  // Fetch preview (RPC) and session list (CLI-backed API) in parallel
-  const [previewResponse, sessionsListResponse] = await Promise.all([
-    openclawRpc<PreviewResponse>('sessions.preview', {
-      keys: [sessionKey],
-      limit: limit || 50,
-    }),
-    fetchSessionsFromApi({ limit: 100 }),
-  ]);
+  // Always fetch session list from CLI-backed API (works without WebSocket)
+  const sessionsListResponse = await fetchSessionsFromApi({ limit: 100 });
+  const sessionData = sessionsListResponse.sessions?.find((s) => s.id === sessionKey);
 
-  const previewEntry = previewResponse.previews?.[0];
-
-  if (!previewEntry || previewEntry.status === 'missing') {
+  if (!sessionData) {
     throw new Error(`Session "${sessionKey}" not found`);
   }
 
-  if (previewEntry.status === 'error') {
-    throw new Error(`Failed to load session "${sessionKey}"`);
+  // Try to fetch message history via RPC, but gracefully fallback if unavailable
+  let messages: SessionPreview['messages'] = [];
+  let effectiveModel = sessionData.model || 'unknown';
+
+  try {
+    const previewResponse = await openclawRpc<PreviewResponse>('sessions.preview', {
+      keys: [sessionKey],
+      limit: limit || 50,
+    });
+
+    const previewEntry = previewResponse.previews?.[0];
+
+    if (previewEntry && previewEntry.status === 'ok' && previewEntry.items.length > 0) {
+      // Transform items into SessionMessage format
+      messages = previewEntry.items.map((item, index) => {
+        const role: 'user' | 'assistant' | 'system' =
+          item.role === 'user' || item.role === 'assistant' || item.role === 'system'
+            ? item.role
+            : 'assistant';
+        return {
+          id: `${sessionKey}-msg-${index}`,
+          role,
+          content: item.text,
+          timestamp: new Date().toISOString(),
+        };
+      });
+
+      // Use model from preview if available
+      const previewModel = previewEntry.items.find((i) => i.model)?.model;
+      if (previewModel) {
+        effectiveModel = previewModel;
+      }
+    }
+  } catch (_error) {
+    // RPC failed (e.g., 502 when WebSocket disconnected) - return session without messages
+    // This prevents console flood and allows the UI to show session metadata
+    console.warn(`[getSessionPreview] RPC unavailable, returning session without messages: ${sessionKey}`);
   }
 
-  // Transform items into SessionMessage format
-  const messages = previewEntry.items.map((item, index) => {
-    const role: 'user' | 'assistant' | 'system' =
-      item.role === 'user' || item.role === 'assistant' || item.role === 'system'
-        ? item.role
-        : 'assistant';
-    return {
-      id: `${sessionKey}-msg-${index}`,
-      role,
-      content: item.text,
-      timestamp: new Date().toISOString(),
-    };
-  });
-
-  // Find session data from the CLI-backed sessions list for accurate token counts
-  const sessionData = sessionsListResponse.sessions?.find((s) => s.id === sessionKey);
-
-  // Determine the model
-  const effectiveModel =
-    previewEntry.items.find((i) => i.model)?.model ||
-    sessionData?.model ||
-    'unknown';
-
-  // Get token counts from the mapped Session type
-  const tokensTotal = sessionData?.tokens?.total || 0;
-  const tokensInput = sessionData?.tokens?.input || 0;
-  const tokensOutput = sessionData?.tokens?.output || 0;
+  // Get token counts from the CLI-backed session data
+  const tokensTotal = sessionData.tokens?.total || 0;
+  const tokensInput = sessionData.tokens?.input || 0;
+  const tokensOutput = sessionData.tokens?.output || 0;
 
   // Calculate context percentage
   const contextPercentage =
@@ -206,11 +211,11 @@ export async function getSessionPreview(
   const session: Session = {
     id: sessionKey,
     name: sessionKey.split(':').pop() || sessionKey,
-    type: 'main',
+    type: sessionData.type || 'main',
     model: effectiveModel,
-    status: 'idle',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    status: sessionData.status || 'idle',
+    createdAt: sessionData.createdAt || new Date().toISOString(),
+    updatedAt: sessionData.updatedAt || new Date().toISOString(),
     tokens: {
       input: tokensInput,
       output: tokensOutput,

@@ -443,7 +443,10 @@ export default function SessionDetailPage() {
                 ))}
                 {sessionPreview.messages.length === 0 && (
                   <div className="text-center text-muted-foreground py-8">
-                    No messages in this session yet.
+                    <p className="mb-2">No messages available.</p>
+                    <p className="text-sm opacity-70">
+                      Conversation history requires OpenClaw RPC connection. Session metadata is still available.
+                    </p>
                   </div>
                 )}
               </div>
