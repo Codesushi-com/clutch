@@ -10,9 +10,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "ws:start": "tsx scripts/start-websocket-server.ts",
-    "ws:dev": "tsx --watch scripts/start-websocket-server.ts",
     "prepare": "husky",
     "convex:dev": "convex dev",
     "convex:deploy": "convex deploy"
