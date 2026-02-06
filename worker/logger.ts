@@ -14,7 +14,7 @@ import { api } from "../convex/_generated/api"
 
 type WorkLoopPhase = "cleanup" | "review" | "work" | "idle" | "error"
 
-interface LogRunParams {
+export interface LogRunParams {
   projectId: string
   cycle: number
   phase: WorkLoopPhase

@@ -11,6 +11,8 @@ import { loadConfig } from "./config"
 import { api } from "../convex/_generated/api"
 import { logRun, logCycleComplete } from "./logger"
 import type { Project } from "../lib/types"
+import { runWork } from "./phases/work"
+import { childManager } from "./children"
 
 // ============================================
 // Types
@@ -143,7 +145,7 @@ async function runProjectCycle(
     status: "running",
     current_phase: "cleanup",
     current_cycle: cycle,
-    active_agents: 0, // Will be populated by actual implementations
+    active_agents: childManager.activeCount(project.id),
     max_agents: project.work_loop_max_agents ?? 2,
     last_cycle_at: cycleStart,
   })
@@ -165,7 +167,7 @@ async function runProjectCycle(
     status: "running",
     current_phase: "review",
     current_cycle: cycle,
-    active_agents: 0,
+    active_agents: childManager.activeCount(project.id),
     max_agents: project.work_loop_max_agents ?? 2,
   })
 
@@ -186,18 +188,31 @@ async function runProjectCycle(
     status: "running",
     current_phase: "work",
     current_cycle: cycle,
-    active_agents: 0,
+    active_agents: childManager.activeCount(project.id),
     max_agents: project.work_loop_max_agents ?? 2,
   })
 
   // Phase 3: Work
+  const config = loadConfig()
   const workResult = await runPhase(
     convex,
     project.id,
     "work",
     async () => {
-      // TODO: Implement in ticket 7
-      return { success: true, actions: 0 }
+      const result = await runWork({
+        convex,
+        children: childManager,
+        config,
+        cycle,
+        projectId: project.id,
+        log: async (params) => {
+          await logRun(convex, params)
+        },
+      })
+      return {
+        success: true,
+        actions: result.claimed ? 1 : 0,
+      }
     }
   )
 
@@ -223,7 +238,7 @@ async function runProjectCycle(
     status: "running",
     current_phase: "idle",
     current_cycle: cycle,
-    active_agents: 0,
+    active_agents: childManager.activeCount(project.id),
     max_agents: project.work_loop_max_agents ?? 2,
     last_cycle_at: Date.now(),
   })
@@ -358,7 +373,7 @@ async function main(): Promise<void> {
         status: "stopped",
         current_phase: currentPhase,
         current_cycle: cycle,
-        active_agents: 0,
+        active_agents: childManager.activeCount(project.id),
         max_agents: project.work_loop_max_agents ?? 2,
         last_cycle_at: Date.now(),
       })

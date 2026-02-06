@@ -1,0 +1,373 @@
+/**
+ * Work Phase
+ *
+ * Claims ready tasks (respecting dependencies) and spawns appropriately-configured
+ * sub-agents to work on them.
+ */
+
+import type { ConvexHttpClient } from "convex/browser"
+import { api } from "../../convex/_generated/api"
+import type { ChildManager } from "../children"
+import type { WorkLoopConfig } from "../config"
+import type { LogRunParams } from "../logger"
+import type { Task, TaskPriority } from "../../lib/types"
+import { buildPrompt } from "../prompts"
+
+// ============================================
+// Types
+// ============================================
+
+export interface WorkPhaseResult {
+  claimed: boolean
+  taskId?: string
+  role?: string
+}
+
+interface WorkContext {
+  convex: ConvexHttpClient
+  children: ChildManager
+  config: WorkLoopConfig
+  cycle: number
+  projectId: string
+  log: (params: LogRunParams) => Promise<void>
+}
+
+// ============================================
+// Priority Ordering
+// ============================================
+
+const PRIORITY_ORDER: Record<TaskPriority, number> = {
+  urgent: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+}
+
+/**
+ * Sort tasks by priority (urgent first) then by position
+ */
+function sortTasks(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    const priorityDiff = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
+    if (priorityDiff !== 0) return priorityDiff
+    return a.position - b.position
+  })
+}
+
+// ============================================
+// Role → Model Mapping
+// ============================================
+
+const ROLE_MODEL_MAP: Record<string, string | undefined> = {
+  pm: "sonnet",
+  research: "sonnet",
+  reviewer: "sonnet",
+  dev: undefined,  // use default
+  qa: undefined,   // use default
+}
+
+/**
+ * Get the model override for a role
+ */
+function getModelForRole(role: string): string | undefined {
+  return ROLE_MODEL_MAP[role] ?? undefined
+}
+
+// ============================================
+// Dependency Checking
+// ============================================
+
+/**
+ * Check if all dependencies for a task are complete (done)
+ */
+async function areDependenciesMet(
+  convex: ConvexHttpClient,
+  taskId: string
+): Promise<boolean> {
+  try {
+    const deps = await convex.query(api.taskDependencies.getIncomplete, { taskId })
+    return deps.length === 0
+  } catch (error) {
+    // If we can't check dependencies, assume they're not met to be safe
+    console.error(`[WorkPhase] Failed to check dependencies for ${taskId}:`, error)
+    return false
+  }
+}
+
+// ============================================
+// Task Claiming
+// ============================================
+
+/**
+ * Try to claim a task by moving it to in_progress
+ */
+async function claimTask(
+  convex: ConvexHttpClient,
+  taskId: string
+): Promise<Task | null> {
+  try {
+    const result = await convex.mutation(api.tasks.move, {
+      id: taskId,
+      status: "in_progress",
+    })
+    return result
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    // Check if it's a dependency error
+    if (message.includes("dependencies not complete")) {
+      return null  // Dependencies not met, this is expected
+    }
+    // Any other error is unexpected
+    console.error(`[WorkPhase] Unexpected error claiming task ${taskId}:`, message)
+    return null
+  }
+}
+
+// ============================================
+// SOUL Template Loading
+// ============================================
+
+import { readFile } from "node:fs/promises"
+import { join } from "node:path"
+
+const ROLES_DIR = "/home/dan/clawd/roles"
+const DEFAULT_ROLE = "dev"
+
+/**
+ * Load the SOUL template for a role
+ */
+async function loadSoulTemplate(role: string): Promise<string> {
+  const soulPath = join(ROLES_DIR, `${role}.md`)
+  const fallbackPath = join(ROLES_DIR, `${DEFAULT_ROLE}.md`)
+
+  try {
+    return await readFile(soulPath, "utf-8")
+  } catch {
+    // Role file doesn't exist, use fallback
+    try {
+      return await readFile(fallbackPath, "utf-8")
+    } catch {
+      // Even fallback doesn't exist - return a minimal default
+      console.error(`[WorkPhase] Could not load SOUL template for role ${role} or fallback`)
+      return `# Developer\n\nYou are a software developer. Implement the task as specified.`
+    }
+  }
+}
+
+// ============================================
+// Main Work Phase
+// ============================================
+
+/**
+ * Run the work phase: claim ready tasks and spawn agents
+ *
+ * Logic:
+ * 1. Check capacity limits
+ * 2. Query ready tasks, sorted by priority then position
+ * 3. For each candidate, check dependencies and try to claim
+ * 4. Load role SOUL template and build prompt
+ * 5. Spawn sub-agent via ChildManager
+ * 6. Log claim and spawn to Convex
+ */
+export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
+  const { convex, children, config, cycle, projectId, log } = ctx
+
+  // --- 1. Check capacity ---
+  const globalCount = children.activeCount()
+  const projectCount = children.activeCount(projectId)
+
+  if (globalCount >= config.maxAgentsGlobal) {
+    await log({
+      projectId,
+      cycle,
+      phase: "work",
+      action: "capacity_check",
+      details: { globalCount, maxGlobal: config.maxAgentsGlobal, reason: "global_limit" },
+    })
+    return { claimed: false }
+  }
+
+  if (projectCount >= config.maxAgentsPerProject) {
+    await log({
+      projectId,
+      cycle,
+      phase: "work",
+      action: "capacity_check",
+      details: { projectCount, maxPerProject: config.maxAgentsPerProject, reason: "project_limit" },
+    })
+    return { claimed: false }
+  }
+
+  // --- 2. Query ready tasks ---
+  let readyTasks: Task[]
+  try {
+    readyTasks = await convex.query(api.tasks.getByProject, {
+      projectId,
+      status: "ready",
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    await log({
+      projectId,
+      cycle,
+      phase: "work",
+      action: "fetch_failed",
+      details: { error: message },
+    })
+    return { claimed: false }
+  }
+
+  if (readyTasks.length === 0) {
+    await log({
+      projectId,
+      cycle,
+      phase: "work",
+      action: "no_ready_tasks",
+    })
+    return { claimed: false }
+  }
+
+  // Sort by priority then position
+  const sortedTasks = sortTasks(readyTasks)
+
+  await log({
+    projectId,
+    cycle,
+    phase: "work",
+    action: "ready_tasks_found",
+    details: { count: sortedTasks.length },
+  })
+
+  // --- 3. Try to claim a task ---
+  for (const task of sortedTasks) {
+    // Check dependencies first (before attempting claim)
+    const depsMet = await areDependenciesMet(convex, task.id)
+    if (!depsMet) {
+      await log({
+        projectId,
+        cycle,
+        phase: "work",
+        action: "dependency_blocked",
+        taskId: task.id,
+        details: { title: task.title },
+      })
+      continue
+    }
+
+    // Try to claim the task
+    const claimed = await claimTask(convex, task.id)
+    if (!claimed) {
+      // Another process claimed it or deps changed
+      await log({
+        projectId,
+        cycle,
+        phase: "work",
+        action: "claim_failed",
+        taskId: task.id,
+        details: { title: task.title },
+      })
+      continue
+    }
+
+    // Successfully claimed!
+    const role = task.role ?? "dev"
+
+    await log({
+      projectId,
+      cycle,
+      phase: "work",
+      action: "task_claimed",
+      taskId: task.id,
+      details: { title: task.title, role },
+    })
+
+    // --- 4. Load SOUL and build prompt ---
+    const soulTemplate = await loadSoulTemplate(role)
+    const project = await convex.query(api.projects.getById, { id: projectId })
+    const repoDir = project?.local_path ?? "/home/dan/src/trap"
+    const worktreeDir = `/home/dan/src/trap-worktrees/fix/${task.id.slice(0, 8)}`
+
+    const prompt = buildPrompt({
+      role,
+      taskId: task.id,
+      taskTitle: task.title,
+      taskDescription: task.description ?? "",
+      soulTemplate,
+      projectId,
+      repoDir,
+      worktreeDir,
+    })
+
+    // --- 5. Spawn sub-agent ---
+    const model = getModelForRole(role)
+    const label = `trap-${role}-${task.id.slice(0, 8)}`
+
+    try {
+      const child = children.spawn({
+        taskId: task.id,
+        projectId,
+        role,
+        message: prompt,
+        model,
+        label,
+      })
+
+      await log({
+        projectId,
+        cycle,
+        phase: "work",
+        action: "agent_spawned",
+        taskId: task.id,
+        sessionKey: child.sessionKey,
+        details: { pid: child.pid, role, model: model ?? "default" },
+      })
+
+      // Update task with session ID
+      try {
+        await convex.mutation(api.tasks.update, {
+          id: task.id,
+          session_id: child.sessionKey,
+        })
+      } catch (updateError) {
+        // Non-fatal: session tracking is nice-to-have
+        console.error(`[WorkPhase] Failed to update task session_id:`, updateError)
+      }
+
+      // --- 6. Return success (only one task per cycle) ---
+      return { claimed: true, taskId: task.id, role }
+    } catch (spawnError) {
+      const message = spawnError instanceof Error ? spawnError.message : String(spawnError)
+      await log({
+        projectId,
+        cycle,
+        phase: "work",
+        action: "spawn_failed",
+        taskId: task.id,
+        details: { error: message },
+      })
+
+      // Try to move task back to ready since spawn failed
+      try {
+        await convex.mutation(api.tasks.move, {
+          id: task.id,
+          status: "ready",
+        })
+      } catch (moveError) {
+        console.error(`[WorkPhase] Failed to revert task status:`, moveError)
+      }
+
+      return { claimed: false }
+    }
+  }
+
+  // No claimable tasks found
+  await log({
+    projectId,
+    cycle,
+    phase: "work",
+    action: "no_claimable_tasks",
+    details: { readyCount: sortedTasks.length },
+  })
+
+  return { claimed: false }
+}
