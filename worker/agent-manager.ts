@@ -136,32 +136,73 @@ export class AgentManager {
   }
 
   /**
-   * Reap finished agents by checking gateway session list.
+   * Reap finished and stale agents by checking gateway session list.
    *
-   * Compares active handles against live sessions from the gateway.
-   * Any handle whose session is no longer active gets removed and
-   * pushed to the completed queue.
+   * Two reap conditions:
+   * 1. **Finished**: Session key is no longer in the active sessions list.
+   *    The agent completed (or errored) and the session aged out.
+   * 2. **Stale**: Session is still "active" but `updatedAt` is older than
+   *    `staleMs`. The agent is stuck — kill the session and reap the handle.
+   *
+   * Uses a wide session window (120 min) so we can capture usage from
+   * recently-finished sessions that are still in the list but no longer
+   * truly active (updatedAt stopped advancing).
+   *
+   * @param staleMs - Milliseconds of inactivity before a session is considered stuck.
+   *                  Default: 15 minutes (900_000 ms).
    */
-  async reapFinished(): Promise<AgentOutcome[]> {
+  async reapFinished(staleMs = 15 * 60 * 1000): Promise<AgentOutcome[]> {
     if (this.agents.size === 0) return []
 
     const reaped: AgentOutcome[] = []
+    const now = Date.now()
 
     try {
       await this.gateway.connect()
-      const sessions = await this.gateway.listSessions(30)
-      const activeKeys = new Set(sessions.map((s) => s.key))
+
+      // Use a wide window (120 min) so recently-finished sessions still
+      // appear — we need them for usage data even if they stopped updating.
+      const sessions = await this.gateway.listSessions(120)
+      const sessionsByKey = new Map(sessions.map((s) => [s.key, s]))
 
       for (const [taskId, handle] of this.agents) {
-        if (!activeKeys.has(handle.sessionKey)) {
-          // Session gone — agent finished
-          const session = sessions.find((s) => s.key === handle.sessionKey)
+        const session = sessionsByKey.get(handle.sessionKey)
+        let reason: "finished" | "stale" | null = null
+
+        if (!session) {
+          // Session completely gone from the list — it finished and aged out
+          reason = "finished"
+        } else {
+          // Session exists — check if it's stale
+          const lastActive = session.updatedAt ?? handle.spawnedAt
+          const idleMs = now - lastActive
+
+          if (idleMs >= staleMs) {
+            reason = "stale"
+
+            // Kill the stuck session on the gateway
+            try {
+              await this.gateway.deleteSession(handle.sessionKey)
+              console.log(
+                `[AgentManager] Killed stale session ${handle.sessionKey} ` +
+                `(idle ${Math.round(idleMs / 1000)}s, threshold ${Math.round(staleMs / 1000)}s)`,
+              )
+            } catch (killError) {
+              const msg = killError instanceof Error ? killError.message : String(killError)
+              console.warn(`[AgentManager] Failed to kill stale session ${handle.sessionKey}: ${msg}`)
+              // Still reap the handle — the session may be in a broken state
+            }
+          }
+        }
+
+        if (reason) {
           const outcome: AgentOutcome = {
             taskId,
             sessionKey: handle.sessionKey,
-            success: true,
-            reply: "completed",
-            durationMs: Date.now() - handle.spawnedAt,
+            success: reason === "finished",
+            reply: reason === "finished" ? "completed" : "stale_timeout",
+            error: reason === "stale" ? `Agent stale for >${Math.round(staleMs / 60_000)}min` : undefined,
+            durationMs: now - handle.spawnedAt,
             usage: session
               ? {
                   inputTokens: session.inputTokens ?? 0,
@@ -178,7 +219,8 @@ export class AgentManager {
 
       if (reaped.length > 0) {
         console.log(
-          `[AgentManager] Reaped ${reaped.length} finished agent(s): ${reaped.map((r) => r.sessionKey).join(", ")}`,
+          `[AgentManager] Reaped ${reaped.length} agent(s): ` +
+          reaped.map((r) => `${r.sessionKey} (${r.reply})`).join(", "),
         )
       }
     } catch (error) {

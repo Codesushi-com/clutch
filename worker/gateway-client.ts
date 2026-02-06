@@ -320,6 +320,19 @@ export class GatewayRpcClient {
   }
 
   /**
+   * Delete (kill) a session on the gateway.
+   *
+   * Used to terminate stuck agent sessions that are no longer making progress.
+   */
+  async deleteSession(sessionKey: string): Promise<void> {
+    await this.request<unknown>(
+      "sessions.delete",
+      { key: sessionKey },
+      10_000,
+    )
+  }
+
+  /**
    * Get the count of pending (in-flight) agent RPC calls.
    * This represents agents that are currently running.
    */

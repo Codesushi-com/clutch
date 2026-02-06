@@ -143,29 +143,50 @@ async function runProjectCycle(
 ): Promise<void> {
   const cycleStart = Date.now()
 
-  // Reap finished agents before doing anything else
-  const reaped = await agentManager.reapFinished()
+  // Reap finished agents before doing anything else.
+  // Convert staleTaskMinutes from config into milliseconds for the reaper.
+  const config = loadConfig()
+  const staleMs = config.staleTaskMinutes * 60 * 1000
+  const reaped = await agentManager.reapFinished(staleMs)
   if (reaped.length > 0) {
     for (const outcome of reaped) {
+      const isStale = outcome.reply === "stale_timeout"
       await logRun(convex, {
         projectId: project.id,
         cycle,
         phase: "cleanup",
-        action: "agent_reaped",
+        action: isStale ? "agent_stale_reaped" : "agent_reaped",
         taskId: outcome.taskId,
         sessionKey: outcome.sessionKey,
         details: {
+          reason: outcome.reply,
+          error: outcome.error,
           durationMs: outcome.durationMs,
           tokens: outcome.usage?.totalTokens,
         },
       })
+
       // Clear agent fields on the task
       try {
         await convex.mutation(api.tasks.clearAgentActivity, {
           task_id: outcome.taskId,
         })
       } catch {
-        // Non-fatal
+        // Non-fatal — task may have been deleted
+      }
+
+      // If the agent was stale (stuck), move the task back to ready so
+      // it can be retried on the next cycle.
+      if (isStale) {
+        try {
+          await convex.mutation(api.tasks.move, {
+            id: outcome.taskId,
+            status: "ready",
+          })
+          console.log(`[WorkLoop] Moved stale task ${outcome.taskId} back to ready`)
+        } catch {
+          // Non-fatal — task may already be in a different state
+        }
       }
     }
   }
@@ -232,7 +253,6 @@ async function runProjectCycle(
   })
 
   // Phase 3: Work
-  const config = loadConfig()
   const workResult = await runPhase(
     convex,
     project.id,
