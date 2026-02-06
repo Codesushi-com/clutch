@@ -23,6 +23,16 @@ export type {
   SessionPreview,
 } from './session'
 
+// Re-export work loop types
+export type {
+  WorkLoopPhase,
+  WorkLoopStatus,
+  WorkLoopState,
+  WorkLoopRun,
+  WorkLoopStats,
+  ActiveAgent,
+} from './work-loop'
+
 export interface Project {
   id: string
   slug: string

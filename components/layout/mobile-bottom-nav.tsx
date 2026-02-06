@@ -2,11 +2,12 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Activity, Bot, Settings } from "lucide-react"
+import { Home, Activity, Bot, Settings, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const BOTTOM_NAV_ITEMS = [
   { id: "home", label: "Home", icon: Home, href: "/" },
+  { id: "work-loop", label: "Loop", icon: Repeat, href: "/work-loop" },
   { id: "sessions", label: "Sessions", icon: Activity, href: "/sessions" },
   { id: "agents", label: "Agents", icon: Bot, href: "/agents" },
   { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
@@ -22,6 +23,7 @@ export function MobileBottomNav() {
 
   const getActiveId = () => {
     if (pathname === "/") return "home"
+    if (pathname.startsWith("/work-loop")) return "work-loop"
     if (pathname.startsWith("/sessions")) return "sessions"
     if (pathname.startsWith("/agents")) return "agents"
     if (pathname.startsWith("/settings")) return "settings"
