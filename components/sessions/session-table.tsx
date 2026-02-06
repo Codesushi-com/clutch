@@ -6,8 +6,39 @@
  * agent type badges, and task associations
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+
+/**
+ * Hook that provides a time value that updates at a fixed interval.
+ * Used to prevent excessive re-renders from time-based calculations.
+ */
+function useTickingTime(updateIntervalMs = 30000) {
+  const [time, setTime] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setTime(Date.now());
+    }, updateIntervalMs);
+
+    return () => clearInterval(intervalId);
+  }, [updateIntervalMs]);
+
+  return time;
+}
+
+/**
+ * Component that displays relative time with minimal re-renders.
+ * Only updates when the ticking time changes (every 30s by default).
+ */
+function TimeAgo({ timestamp, tickingTime }: { timestamp: string; tickingTime: number }) {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const formatted = useMemo(() => {
+    return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+  }, [timestamp, tickingTime]);
+
+  return <span className="text-sm text-muted-foreground">{formatted}</span>;
+}
 import {
   ColumnDef,
   flexRender,
@@ -280,7 +311,7 @@ function TaskLink({ task }: { task?: SessionRowData['task'] }) {
 }
 
 // Define columns
-const getColumns = (): ColumnDef<SessionRowData>[] => [
+const getColumns = (tickingTime: number): ColumnDef<SessionRowData>[] => [
   {
     accessorKey: 'name',
     header: ({ column }) => <SortHeader column={column}>Session</SortHeader>,
@@ -352,22 +383,20 @@ const getColumns = (): ColumnDef<SessionRowData>[] => [
     cell: ({ row }) => {
       const ts = row.original.updatedAt;
       if (!ts) return <span className="text-sm text-muted-foreground">—</span>;
-      return (
-        <span className="text-sm text-muted-foreground">
-          {formatDistanceToNow(new Date(ts), { addSuffix: true })}
-        </span>
-      );
+      return <TimeAgo timestamp={ts} tickingTime={tickingTime} />;
     },
   },
 ];
 
 // Mobile Card Component
-function SessionCard({ 
-  session, 
-  onRowClick 
-}: { 
-  session: SessionRowData; 
+function SessionCard({
+  session,
+  onRowClick,
+  tickingTime,
+}: {
+  session: SessionRowData;
   onRowClick?: (sessionId: string) => void;
+  tickingTime: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const router = useRouter();
@@ -427,8 +456,8 @@ function SessionCard({
         
         <div className="flex items-center justify-between text-sm text-muted-foreground mt-2">
           <span>
-            {session.updatedAt 
-              ? formatDistanceToNow(new Date(session.updatedAt), { addSuffix: true })
+            {session.updatedAt
+              ? <TimeAgo timestamp={session.updatedAt} tickingTime={tickingTime} />
               : '—'
             }
           </span>
@@ -554,13 +583,16 @@ export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'updatedAt', desc: true },
   ]);
-  
+
   const storeSessions = useSessionStore((state) => state.sessions);
   const isLoading = useSessionStore((state) => state.isLoading);
   const error = useSessionStore((state) => state.error);
-  
+
   // Use filtered sessions if provided, otherwise use store sessions
   const rawSessions = filteredSessions || storeSessions;
+
+  // Shared ticking time for relative time displays - updates every 30s
+  const tickingTime = useTickingTime(30000);
 
   // Transform sessions for table — compute duration once from timestamps, no live ticking.
   // Since we only have updatedAt (not true createdAt), "duration" shows time since
@@ -585,7 +617,7 @@ export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps
     });
   }, [filteredSessions, rawSessions]);
 
-  const columns = getColumns();
+  const columns = getColumns(tickingTime);
 
   const table = useReactTable({
     data,
@@ -679,6 +711,7 @@ export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps
             key={session.id}
             session={session}
             onRowClick={onRowClick}
+            tickingTime={tickingTime}
           />
         ))}
       </div>

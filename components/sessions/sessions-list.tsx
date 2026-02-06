@@ -288,9 +288,14 @@ export function SessionsList({
 
   // Filter sessions if projectSlug is provided
   // Fallback to allSessions if enrichedSessions is empty (e.g., on initial load)
-  const sessions = projectSlug 
-    ? filterProjectSessions(enrichedSessions.length > 0 ? enrichedSessions : allSessions, projectSlug)
-    : (enrichedSessions.length > 0 ? enrichedSessions : allSessions);
+  // Use useMemo to prevent new array references on every render
+  const sessions = useMemo(() => {
+    const sourceSessions = enrichedSessions.length > 0 ? enrichedSessions : allSessions;
+    if (projectSlug) {
+      return filterProjectSessions(sourceSessions, projectSlug);
+    }
+    return sourceSessions;
+  }, [enrichedSessions, allSessions, projectSlug]);
 
   // Calculate stats from filtered sessions
   const runningCount = sessions.filter((s) => s.status === 'running').length;
