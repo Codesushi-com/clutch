@@ -18,10 +18,10 @@ export function ActiveAgents({ projectId, projectSlug }: ActiveAgentsProps) {
   // Transform tasks to agent cards
   const agents = useMemo(() => {
     if (!tasks) return []
-    return tasks.map((task) => ({
+    return tasks.map((task, index) => ({
       id: task.id,
       taskId: task.id,
-      taskTitle: task.title,
+      taskTitle: task.title?.trim() || `Untitled Task ${index + 1}`,
       role: task.role ?? "dev",
       model: task.agent_model ?? "unknown",
       duration: formatDuration(task.agent_started_at),
@@ -106,16 +106,21 @@ function AgentCard({ agent, projectSlug }: AgentCardProps) {
     pm: "bg-green-500/20 text-green-600",
   }
 
+  const taskUrl = `/projects/${projectSlug}/board?task=${agent.taskId}`
+
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
+    <div className="rounded-lg border bg-card p-4 space-y-3 hover:border-primary/50 transition-colors">
       <div className="flex items-start justify-between gap-2">
         <Link
-          href={`/projects/${projectSlug}/board?task=${agent.taskId}`}
+          href={taskUrl}
           className="font-medium text-sm hover:underline line-clamp-1"
+          title={agent.taskTitle}
         >
           {agent.taskTitle}
         </Link>
-        <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+        <Link href={taskUrl} className="flex-shrink-0 hover:text-primary transition-colors">
+          <ExternalLink className="h-3 w-3 text-muted-foreground" />
+        </Link>
       </div>
 
       <div className="flex items-center gap-2">
