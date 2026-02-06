@@ -35,7 +35,11 @@ export function ActivityLog({ projectId, projectSlug }: ActivityLogProps) {
     )
   }
 
-  if (!runs || runs.length === 0) {
+  // Filter out noisy phase lifecycle entries that don't carry useful info
+  const NOISE_ACTIONS = new Set(["phase_start", "phase_complete", "phase_failed"])
+  const filteredRuns = runs?.filter((r) => !NOISE_ACTIONS.has(r.action)) ?? null
+
+  if (!filteredRuns || filteredRuns.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -68,7 +72,7 @@ export function ActivityLog({ projectId, projectSlug }: ActivityLogProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {runs.map((run) => (
+              {filteredRuns.map((run) => (
                 <TableRow key={run.id}>
                   <TableCell className="text-muted-foreground whitespace-nowrap">
                     {formatTimeAgo(run.created_at)}
@@ -76,7 +80,9 @@ export function ActivityLog({ projectId, projectSlug }: ActivityLogProps) {
                   <TableCell>
                     <PhaseBadge phase={run.phase} />
                   </TableCell>
-                  <TableCell className="font-medium">{run.action}</TableCell>
+                  <TableCell className="font-medium">
+                    {formatAction(run.action, run.details)}
+                  </TableCell>
                   <TableCell>
                     {run.task_id ? (
                       <Link
@@ -106,6 +112,43 @@ export function ActivityLog({ projectId, projectSlug }: ActivityLogProps) {
       </CardContent>
     </Card>
   )
+}
+
+/**
+ * Format an action string with relevant details for display.
+ * Parses the JSON details string to extract meaningful context.
+ */
+function formatAction(action: string, detailsJson: string | null): string {
+  if (!detailsJson) return action
+
+  try {
+    const details = JSON.parse(detailsJson) as Record<string, unknown>
+
+    switch (action) {
+      case "dependency_blocked":
+        return details.title ? `blocked: ${details.title}` : action
+      case "task_claimed":
+        return details.title ? `claimed: ${details.title}` : action
+      case "agent_spawned":
+        return details.role ? `spawned ${details.role} agent` : action
+      case "spawn_failed":
+        return details.error ? `spawn failed: ${details.error}` : action
+      case "ready_tasks_found":
+        return `${details.count ?? 0} ready tasks`
+      case "no_claimable_tasks":
+        return `${details.readyCount ?? 0} ready but all blocked`
+      case "capacity_check":
+        return `at capacity (${details.reason ?? "limit"})`
+      case "cycle_complete":
+        return `cycle done (${details.total_actions ?? 0} actions)`
+      case "reviewer_spawned":
+        return details.prTitle ? `reviewing: ${details.prTitle}` : action
+      default:
+        return action
+    }
+  } catch {
+    return action
+  }
 }
 
 function formatTimeAgo(timestamp: number): string {

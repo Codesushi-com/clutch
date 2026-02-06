@@ -66,14 +66,6 @@ interface PRInfo {
 export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
   const { convex, children, config, cycle, projectId } = ctx
 
-  // Log phase start
-  await ctx.log({
-    projectId,
-    cycle,
-    phase: "review",
-    action: "phase_start",
-  })
-
   let spawnedCount = 0
   let skippedCount = 0
 

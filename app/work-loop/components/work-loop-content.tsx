@@ -8,18 +8,34 @@ import { StatsPanel } from './stats-panel'
 import { ActiveAgents } from './active-agents'
 import { ActivityLog } from './activity-log'
 import { useWorkLoopState } from '@/lib/hooks/use-work-loop'
+import { useQuery } from 'convex/react'
+import { api } from '@/convex/_generated/api'
 import { Pause, Play, RotateCw } from 'lucide-react'
 
-// Default project ID for the work loop dashboard
-// In the future, this could be selectable or from URL params
-const DEFAULT_PROJECT_ID = 'trap'
+/**
+ * Finds the first project with work_loop_enabled from the projects list.
+ * Returns null if none found.
+ */
+function useWorkLoopProject(): { projectId: string; projectSlug: string } | null {
+  const projects = useQuery(api.projects.getAll, {})
+
+  if (!projects) return null
+
+  const enabled = projects.find((p) => p.work_loop_enabled)
+  if (!enabled) return null
+
+  return { projectId: enabled.id, projectSlug: enabled.slug }
+}
 
 export function WorkLoopContent() {
-  const { state, isLoading } = useWorkLoopState(DEFAULT_PROJECT_ID)
+  const project = useWorkLoopProject()
+  const { state, isLoading: stateLoading } = useWorkLoopState(project?.projectId ?? null)
   const [isUpdating, setIsUpdating] = useState(false)
 
+  const isLoading = !project || stateLoading
+
   const handleToggleStatus = async () => {
-    if (!state || isUpdating) return
+    if (!state || !project || isUpdating) return
 
     setIsUpdating(true)
     try {
@@ -28,7 +44,7 @@ export function WorkLoopContent() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          projectId: DEFAULT_PROJECT_ID,
+          projectId: project.projectId,
           status: newStatus,
         }),
       })
@@ -41,6 +57,21 @@ export function WorkLoopContent() {
     } finally {
       setIsUpdating(false)
     }
+  }
+
+  if (!project && !stateLoading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Work Loop</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12 text-muted-foreground">
+              No projects with work loop enabled. Enable it in project settings.
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   const isRunning = state?.status === 'running'
@@ -92,18 +123,20 @@ export function WorkLoopContent() {
       )}
 
       {/* Main content grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Main area - 3 columns */}
-        <div className="lg:col-span-3 space-y-6">
-          <ActiveAgents projectId={DEFAULT_PROJECT_ID} projectSlug={DEFAULT_PROJECT_ID} />
-          <ActivityLog projectId={DEFAULT_PROJECT_ID} projectSlug={DEFAULT_PROJECT_ID} />
-        </div>
+      {project && (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Main area - 3 columns */}
+          <div className="lg:col-span-3 space-y-6">
+            <ActiveAgents projectId={project.projectId} projectSlug={project.projectSlug} />
+            <ActivityLog projectId={project.projectId} projectSlug={project.projectSlug} />
+          </div>
 
-        {/* Sidebar - 1 column */}
-        <div className="lg:col-span-1">
-          <StatsPanel projectId={DEFAULT_PROJECT_ID} />
+          {/* Sidebar - 1 column */}
+          <div className="lg:col-span-1">
+            <StatsPanel projectId={project.projectId} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

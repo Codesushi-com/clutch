@@ -44,14 +44,6 @@ interface AnalyzeResult {
 export async function runAnalyze(ctx: AnalyzeContext): Promise<AnalyzeResult> {
   const { convex, children, config, cycle, projectId, log } = ctx
 
-  // Log phase start
-  await log({
-    projectId,
-    cycle,
-    phase: "analyze",
-    action: "phase_start",
-  })
-
   let spawnedCount = 0
   let skippedCount = 0
 

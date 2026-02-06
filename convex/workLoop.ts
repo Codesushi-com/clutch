@@ -145,6 +145,7 @@ export const listRuns = query({
         .withIndex('by_project_created', (q) =>
           q.eq('project_id', args.projectId).lt('created_at', args.before!)
         )
+        .order("desc")
         .take(limit)
     } else {
       runs = await ctx.db
@@ -152,13 +153,11 @@ export const listRuns = query({
         .withIndex('by_project_created', (q) =>
           q.eq('project_id', args.projectId)
         )
+        .order("desc")
         .take(limit)
     }
 
-    // Sort by created_at descending (newest first)
-    return runs
-      .sort((a, b) => b.created_at - a.created_at)
-      .map((r) => toWorkLoopRun(r as WorkLoopRunDoc))
+    return runs.map((r) => toWorkLoopRun(r as WorkLoopRunDoc))
   },
 })
 
@@ -169,7 +168,8 @@ export const getStats = query({
   args: { projectId: v.string() },
   handler: async (ctx, args): Promise<WorkLoopStats> => {
     const now = Date.now()
-    const startOfDay = new Date(now).setHours(0, 0, 0, 0)
+    const d = new Date(now)
+    const startOfDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
 
     // Get today's runs for this project
     const runs = await ctx.db
