@@ -58,19 +58,21 @@ function sortTasks(tasks: Task[]): Task[] {
 // Role → Model Mapping
 // ============================================
 
-const ROLE_MODEL_MAP: Record<string, string | undefined> = {
+const ROLE_MODEL_MAP: Record<string, string> = {
   pm: "sonnet",
   research: "sonnet",
   reviewer: "sonnet",
-  dev: undefined,  // use default
-  qa: undefined,   // use default
+  dev: "moonshot/kimi-for-coding",
+  qa: "moonshot/kimi-for-coding",
 }
 
 /**
- * Get the model override for a role
+ * Get the model for a role.
+ * Every role must have an explicit model to avoid falling back to the
+ * gateway default (which may be an expensive model like Opus).
  */
-function getModelForRole(role: string): string | undefined {
-  return ROLE_MODEL_MAP[role] ?? undefined
+function getModelForRole(role: string): string {
+  return ROLE_MODEL_MAP[role] ?? ROLE_MODEL_MAP.dev
 }
 
 // ============================================
