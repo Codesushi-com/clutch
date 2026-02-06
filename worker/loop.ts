@@ -12,6 +12,7 @@ import { api } from "../convex/_generated/api"
 import { logRun, logCycleComplete } from "./logger"
 import { agentManager } from "./agent-manager"
 import { sessionsPoller } from "./sessions"
+import { runCleanup } from "./phases/cleanup"
 import { runReview } from "./phases/review"
 import type { Project } from "../lib/types"
 import { runWork } from "./phases/work"
@@ -35,6 +36,7 @@ interface ProjectInfo {
   name: string
   work_loop_enabled: boolean
   work_loop_max_agents?: number | null
+  local_path?: string | null
 }
 
 // ============================================
@@ -203,13 +205,24 @@ async function runProjectCycle(
   })
 
   // Phase 1: Cleanup
+  const repoPath = project.local_path ?? "/home/dan/src/trap"
+  const worktreesPath = `${repoPath.replace(/\/trap$/, "/trap-worktrees")}/fix`
   const cleanupResult = await runPhase(
     convex,
     project.id,
     "cleanup",
     async () => {
-      // TODO: Implement in ticket 5
-      return { success: true, actions: 0 }
+      const result = await runCleanup({
+        convex,
+        agents: agentManager,
+        cycle,
+        projectId: project.id,
+        repoPath,
+        worktreesPath,
+        staleTaskMinutes: config.staleTaskMinutes,
+        log: (params) => logRun(convex, params),
+      })
+      return { success: true, actions: result.actions }
     }
   )
 
@@ -360,6 +373,7 @@ async function getEnabledProjects(convex: ConvexHttpClient): Promise<ProjectInfo
         name: p.name,
         work_loop_enabled: Boolean(p.work_loop_enabled),
         work_loop_max_agents: p.work_loop_max_agents,
+        local_path: p.local_path,
       }))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

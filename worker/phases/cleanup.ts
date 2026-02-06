@@ -1,28 +1,55 @@
-import { execFileSync } from "child_process"
+/**
+ * Cleanup Phase
+ *
+ * Runs at the start of each work loop cycle to keep state clean.
+ * Handles the items that agent reaping (in loop.ts) doesn't cover:
+ *
+ * 1. Orphaned in_progress tasks — tasks stuck in_progress with no active
+ *    agent AND stale agent_last_active_at. Reset to ready.
+ * 2. Stale agent fields — tasks in done/ready that still have agent_*
+ *    fields set. Clear them.
+ * 3. Orphan worktrees — worktrees for tasks that are done. Remove them.
+ *
+ * Agent reaping (finished/stale sessions) is handled earlier in
+ * runProjectCycle, before this phase runs.
+ */
+
+import { execFileSync } from "node:child_process"
 import type { ConvexHttpClient } from "convex/browser"
-import type { Task } from "@/lib/types"
-import type {
-  WorkLoopConfig,
-  ChildManager,
-  SessionsPoller,
-  LogRunParams,
-} from "../types"
+import { api } from "../../convex/_generated/api"
+import type { AgentManager } from "../agent-manager"
+import type { Task } from "../../lib/types"
 
 // ============================================
 // Types
 // ============================================
 
+type WorkLoopPhase = "cleanup" | "review" | "work" | "analyze" | "idle" | "error"
+
+interface LogRunParams {
+  projectId: string
+  cycle: number
+  phase: WorkLoopPhase
+  action: string
+  taskId?: string
+  sessionKey?: string
+  details?: Record<string, unknown>
+  durationMs?: number
+}
+
 interface CleanupContext {
   convex: ConvexHttpClient
-  children: ChildManager
-  sessions: SessionsPoller
-  config: WorkLoopConfig
+  agents: AgentManager
   cycle: number
+  projectId: string
+  repoPath: string
+  worktreesPath: string
+  staleTaskMinutes: number
   log: (params: LogRunParams) => Promise<void>
 }
 
 interface CleanupResult {
-  actionsCount: number
+  actions: number
 }
 
 // ============================================
@@ -30,304 +57,282 @@ interface CleanupResult {
 // ============================================
 
 const MS_PER_MINUTE = 60 * 1000
+const DEFAULT_STALE_MINUTES = 15
 
 // ============================================
 // Main Cleanup Function
 // ============================================
 
 export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
-  const { convex, children, sessions, config, cycle, log } = ctx
-  let actionsCount = 0
+  const {
+    convex,
+    agents,
+    cycle,
+    projectId,
+    repoPath,
+    worktreesPath,
+    staleTaskMinutes,
+    log,
+  } = ctx
+
+  let actions = 0
 
   const now = Date.now()
-  const staleTaskMs = config.staleTaskMinutes * MS_PER_MINUTE
-  const staleReviewMs = config.staleReviewMinutes * MS_PER_MINUTE
+  const staleMs = (staleTaskMinutes || DEFAULT_STALE_MINUTES) * MS_PER_MINUTE
 
-  // Fetch tasks from Convex
-  const inProgressTasks = await fetchTasksByStatus(convex, config.projectId, "in_progress")
-  const inReviewTasks = await fetchTasksByStatus(convex, config.projectId, "in_review")
-
-  // 1. Check in_progress tasks with no active session/child
-  for (const task of inProgressTasks) {
-    const taskAge = now - task.updated_at
-
-    if (taskAge > staleTaskMs) {
-      const hasSession = sessions.hasActiveSession(task.id)
-      const hasChild = children.hasChild(task.id)
-
-      if (!hasSession && !hasChild) {
-        // Reset to ready
-        await resetTaskToReady(convex, task)
-        await log({
-          projectId: config.projectId,
-          cycle,
-          phase: "cleanup",
-          action: "reset_stale_in_progress",
-          taskId: task.id,
-          details: {
-            reason: "no_active_session_or_child",
-            ageMinutes: Math.round(taskAge / MS_PER_MINUTE),
-          },
-        })
-        actionsCount++
-      }
-    }
-  }
-
-  // 2. Check in_review tasks with no open PR
-  for (const task of inReviewTasks) {
-    const taskAge = now - task.updated_at
-
-    if (taskAge > staleReviewMs) {
-      const hasOpenPR = await checkOpenPR(config.githubRepo, task.id)
-
-      if (!hasOpenPR) {
-        // Reset to ready
-        await resetTaskToReady(convex, task)
-        await log({
-          projectId: config.projectId,
-          cycle,
-          phase: "cleanup",
-          action: "reset_stale_in_review",
-          taskId: task.id,
-          details: {
-            reason: "no_open_pr",
-            ageMinutes: Math.round(taskAge / MS_PER_MINUTE),
-          },
-        })
-        actionsCount++
-      }
-    }
-  }
-
-  // 3. Kill stale child processes
-  const staleChildren = findStaleChildren(children, now, staleTaskMs)
-  for (const [taskId, child] of staleChildren) {
-    const killed = children.killChild(taskId)
-    if (killed) {
-      // Find and reset the task
-      const task = inProgressTasks.find(t => t.id === taskId)
-      if (task) {
-        await resetTaskToReady(convex, task)
-      }
-      await log({
-        projectId: config.projectId,
-        cycle,
-        phase: "cleanup",
-        action: "kill_stale_child",
-        taskId,
-        details: {
-          pid: child.pid,
-          staleMinutes: Math.round((now - child.lastOutputAt) / MS_PER_MINUTE),
-        },
-      })
-      actionsCount++
-    }
-  }
-
-  // 4. Clean orphaned worktrees
-  const orphanedWorktrees = await findOrphanedWorktrees(
-    config.localPath,
-    config.worktreesPath,
-    inProgressTasks,
-    inReviewTasks
-  )
-  for (const worktreePath of orphanedWorktrees) {
-    const cleaned = await cleanWorktree(config.localPath, worktreePath)
-    if (cleaned) {
-      await log({
-        projectId: config.projectId,
-        cycle,
-        phase: "cleanup",
-        action: "clean_orphaned_worktree",
-        details: {
-          worktreePath,
-        },
-      })
-      actionsCount++
-    }
-  }
-
-  return { actionsCount }
-}
-
-// ============================================
-// Helper Functions
-// ============================================
-
-async function fetchTasksByStatus(
-  convex: ConvexHttpClient,
-  projectId: string,
-  status: "in_progress" | "in_review"
-): Promise<Task[]> {
-  const { api } = await import("@/convex/_generated/api")
-  return convex.query(api.tasks.getByProject, { projectId, status })
-}
-
-async function resetTaskToReady(convex: ConvexHttpClient, task: Task): Promise<void> {
-  const { api } = await import("@/convex/_generated/api")
-  await convex.mutation(api.tasks.move, {
-    id: task.id,
+  // Fetch task lists from Convex
+  const inProgressTasks = await convex.query(api.tasks.getByProject, {
+    projectId,
+    status: "in_progress",
+  })
+  const doneTasks = await convex.query(api.tasks.getByProject, {
+    projectId,
+    status: "done",
+  })
+  const readyTasks = await convex.query(api.tasks.getByProject, {
+    projectId,
     status: "ready",
   })
-}
 
-async function checkOpenPR(githubRepo: string, taskId: string): Promise<boolean> {
-  try {
-    // Extract prefix from task ID (first 8 chars is typically enough)
-    const idPrefix = taskId.slice(0, 8)
-    const headPattern = `fix/${idPrefix}*`
+  // ------------------------------------------------------------------
+  // 1. Detect orphaned in_progress tasks
+  //
+  //    A task is orphaned if:
+  //    - Status is in_progress
+  //    - No active agent handle in AgentManager
+  //    - agent_last_active_at is >staleMinutes old (or absent)
+  // ------------------------------------------------------------------
+  for (const task of inProgressTasks) {
+    const hasAgent = agents.has(task.id)
+    if (hasAgent) continue
 
-    const result = execFileSync(
-      "gh",
-      ["pr", "list", "--repo", githubRepo, "--state", "open", "--head", headPattern, "--json", "number"],
-      { encoding: "utf-8", timeout: 30000 }
-    )
+    // No agent handle — check staleness via agent_last_active_at
+    const lastActive = task.agent_last_active_at ?? task.updated_at
+    const idleMs = now - lastActive
 
-    const prs = JSON.parse(result) as Array<{ number: number }>
-    return prs.length > 0
-  } catch (error) {
-    // If gh command fails, assume no PR (conservative)
-    console.error(`[cleanup] Failed to check PR for task ${taskId}:`, error)
-    return false
-  }
-}
-
-function findStaleChildren(
-  children: ChildManager,
-  now: number,
-  staleMs: number
-): Map<string, { pid: number; lastOutputAt: number }> {
-  const stale = new Map<string, { pid: number; lastOutputAt: number }>()
-
-  for (const [taskId, child] of children.getAllChildren()) {
-    const idleTime = now - child.lastOutputAt
-    if (idleTime > staleMs) {
-      stale.set(taskId, child)
-    }
-  }
-
-  return stale
-}
-
-async function findOrphanedWorktrees(
-  repoPath: string,
-  worktreesPath: string,
-  inProgressTasks: Task[],
-  inReviewTasks: Task[]
-): Promise<string[]> {
-  const activeTaskIds = new Set([
-    ...inProgressTasks.map(t => t.id),
-    ...inReviewTasks.map(t => t.id),
-  ])
-
-  const orphaned: string[] = []
-
-  try {
-    // List all worktrees
-    const result = execFileSync(
-      "git",
-      ["-C", repoPath, "worktree", "list", "--porcelain"],
-      { encoding: "utf-8", timeout: 30000 }
-    )
-
-    // Parse worktree list
-    const worktrees = parseWorktreeList(result)
-
-    for (const worktree of worktrees) {
-      // Check if this worktree is in the worktrees path
-      if (!worktree.path.startsWith(worktreesPath)) {
+    if (idleMs >= staleMs) {
+      // Reset to ready
+      try {
+        await convex.mutation(api.tasks.move, {
+          id: task.id,
+          status: "ready",
+        })
+      } catch (moveErr) {
+        // May fail if dependencies block the transition — log and skip
+        const msg = moveErr instanceof Error ? moveErr.message : String(moveErr)
+        console.warn(`[cleanup] Failed to reset orphaned task ${task.id}: ${msg}`)
         continue
       }
 
-      // Extract task ID from worktree path
-      const taskId = extractTaskIdFromWorktree(worktree.path)
-
-      if (!taskId || !activeTaskIds.has(taskId)) {
-        orphaned.push(worktree.path)
+      // Clear agent fields
+      try {
+        await convex.mutation(api.tasks.clearAgentActivity, {
+          task_id: task.id,
+        })
+      } catch {
+        // Non-fatal
       }
-    }
-  } catch (error) {
-    console.error("[cleanup] Failed to list worktrees:", error)
-  }
 
-  return orphaned
-}
-
-interface WorktreeInfo {
-  path: string
-  head: string
-  branch?: string
-  bare: boolean
-}
-
-function parseWorktreeList(output: string): WorktreeInfo[] {
-  const worktrees: WorktreeInfo[] = []
-  let current: Partial<WorktreeInfo> = {}
-
-  for (const line of output.split("\n")) {
-    if (line.startsWith("worktree ")) {
-      if (current.path) {
-        worktrees.push(current as WorktreeInfo)
-      }
-      current = { path: line.slice(9), bare: false }
-    } else if (line.startsWith("HEAD ")) {
-      current.head = line.slice(5)
-    } else if (line.startsWith("branch ")) {
-      current.branch = line.slice(7)
-    } else if (line === "bare") {
-      current.bare = true
-    } else if (line === "") {
-      // End of worktree entry
-      if (current.path) {
-        worktrees.push(current as WorktreeInfo)
-      }
-      current = {}
+      await log({
+        projectId,
+        cycle,
+        phase: "cleanup",
+        action: "reset_orphaned_in_progress",
+        taskId: task.id,
+        details: {
+          idleMinutes: Math.round(idleMs / MS_PER_MINUTE),
+          agentSessionKey: task.agent_session_key,
+        },
+      })
+      actions++
     }
   }
 
-  // Handle last entry
-  if (current.path) {
-    worktrees.push(current as WorktreeInfo)
+  // ------------------------------------------------------------------
+  // 2. Clear stale agent fields on done/ready tasks
+  //
+  //    Tasks that finished or were reset may still carry agent_* fields.
+  //    This happens when a task moves to done/ready outside the normal
+  //    agent completion path (e.g., manual moves, PR auto-merge).
+  // ------------------------------------------------------------------
+  const tasksNeedingFieldClear = [...doneTasks, ...readyTasks].filter(
+    (task) => task.agent_session_key !== null,
+  )
+
+  for (const task of tasksNeedingFieldClear) {
+    try {
+      await convex.mutation(api.tasks.clearAgentActivity, {
+        task_id: task.id,
+      })
+    } catch {
+      // Non-fatal
+      continue
+    }
+
+    await log({
+      projectId,
+      cycle,
+      phase: "cleanup",
+      action: "clear_stale_agent_fields",
+      taskId: task.id,
+      details: {
+        status: task.status,
+        agentSessionKey: task.agent_session_key,
+      },
+    })
+    actions++
   }
 
-  return worktrees
+  // ------------------------------------------------------------------
+  // 3. Clean orphan worktrees
+  //
+  //    List directories in worktreesPath. For each, extract the task ID
+  //    prefix. If the corresponding task is done, remove the worktree.
+  //    Skip worktrees with uncommitted changes.
+  // ------------------------------------------------------------------
+  const worktreeActions = await cleanOrphanWorktrees({
+    repoPath,
+    worktreesPath,
+    doneTasks,
+    inProgressTasks,
+    inReviewTasks: await convex.query(api.tasks.getByProject, {
+      projectId,
+      status: "in_review",
+    }),
+    projectId,
+    cycle,
+    log,
+  })
+  actions += worktreeActions
+
+  return { actions }
 }
 
-function extractTaskIdFromWorktree(worktreePath: string): string | null {
-  // Try to extract task ID from path
-  // Format: .../trap-worktrees/fix/<uuid-prefix>-<description>
-  const match = worktreePath.match(/fix\/([a-f0-9-]+)/)
-  if (match) {
-    return match[1]
+// ============================================
+// Worktree Cleanup
+// ============================================
+
+interface WorktreeCleanupContext {
+  repoPath: string
+  worktreesPath: string
+  doneTasks: Task[]
+  inProgressTasks: Task[]
+  inReviewTasks: Task[]
+  projectId: string
+  cycle: number
+  log: (params: LogRunParams) => Promise<void>
+}
+
+async function cleanOrphanWorktrees(ctx: WorktreeCleanupContext): Promise<number> {
+  const {
+    repoPath,
+    worktreesPath,
+    doneTasks,
+    inProgressTasks,
+    inReviewTasks,
+    projectId,
+    cycle,
+    log,
+  } = ctx
+
+  let actions = 0
+
+  // Build sets of task ID prefixes for active tasks (in_progress + in_review + ready)
+  // Worktree dirs are named by first 8 chars of task ID
+  const activeTaskPrefixes = new Set<string>()
+  for (const task of [...inProgressTasks, ...inReviewTasks]) {
+    activeTaskPrefixes.add(task.id.slice(0, 8))
   }
-  return null
-}
 
-async function cleanWorktree(repoPath: string, worktreePath: string): Promise<boolean> {
+  const doneTaskPrefixes = new Set<string>()
+  for (const task of doneTasks) {
+    doneTaskPrefixes.add(task.id.slice(0, 8))
+  }
+
+  // List worktree directories
+  let worktreeDirs: string[]
   try {
-    // Check for uncommitted changes
-    const statusResult = execFileSync(
-      "git",
-      ["-C", worktreePath, "status", "--porcelain"],
-      { encoding: "utf-8", timeout: 30000 }
-    )
+    const result = execFileSync("find", [
+      worktreesPath,
+      "-mindepth", "2",
+      "-maxdepth", "2",
+      "-type", "d",
+    ], {
+      encoding: "utf-8",
+      timeout: 10_000,
+    })
+    worktreeDirs = result.trim().split("\n").filter(Boolean)
+  } catch {
+    // Directory may not exist yet — that's fine
+    return 0
+  }
 
-    if (statusResult.trim().length > 0) {
-      console.warn(`[cleanup] Worktree ${worktreePath} has uncommitted changes, skipping`)
-      return false
+  for (const dir of worktreeDirs) {
+    // Extract the task ID prefix from the directory name
+    // Format: /home/dan/src/trap-worktrees/fix/<task-id-prefix>
+    const dirName = dir.split("/").pop()
+    if (!dirName) continue
+
+    // The dir name IS the task ID prefix (e.g., "cacccd02")
+    const prefix = dirName
+
+    // Skip if this task is still active
+    if (activeTaskPrefixes.has(prefix)) continue
+
+    // Only clean if the task is done (not unknown/missing tasks — be conservative)
+    if (!doneTaskPrefixes.has(prefix)) continue
+
+    // Check for uncommitted changes
+    const isDirty = hasUncommittedChanges(dir)
+    if (isDirty) {
+      console.warn(`[cleanup] Worktree ${dir} has uncommitted changes, skipping`)
+      await log({
+        projectId,
+        cycle,
+        phase: "cleanup",
+        action: "worktree_dirty_skip",
+        details: { path: dir },
+      })
+      continue
     }
 
     // Remove the worktree
-    execFileSync(
-      "git",
-      ["-C", repoPath, "worktree", "remove", worktreePath, "--force"],
-      { timeout: 30000 }
-    )
+    try {
+      execFileSync("git", ["-C", repoPath, "worktree", "remove", dir, "--force"], {
+        timeout: 30_000,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(`[cleanup] Failed to remove worktree ${dir}: ${msg}`)
+      continue
+    }
 
+    await log({
+      projectId,
+      cycle,
+      phase: "cleanup",
+      action: "worktree_removed",
+      details: { path: dir, taskPrefix: prefix },
+    })
+    actions++
+  }
+
+  return actions
+}
+
+// ============================================
+// Helpers
+// ============================================
+
+function hasUncommittedChanges(worktreePath: string): boolean {
+  try {
+    const status = execFileSync("git", ["-C", worktreePath, "status", "--porcelain"], {
+      encoding: "utf-8",
+      timeout: 10_000,
+    })
+    return status.trim().length > 0
+  } catch {
+    // If git status fails, assume dirty (conservative)
     return true
-  } catch (error) {
-    console.error(`[cleanup] Failed to clean worktree ${worktreePath}:`, error)
-    return false
   }
 }
