@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { Draggable } from "@hello-pangea/dnd"
-import { Link2, Lock, Bot, AlertTriangle } from "lucide-react"
+import { Link2, Lock } from "lucide-react"
 import type { Task } from "@/lib/types"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
 import { formatCompactTime } from "@/lib/utils"
+import { AgentStatus, OrphanedTaskWarning } from "@/components/agents/agent-status"
 
 interface TaskCardProps {
   task: Task
@@ -63,36 +64,6 @@ function getStatusAgeColor(ageMs: number, status: string): string {
   return '#9ca3af'
 }
 
-/**
- * Get color for last output age
- */
-function getLastOutputColor(ageMs: number): string {
-  const minutes = ageMs / (1000 * 60)
-  
-  if (minutes < 1) return '#22c55e' // green
-  if (minutes < 5) return '#eab308' // yellow
-  return '#ef4444' // red
-}
-
-/**
- * Format model name for display
- */
-function formatModelName(model?: string): string {
-  if (!model) return 'agent'
-  
-  // Extract short name from full model path (e.g., "moonshot/kimi-for-coding" -> "kimi")
-  const parts = model.split('/')
-  const name = parts[parts.length - 1]
-  
-  // Shorten common names
-  if (name.includes('kimi')) return 'kimi'
-  if (name.includes('claude')) return 'claude'
-  if (name.includes('gpt')) return 'gpt'
-  if (name.includes('gemini')) return 'gemini'
-  
-  return name.slice(0, 8) // truncate if still long
-}
-
 export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardProps) {
   // Track current time for live updates - use lazy initializer to avoid impure function during render
   const [now, setNow] = useState(() => Date.now())
@@ -115,18 +86,6 @@ export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardPro
   // Calculate status age
   const statusAge = now - task.updated_at
   const statusAgeColor = getStatusAgeColor(statusAge, task.status)
-
-  // Agent data comes directly from task record (written by work loop via Convex)
-  const hasAgent = !!task.agent_session_key
-  const lastOutput = task.agent_last_active_at
-    ? now - task.agent_last_active_at
-    : null
-  const lastOutputColor = lastOutput !== null ? getLastOutputColor(lastOutput) : null
-
-  // Check if in_progress but no agent attached
-  const ORPHAN_GRACE_MS = 30 * 60 * 1000
-  const taskAge = task.updated_at ? now - task.updated_at : Infinity
-  const isOrphaned = (task.status === 'in_progress' || task.status === 'in_review') && taskAge > ORPHAN_GRACE_MS && !hasAgent
 
   const tags = (() => {
     if (!task.tags) return []
@@ -203,32 +162,16 @@ export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardPro
             </div>
 
             {/* Agent info — read directly from Convex task record */}
-            {(task.status === 'in_progress' || task.status === 'in_review') && hasAgent && (
-              <div className="flex items-center gap-1.5 ml-2 border-l border-[var(--border)] pl-2">
-                <Bot className="h-3 w-3 text-[var(--text-muted)]" />
-                <span className="font-medium text-[var(--text-secondary)]">{formatModelName(task.agent_model ?? undefined)}</span>
-                {lastOutput !== null && (
-                  <span 
-                    className="font-medium"
-                    style={{ color: lastOutputColor || '#6b7280' }}
-                    title="Time since last token output"
-                  >
-                    · {formatCompactTime(task.agent_last_active_at!)}
-                  </span>
-                )}
-              </div>
+            {(task.status === 'in_progress' || task.status === 'in_review') && (
+              <AgentStatus 
+                task={task} 
+                variant="full" 
+                className="ml-2 border-l border-[var(--border)] pl-2"
+              />
             )}
 
             {/* Orphaned agent warning */}
-            {isOrphaned && (
-              <div 
-                className="flex items-center gap-1 ml-2 text-amber-500"
-                title="No agent attached to this in-progress task"
-              >
-                <AlertTriangle className="h-3 w-3" />
-                <span>no agent</span>
-              </div>
-            )}
+            <OrphanedTaskWarning task={task} />
           </div>
           
           {/* Tags + Assignee */}
