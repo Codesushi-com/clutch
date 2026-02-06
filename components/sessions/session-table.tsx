@@ -6,7 +6,7 @@
  * agent type badges, and task associations
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ColumnDef,
@@ -565,22 +565,25 @@ export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps
   // Transform sessions for table — compute duration once from timestamps, no live ticking.
   // Since we only have updatedAt (not true createdAt), "duration" shows time since
   // last activity for running sessions, or "—" for completed ones.
-  const now = Date.now();
-  const data: SessionRowData[] = (filteredSessions || rawSessions).map((session) => {
-    const updatedMs = new Date(session.updatedAt).getTime();
-    const ageMs = now - updatedMs;
-    // For completed sessions, duration is meaningless without a true start time — show "—"
-    // For running/idle, show how long ago the session was last active
-    const duration = session.completedAt
-      ? "—"
-      : formatDurationMs(ageMs);
+  // Use useMemo to prevent recreating data on every render (fixes infinite re-render bug)
+  const data: SessionRowData[] = useMemo(() => {
+    const now = Date.now();
+    return (filteredSessions || rawSessions).map((session) => {
+      const updatedMs = new Date(session.updatedAt).getTime();
+      const ageMs = now - updatedMs;
+      // For completed sessions, duration is meaningless without a true start time — show "—"
+      // For running/idle, show how long ago the session was last active
+      const duration = session.completedAt
+        ? "—"
+        : formatDurationMs(ageMs);
 
-    return {
-      ...session,
-      duration,
-      task: session.task,
-    };
-  });
+      return {
+        ...session,
+        duration,
+        task: session.task,
+      };
+    });
+  }, [filteredSessions, rawSessions]);
 
   const columns = getColumns();
 
