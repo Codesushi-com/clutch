@@ -70,42 +70,6 @@ export interface RPCError {
   data?: unknown;
 }
 
-// WebSocket Session Events
-export interface SessionStartedEvent {
-  type: 'session.started';
-  payload: Session;
-}
-
-export interface SessionUpdatedEvent {
-  type: 'session.updated';
-  payload: {
-    id: string;
-    changes: Partial<Session>;
-  };
-}
-
-export interface SessionCompletedEvent {
-  type: 'session.completed';
-  payload: {
-    id: string;
-    session: Session;
-  };
-}
-
-export interface SessionCancelledEvent {
-  type: 'session.cancelled';
-  payload: {
-    id: string;
-    reason?: string;
-  };
-}
-
-export type SessionEvent =
-  | SessionStartedEvent
-  | SessionUpdatedEvent
-  | SessionCompletedEvent
-  | SessionCancelledEvent;
-
 // Session preview with metadata and message history
 export interface SessionMessage {
   id: string;
@@ -118,11 +82,4 @@ export interface SessionPreview {
   session: Session;
   messages: SessionMessage[];
   contextPercentage: number;
-}
-
-// Legacy WebSocket message type for backward compatibility
-export interface WebSocketMessage {
-  type: 'session.started' | 'session.updated' | 'session.completed' | 'session.cancelled' | 'ping' | 'pong';
-  payload: unknown;
-  timestamp: string;
 }

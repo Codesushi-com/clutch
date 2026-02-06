@@ -12,7 +12,7 @@ import { Bot, Plus, Activity, Zap, Clock, Loader2, AlertCircle, RefreshCw } from
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
+import { useOpenClawHttpRpc } from '@/lib/hooks/use-openclaw-http';
 import { Agent, AgentDetail } from '@/lib/types';
 import { AgentConfigModal } from '@/components/agents/agent-config-modal';
 
@@ -110,7 +110,7 @@ function AgentCard({
 
 export default function AgentsPage() {
   const router = useRouter();
-  const { listAgents, getAgent, updateAgentConfig, connected, connecting } = useOpenClawRpc();
+  const { listAgents, getAgent, updateAgentConfig, connected, connecting } = useOpenClawHttpRpc();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

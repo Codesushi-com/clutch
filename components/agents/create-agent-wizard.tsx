@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
+import { useOpenClawHttpRpc } from '@/lib/hooks/use-openclaw-http';
 
 interface WizardStep {
   id: string;
@@ -155,7 +155,7 @@ interface CreateAgentWizardProps {
 
 export default function CreateAgentWizard({ onClose, onSuccess }: CreateAgentWizardProps) {
   const router = useRouter();
-  const { createAgent, connected } = useOpenClawRpc();
+  const { createAgent, connected } = useOpenClawHttpRpc();
   
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<CreateAgentFormData>({

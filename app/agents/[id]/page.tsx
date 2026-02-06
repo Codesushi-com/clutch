@@ -10,7 +10,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Bot, Loader2, AlertCircle, Activity, Zap, Clock, MessageSquare, Settings, BarChart3, X, Info, Heart, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useOpenClawRpc } from '@/lib/hooks/use-openclaw-rpc';
+import { useOpenClawHttpRpc } from '@/lib/hooks/use-openclaw-http';
 import { AgentDetail, AgentStatus } from '@/lib/types';
 import { MarkdownEditor } from '@/components/editors/markdown-editor';
 import { FileTree } from '@/components/editors/file-tree';
@@ -39,16 +39,16 @@ export default function AgentDetailPage() {
   } | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
 
-  const { 
-    getAgent, 
+  const {
+    getAgent,
     updateAgentConfig,
-    getAgentSoul, 
-    updateAgentSoul, 
+    getAgentSoul,
+    updateAgentSoul,
     getAgentMemoryFiles,
     getAgentMemoryFile,
     updateAgentMemoryFile,
-    connected 
-  } = useOpenClawRpc();
+    connected
+  } = useOpenClawHttpRpc();
 
   // Simple toast function
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {

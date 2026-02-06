@@ -3,8 +3,6 @@
 import { useEffect, useState, use, useCallback } from "react"
 import { MessageSquare, Menu } from "lucide-react"
 import { useChatStore } from "@/lib/stores/chat-store"
-import { useOpenClawWS } from "@/lib/providers/openclaw-ws-provider"
-import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
 import { useSettings } from "@/lib/hooks/use-settings"
 import { ChatSidebar } from "@/components/chat/chat-sidebar"
 import { ChatThread } from "@/components/chat/chat-thread"
@@ -15,6 +13,8 @@ import { CreateTaskFromMessage } from "@/components/chat/create-task-from-messag
 import { StreamingToggle } from "@/components/chat/streaming-toggle"
 import { SessionInfoDropdown } from "@/components/chat/session-info-dropdown"
 import { Button } from "@/components/ui/button"
+import { sendChatMessage, abortChat, rpc } from "@/lib/openclaw/rpc"
+import { useOpenClawHttpRpc } from "@/lib/hooks/use-openclaw-http"
 import type { ChatMessage } from "@/lib/types"
 
 type PageProps = {
@@ -45,16 +45,16 @@ export default function ChatPage({ params }: PageProps) {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 1024) // lg breakpoint
     }
-    
+
     checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
-  
-  const { 
-    chats, 
-    activeChat, 
-    messages, 
+
+  const {
+    chats,
+    activeChat,
+    messages,
     streamingMessages,
     loadingMessages,
     typingIndicators,
@@ -75,101 +75,19 @@ export default function ChatPage({ params }: PageProps) {
   const sessionKey = activeChat ? `trap:${slug}:${activeChat.id}` : "main"
 
   // ==========================================================================
-  // OpenClaw Integration
+  // OpenClaw Integration (HTTP-only)
   // - HTTP POST for sending messages (reliable, works during gateway restarts)
-  // - WebSocket for typing indicators & streaming (best-effort, visual only)
   // - Message persistence handled server-side by trap-channel plugin
   // - Convex reactive queries update the UI automatically
+  // - WebSocket/SSE removed - streaming now handled via Convex
   // ==========================================================================
 
-  const handleOpenClawTyping = useCallback((isTyping: boolean, state?: "thinking" | "typing") => {
-    if (!activeChat) return
-    
-    if (isTyping && state) {
-      setTyping(activeChat.id, "ada", state)
-    } else {
-      setTyping(activeChat.id, "ada", false)
-    }
-  }, [activeChat, setTyping])
-
-  const handleOpenClawDelta = useCallback((delta: string, runId: string) => {
-    if (!activeChat) return
-    
-    setTyping(activeChat.id, "ada", "typing")
-    
-    if (settings.streamingEnabled) {
-      if (!streamingMessages[activeChat.id] || streamingMessages[activeChat.id].runId !== runId) {
-        startStreamingMessage(activeChat.id, runId, "ada")
-      }
-      appendToStreamingMessage(activeChat.id, delta)
-    }
-  }, [activeChat, setTyping, settings.streamingEnabled, streamingMessages, startStreamingMessage, appendToStreamingMessage])
-
-  const handleOpenClawMessageComplete = useCallback((_msg: unknown, runId: string) => {
-    if (!activeChat) return
-    
-    // Clear streaming state — the actual message is persisted by the
-    // trap-channel plugin (agent_end hook → Convex), not by the frontend.
-    if (settings.streamingEnabled && streamingMessages[activeChat.id]?.runId === runId) {
-      clearStreamingMessage(activeChat.id)
-    }
-    setTyping(activeChat.id, "ada", false)
-  }, [activeChat, settings.streamingEnabled, streamingMessages, clearStreamingMessage, setTyping])
-
-  const { status, sendChatMessage, subscribe, rpc } = useOpenClawWS()
-  const openClawConnected = status === 'connected'
-
-  // Subscribe to OpenClaw WebSocket events
-  useEffect(() => {
-    const unsubscribers = [
-      subscribe('chat.typing.start', (data: unknown) => {
-        const typedData = data as { runId: string; sessionKey?: string }
-        if (!typedData.sessionKey || typedData.sessionKey === sessionKey) {
-          handleOpenClawTyping(true, "thinking")
-        }
-      }),
-      
-      subscribe('chat.typing.end', (data: unknown) => {
-        const typedData = data as { sessionKey?: string } | undefined
-        if (!typedData?.sessionKey || typedData.sessionKey === sessionKey) {
-          handleOpenClawTyping(false)
-        }
-      }),
-      
-      subscribe('chat.delta', (data: unknown) => {
-        const { delta, runId, sessionKey: eventSessionKey } = data as { delta: string; runId: string; sessionKey?: string }
-        if (!eventSessionKey || eventSessionKey === sessionKey) {
-          handleOpenClawDelta(delta, runId)
-        }
-      }),
-      
-      subscribe('chat.message', (data: unknown) => {
-        const { message, runId, sessionKey: eventSessionKey } = data as { message: unknown; runId: string; sessionKey?: string }
-        if (!eventSessionKey || eventSessionKey === sessionKey) {
-          handleOpenClawMessageComplete(message, runId)
-        }
-      }),
-      
-      subscribe('chat.error', (data: unknown) => {
-        const { error, sessionKey: eventSessionKey } = data as { error: string; runId: string; sessionKey?: string }
-        if (!eventSessionKey || eventSessionKey === sessionKey) {
-          console.error('[Chat] OpenClaw chat error:', error)
-          handleOpenClawTyping(false)
-        }
-      })
-    ]
-
-    return () => {
-      unsubscribers.forEach(unsub => unsub())
-    }
-  }, [subscribe, sessionKey, handleOpenClawMessageComplete, handleOpenClawDelta, handleOpenClawTyping])
-
   // ==========================================================================
-  // Sub-agent & session monitoring via RPC
+  // Sub-agent & session monitoring via HTTP RPC
   // ==========================================================================
 
-  const { connected: rpcConnected, listSessions, getGatewayStatus } = useOpenClawRpc()
-  
+  const { listSessions } = useOpenClawHttpRpc()
+
   interface SubAgentDetails {
     key: string
     label?: string
@@ -181,21 +99,21 @@ export default function ChatPage({ params }: PageProps) {
     runtime?: string
     isCron?: boolean
   }
-  
+
   const [activeSubagents, setActiveSubagents] = useState<SubAgentDetails[]>([])
   const [activeCrons, setActiveCrons] = useState<SubAgentDetails[]>([])
   const [sessionInfo, setSessionInfo] = useState<{ model?: string; contextPercent?: number } | null>(null)
-  const [gatewayStatus, setGatewayStatus] = useState<{ 
-    startedAt?: string; 
-    uptime?: number; 
-    version?: string; 
+  const [gatewayStatus, setGatewayStatus] = useState<{
+    startedAt?: string;
+    uptime?: number;
+    version?: string;
     uptimeString?: string;
   } | null>(null)
 
   // Fetch session info directly from sessions.list RPC
   useEffect(() => {
     async function fetchSessionInfo() {
-      if (!activeChat?.session_key || !rpcConnected) {
+      if (!activeChat?.session_key) {
         setSessionInfo(null)
         return
       }
@@ -227,78 +145,26 @@ export default function ChatPage({ params }: PageProps) {
     // Refresh every 30s while connected
     const interval = setInterval(fetchSessionInfo, 30000)
     return () => clearInterval(interval)
-  }, [activeChat?.session_key, rpcConnected, rpc])
+  }, [activeChat?.session_key])
 
-  // Fetch gateway status and format uptime
+  // Gateway status not available in HTTP-only mode
+  // WebSocket was previously used for this - removed as part of WS cleanup
   useEffect(() => {
-    if (!rpcConnected) return
-    
-    const fetchGatewayStatus = async () => {
-      try {
-        const status = await getGatewayStatus()
-        if (status) {
-          let uptimeString: string | undefined
-          
-          if (status.uptime && status.uptime > 0) {
-            const uptimeMs = status.uptime
-            const minutes = Math.floor(uptimeMs / 60000)
-            const hours = Math.floor(minutes / 60)
-            const days = Math.floor(hours / 24)
-            
-            if (days > 0) {
-              uptimeString = `up ${days}d ${hours % 24}h`
-            } else if (hours > 0) {
-              uptimeString = `up ${hours}h ${minutes % 60}m`
-            } else if (minutes > 0) {
-              uptimeString = `up ${minutes}m`
-            } else {
-              uptimeString = "up <1m"
-            }
-          } else if (status.startedAt) {
-            const startTime = new Date(status.startedAt).getTime()
-            const now = Date.now()
-            const uptimeMs = now - startTime
-            const minutes = Math.floor(uptimeMs / 60000)
-            const hours = Math.floor(minutes / 60)
-            const days = Math.floor(hours / 24)
-            
-            if (days > 0) {
-              uptimeString = `restarted ${days}d ago`
-            } else if (hours > 0) {
-              uptimeString = `restarted ${hours}h ago`
-            } else if (minutes > 0) {
-              uptimeString = `restarted ${minutes}m ago`
-            } else {
-              uptimeString = "restarted <1m ago"
-            }
-          }
-          
-          setGatewayStatus({ ...status, uptimeString })
-        }
-      } catch (error) {
-        console.error('[Chat] Failed to fetch gateway status:', error)
-      }
-    }
-    
-    fetchGatewayStatus()
-    const statusInterval = setInterval(fetchGatewayStatus, 30000)
-    return () => clearInterval(statusInterval)
-  }, [rpcConnected, getGatewayStatus])
+    setGatewayStatus(null)
+  }, [])
 
   // Poll for active sub-agents and cron sessions
   useEffect(() => {
-    if (!rpcConnected) return
-    
     const pollSubagents = async () => {
       try {
         const response = await listSessions({ limit: 50 })
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sessions = response.sessions as any[]
         const fiveMinutesAgo = Date.now() - 5 * 60 * 1000
-        
+
         const subagents = (sessions || [])
-          .filter((s) => 
-            s.spawnedBy === "agent:main:main" && 
+          .filter((s) =>
+            s.spawnedBy === "agent:main:main" &&
             s.updatedAt && s.updatedAt > fiveMinutesAgo &&
             !s.key?.includes(":cron:")
           )
@@ -351,11 +217,11 @@ export default function ChatPage({ params }: PageProps) {
         console.error("[Chat] Failed to poll subagents:", err)
       }
     }
-    
+
     pollSubagents()
     const interval = setInterval(pollSubagents, 10000)
     return () => clearInterval(interval)
-  }, [rpcConnected, listSessions])
+  }, [listSessions])
 
   // ==========================================================================
   // Project init & chat selection
@@ -369,7 +235,7 @@ export default function ChatPage({ params }: PageProps) {
         setProject(data.project)
         setProjectId(data.project.id)
         await fetchChats(data.project.id)
-        
+
         try {
           const contextResponse = await fetch(`/api/projects/${slug}/context`)
           if (contextResponse.ok) {
@@ -429,8 +295,7 @@ export default function ChatPage({ params }: PageProps) {
       openClawMessage = `[Project Context]\n\n${projectContext}\n\n---\n\n[User Message]\n\n${messageContent}`
     }
 
-    // Send to OpenClaw via HTTP POST (not WebSocket)
-    // This ensures reliable delivery even during gateway restarts
+    // Send to OpenClaw via HTTP POST
     // Response persistence is handled by the trap-channel plugin (agent_end hook)
     try {
       await sendChatMessage(openClawMessage, sessionKey, activeChat.id)
@@ -441,11 +306,9 @@ export default function ChatPage({ params }: PageProps) {
 
   const handleStopChat = async () => {
     if (!activeChat) return
-    
+
     try {
-      if (openClawConnected) {
-        await rpc("chat.abort", { sessionKey })
-      }
+      await abortChat(sessionKey)
     } catch (error) {
       console.error("[Chat] Failed to abort chat:", error)
     } finally {
@@ -462,7 +325,7 @@ export default function ChatPage({ params }: PageProps) {
   const handleTaskCreated = async () => {
     if (activeChat) {
       await sendMessageToDb(
-        activeChat.id, 
+        activeChat.id,
         `📋 Created task from this conversation. Check the board for details.`,
         "dan"
       )
@@ -482,7 +345,7 @@ export default function ChatPage({ params }: PageProps) {
 
       <div className="flex h-[calc(100vh-140px)] bg-[var(--bg-primary)] rounded-lg border border-[var(--border)] overflow-hidden min-w-0 max-w-full">
         {projectId && (
-          <ChatSidebar 
+          <ChatSidebar
             projectId={projectId}
             projectSlug={slug}
             isOpen={isMobile ? sidebarOpen : true}
@@ -490,7 +353,7 @@ export default function ChatPage({ params }: PageProps) {
             isMobile={isMobile}
           />
         )}
-        
+
         <div className="flex-1 flex flex-col min-w-0 max-w-full overflow-hidden">
           {activeChat ? (
             <>
@@ -510,19 +373,19 @@ export default function ChatPage({ params }: PageProps) {
                     <ChatHeader chat={activeChat} />
                   </div>
                 </div>
-                
+
                 <div className="px-2 md:px-4 py-1.5 md:py-2 border-t border-[var(--border)]/50 bg-[var(--bg-secondary)]/30">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0" />
                     <div className="flex items-center gap-2 md:gap-3">
-                      <StreamingToggle 
-                        enabled={settings.streamingEnabled} 
-                        onChange={toggleStreaming} 
+                      <StreamingToggle
+                        enabled={settings.streamingEnabled}
+                        onChange={toggleStreaming}
                       />
                       <SessionInfoDropdown
                         sessionKey={sessionKey}
                         sessionInfo={sessionInfo || undefined}
-                        connected={openClawConnected}
+                        connected={true} // HTTP is always "connected"
                         activeSubagents={activeSubagents}
                         activeCrons={activeCrons}
                         gatewayStatus={gatewayStatus || undefined}
@@ -531,10 +394,10 @@ export default function ChatPage({ params }: PageProps) {
                   </div>
                 </div>
               </div>
-              
-              <ChatThread 
+
+              <ChatThread
                 chatId={activeChat.id}
-                messages={currentMessages} 
+                messages={currentMessages}
                 streamingMessage={activeChat ? streamingMessages[activeChat.id] || null : null}
                 loading={loadingMessages}
                 onCreateTask={handleCreateTask}
@@ -543,8 +406,8 @@ export default function ChatPage({ params }: PageProps) {
                 activeCrons={activeCrons}
                 projectSlug={slug}
               />
-              
-              <ChatInput 
+
+              <ChatInput
                 onSend={handleSendMessage}
                 onStop={handleStopChat}
                 isAssistantTyping={activeChat ? (typingIndicators[activeChat.id] || []).some(t => t.author === "ada") : false}
@@ -566,7 +429,7 @@ export default function ChatPage({ params }: PageProps) {
           )}
         </div>
       </div>
-      
+
       {createTaskMessage && projectId && (
         <CreateTaskFromMessage
           message={createTaskMessage}

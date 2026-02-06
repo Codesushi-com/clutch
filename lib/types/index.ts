@@ -19,14 +19,8 @@ export type {
   RPCRequest,
   RPCResponse,
   RPCError,
-  SessionStartedEvent,
-  SessionUpdatedEvent,
-  SessionCompletedEvent,
-  SessionCancelledEvent,
-  SessionEvent,
   SessionMessage,
   SessionPreview,
-  WebSocketMessage,
 } from './session'
 
 export interface Project {

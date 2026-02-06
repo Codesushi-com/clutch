@@ -9,7 +9,6 @@ import {
   Session,
   SessionStatus,
   SessionType,
-  SessionEvent,
 } from '@/lib/types';
 
 export interface SessionFilters {
@@ -47,10 +46,7 @@ interface SessionState {
   setFilters: (filters: SessionFilters) => void;
   setSortBy: (sortBy: SessionState['sortBy']) => void;
   setSortOrder: (order: SessionState['sortOrder']) => void;
-  
-  // Event handler
-  handleWebSocketEvent: (event: SessionEvent) => void;
-  
+
   // Computed
   getFilteredSessions: () => Session[];
   getSessionById: (id: string) => Session | undefined;
@@ -97,34 +93,6 @@ export const useSessionStore = create<SessionState>()(
       setFilters: (filters) => set({ filters }),
       setSortBy: (sortBy) => set({ sortBy }),
       setSortOrder: (sortOrder) => set({ sortOrder }),
-
-      // WebSocket event handler
-      handleWebSocketEvent: (event) => {
-        switch (event.type) {
-          case 'session.started':
-            get().addSession(event.payload);
-            break;
-          
-          case 'session.updated':
-            get().updateSession(event.payload.id, event.payload.changes);
-            break;
-          
-          case 'session.completed':
-            get().updateSession(event.payload.id, {
-              ...event.payload.session,
-              status: 'completed',
-              completedAt: new Date().toISOString(),
-            });
-            break;
-          
-          case 'session.cancelled':
-            get().updateSession(event.payload.id, {
-              status: 'cancelled',
-              completedAt: new Date().toISOString(),
-            });
-            break;
-        }
-      },
 
       // Computed
       getFilteredSessions: () => {

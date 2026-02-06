@@ -6,7 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
-import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
+import { useOpenClawHttpRpc } from "@/lib/hooks/use-openclaw-http"
 
 interface ChatHeaderProps {
   chat: ChatWithLastMessage
@@ -19,7 +19,7 @@ interface SessionInfo {
 
 export function ChatHeader({ chat }: ChatHeaderProps) {
   const { updateChat } = useChatStore()
-  const { connected: rpcConnected, getSessionPreview } = useOpenClawRpc()
+  const { connected: rpcConnected, getSessionPreview } = useOpenClawHttpRpc()
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(chat.title)
   const [isUpdating, setIsUpdating] = useState(false)

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useOpenClawRpc } from "@/lib/hooks/use-openclaw-rpc"
+import { useOpenClawHttpRpc } from "@/lib/hooks/use-openclaw-http"
 import { SessionPreview } from "@/lib/types"
 
 interface ContextIndicatorProps {
@@ -13,7 +13,7 @@ export function ContextIndicator({
   sessionKey = "main",
   onUpdate 
 }: ContextIndicatorProps) {
-  const { connected, getSessionPreview } = useOpenClawRpc()
+  const { connected, getSessionPreview } = useOpenClawHttpRpc()
   const [contextData, setContextData] = useState<{
     percentage: number
     tokens: number
