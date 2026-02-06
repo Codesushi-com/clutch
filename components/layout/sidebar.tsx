@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Activity, Bot, Settings, Repeat } from "lucide-react"
+import { Home, Activity, Bot, Settings, Repeat, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const NAVIGATION_ITEMS = [
@@ -10,6 +10,7 @@ const NAVIGATION_ITEMS = [
   { id: "work-loop", label: "Work Loop", icon: Repeat, href: "/work-loop" },
   { id: "sessions", label: "Sessions", icon: Activity, href: "/sessions" },
   { id: "agents", label: "Agents", icon: Bot, href: "/agents" },
+  { id: "prompts", label: "Prompt Lab", icon: FileText, href: "/prompts" },
   { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
 ]
 
@@ -26,6 +27,7 @@ export function Sidebar() {
     if (pathname.startsWith("/work-loop")) return "work-loop"
     if (pathname.startsWith("/sessions")) return "sessions"
     if (pathname.startsWith("/agents")) return "agents"
+    if (pathname.startsWith("/prompts")) return "prompts"
     if (pathname.startsWith("/settings")) return "settings"
     return "home"
   }
