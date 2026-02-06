@@ -415,13 +415,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Sync messages from Convex reactive query (replaces fetch-based loading)
   syncMessages: (chatId, messages) => {
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [chatId]: messages,
-      },
-      loadingMessages: false,
-    }))
+    set((state) => {
+      const prevMessages = state.messages[chatId] || []
+      const currentTyping = state.typingIndicators[chatId] || []
+
+      // Clear typing indicators for authors who have new messages
+      // (e.g., Ada's thinking indicator clears when her response arrives)
+      let updatedTyping = currentTyping
+      if (currentTyping.length > 0 && messages.length > prevMessages.length) {
+        const newMessages = messages.slice(prevMessages.length)
+        const authorsWithNewMessages = new Set(newMessages.map((m) => m.author))
+        updatedTyping = currentTyping.filter((t) => !authorsWithNewMessages.has(t.author))
+      }
+
+      return {
+        messages: {
+          ...state.messages,
+          [chatId]: messages,
+        },
+        loadingMessages: false,
+        typingIndicators: {
+          ...state.typingIndicators,
+          [chatId]: updatedTyping,
+        },
+      }
+    })
   },
 
   // Sync chat list from Convex reactive query
