@@ -281,4 +281,22 @@ export default defineSchema({
   })
     .index("by_chat", ["chat_id"])
     .index("by_chat_author", ["chat_id", "author"]),
+
+  // Prompt Versions - versioned role prompt templates
+  promptVersions: defineTable({
+    id: v.string(), // UUID primary key
+    role: v.string(), // dev, pm, qa, researcher, reviewer, pe, analyzer
+    model: v.optional(v.string()), // null = default for role, or specific model
+    version: v.number(), // incrementing integer per role+model combo
+    content: v.string(), // full template markdown
+    change_summary: v.optional(v.string()),
+    parent_version_id: v.optional(v.string()), // UUID ref to previous version
+    created_by: v.string(), // "seed", "human", "analyzer"
+    active: v.boolean(), // is this the current active version?
+    created_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_role", ["role"])
+    .index("by_role_model", ["role", "model"])
+    .index("by_role_active", ["role", "active"]),
 })
