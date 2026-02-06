@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { Check, ChevronDown, ChevronRight, Copy, GitCompare, Star, User } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy, FlaskConical, GitCompare, Star, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,9 +16,19 @@ interface VersionListProps {
   selectedModel: string
   onSetActive: (version: PromptVersion) => void
   onDuplicate: (version: PromptVersion) => void
+  onStartABTest: (version: PromptVersion) => void
+  hasActiveABTest: boolean
 }
 
-export function VersionList({ versions, selectedRole, selectedModel, onSetActive, onDuplicate }: VersionListProps) {
+export function VersionList({
+  versions,
+  selectedRole,
+  selectedModel,
+  onSetActive,
+  onDuplicate,
+  onStartABTest,
+  hasActiveABTest,
+}: VersionListProps) {
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null)
   const [diffMode, setDiffMode] = useState<'none' | 'selecting' | 'viewing'>('none')
   const [diffBase, setDiffBase] = useState<PromptVersion | null>(null)
@@ -112,15 +122,22 @@ export function VersionList({ versions, selectedRole, selectedModel, onSetActive
           const isActive = version.active
           const isDiffBase = diffBase?.id === version.id
           const isDiffTarget = diffTarget?.id === version.id
+          const isControl = version.ab_status === 'control'
+          const isChallenger = version.ab_status === 'challenger'
+          const isInABTest = isControl || isChallenger
+          // Can start A/B test if: not active, no current A/B test, and there's an active version to be control
+          const canStartAB = !isActive && !hasActiveABTest && !isInABTest
 
           return (
             <Card
               key={version.id}
               className={cn(
                 "overflow-hidden transition-colors",
-                isActive && "border-[var(--accent-green)]",
-                isDiffBase && "border-[var(--accent-blue)]",
-                isDiffTarget && "border-[var(--accent-purple)]"
+                isActive && !isInABTest && "border-[var(--accent-green)]",
+                isControl && "border-[var(--accent-blue)]",
+                isChallenger && "border-[var(--accent-purple)]",
+                isDiffBase && !isInABTest && "border-[var(--accent-blue)]",
+                isDiffTarget && !isInABTest && "border-[var(--accent-purple)]"
               )}
             >
               {/* Header */}
@@ -140,10 +157,22 @@ export function VersionList({ versions, selectedRole, selectedModel, onSetActive
                   <span className="text-lg font-mono font-semibold text-[var(--text-primary)]">
                     v{version.version}
                   </span>
-                  {isActive && (
+                  {isActive && !isInABTest && (
                     <Badge className="bg-[var(--accent-green)]/20 text-[var(--accent-green)] hover:bg-[var(--accent-green)]/30">
                       <Star className="h-3 w-3 mr-1 fill-current" />
                       Active
+                    </Badge>
+                  )}
+                  {isControl && (
+                    <Badge className="bg-[var(--accent-blue)]/20 text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/30">
+                      <FlaskConical className="h-3 w-3 mr-1" />
+                      Control
+                    </Badge>
+                  )}
+                  {isChallenger && (
+                    <Badge className="bg-[var(--accent-purple)]/20 text-[var(--accent-purple)] hover:bg-[var(--accent-purple)]/30">
+                      <FlaskConical className="h-3 w-3 mr-1" />
+                      Challenger
                     </Badge>
                   )}
                 </div>
@@ -172,7 +201,19 @@ export function VersionList({ versions, selectedRole, selectedModel, onSetActive
                     <GitCompare className="h-4 w-4" />
                   </Button>
 
-                  {!isActive && (
+                  {canStartAB && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onStartABTest(version)}
+                      title="Start A/B test with this version as challenger"
+                      className="text-[var(--accent-purple)] hover:bg-[var(--accent-purple)]/10"
+                    >
+                      <FlaskConical className="h-4 w-4" />
+                    </Button>
+                  )}
+
+                  {!isActive && !isInABTest && (
                     <Button
                       size="sm"
                       variant="ghost"

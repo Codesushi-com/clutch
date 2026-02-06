@@ -8,7 +8,9 @@ import { RoleSidebar } from './components/role-sidebar'
 import { VersionList } from './components/version-list'
 import { EditorDialog } from './components/editor-dialog'
 import { AmendmentQueue } from './components/amendment-queue'
-import type { PromptVersion } from './types'
+import { ABResultsPanel } from './components/ab-results-panel'
+import { ABStartDialog } from './components/ab-start-dialog'
+import type { ABTestState, PromptVersion } from './types'
 
 const ROLES = [
   { id: 'dev', label: 'Developer' },
@@ -32,6 +34,11 @@ export default function PromptsPage() {
   const [editorMode, setEditorMode] = useState<'create' | 'duplicate'>('create')
   const [duplicateSource, setDuplicateSource] = useState<PromptVersion | null>(null)
   const [amendmentCount, setAmendmentCount] = useState(0)
+
+  // A/B test state
+  const [abTestState, setABTestState] = useState<ABTestState | null>(null)
+  const [abStartChallenger, setABStartChallenger] = useState<PromptVersion | null>(null)
+  const [isABStartOpen, setIsABStartOpen] = useState(false)
 
   const fetchVersions = useCallback(async () => {
     try {
@@ -65,10 +72,31 @@ export default function PromptsPage() {
     }
   }, [])
 
+  // Fetch A/B test state for current role+model
+  const fetchABTestState = useCallback(async () => {
+    const modelParam = selectedModel === 'default' ? '' : `&model=${selectedModel}`
+    const res = await fetch(`/api/prompts/ab-test?role=${selectedRole}${modelParam}`)
+    if (res.ok) {
+      const data = await res.json()
+      setABTestState(data)
+    }
+  }, [selectedRole, selectedModel])
+
   useEffect(() => {
     fetchVersions()
     fetchAmendmentCount()
   }, [fetchVersions, fetchAmendmentCount])
+
+  useEffect(() => {
+    fetchABTestState()
+  }, [fetchABTestState])
+
+  // Poll A/B test state while test is active (every 15s)
+  useEffect(() => {
+    if (!abTestState?.active) return
+    const interval = setInterval(fetchABTestState, 15000)
+    return () => clearInterval(interval)
+  }, [abTestState?.active, fetchABTestState])
 
   const handleSetActive = async (version: PromptVersion) => {
     try {
@@ -131,6 +159,22 @@ export default function PromptsPage() {
   const handleVersionCreated = () => {
     fetchVersions()
     fetchAmendmentCount()
+  }
+
+  const handleStartABTest = (version: PromptVersion) => {
+    setABStartChallenger(version)
+    setIsABStartOpen(true)
+  }
+
+  const handleABTestStarted = () => {
+    fetchABTestState()
+    fetchVersions()
+  }
+
+  const handleABTestEnded = () => {
+    setABTestState(null)
+    fetchABTestState()
+    fetchVersions()
   }
 
   const roleLabel = ROLES.find(r => r.id === selectedRole)?.label || selectedRole
@@ -221,13 +265,25 @@ export default function PromptsPage() {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'versions' && (
-            <VersionList
-              versions={versions}
-              selectedRole={selectedRole}
-              selectedModel={selectedModel}
-              onSetActive={handleSetActive}
-              onDuplicate={handleDuplicate}
-            />
+            <>
+              {/* A/B Test Results Panel */}
+              {abTestState?.active && (
+                <ABResultsPanel
+                  state={abTestState}
+                  onEnd={handleABTestEnded}
+                />
+              )}
+
+              <VersionList
+                versions={versions}
+                selectedRole={selectedRole}
+                selectedModel={selectedModel}
+                onSetActive={handleSetActive}
+                onDuplicate={handleDuplicate}
+                onStartABTest={handleStartABTest}
+                hasActiveABTest={abTestState?.active ?? false}
+              />
+            </>
           )}
           {activeTab === 'amendments' && (
             <AmendmentQueue
@@ -248,6 +304,14 @@ export default function PromptsPage() {
         initialContent={duplicateSource?.content || ''}
         parentVersion={duplicateSource}
         mode={editorMode}
+      />
+
+      {/* A/B Test Start dialog */}
+      <ABStartDialog
+        isOpen={isABStartOpen}
+        onClose={() => setIsABStartOpen(false)}
+        onStarted={handleABTestStarted}
+        challenger={abStartChallenger}
       />
     </div>
   )

@@ -296,6 +296,15 @@ export default defineSchema({
     created_by: v.string(), // "seed", "human", "analyzer"
     active: v.boolean(), // is this the current active version?
     created_at: v.number(),
+    // A/B testing fields
+    ab_status: v.optional(v.union(
+      v.literal("control"),
+      v.literal("challenger"),
+      v.literal("none")
+    )),
+    ab_split_percent: v.optional(v.number()), // 0-100, % of tasks that get challenger
+    ab_started_at: v.optional(v.number()),
+    ab_min_tasks: v.optional(v.number()), // minimum tasks before evaluation
   })
     .index("by_uuid", ["id"])
     .index("by_role", ["role"])
