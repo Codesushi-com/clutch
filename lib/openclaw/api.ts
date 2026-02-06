@@ -13,7 +13,6 @@ import type {
   SessionListResponse,
   SessionListParams,
   SessionPreview,
-  SessionType,
 } from '@/lib/types';
 
 // Re-export core RPC for advanced use
@@ -24,137 +23,52 @@ export type { GatewayStatus } from './rpc';
 // Session Management
 // ============================================================================
 
-function mapSessionKind(kind: string): SessionType {
-  switch (kind) {
-    case 'main':
-      return 'main';
-    case 'isolated':
-      return 'isolated';
-    case 'subagent':
-      return 'subagent';
-    default:
-      return 'main';
+/**
+ * Fetch sessions from the /api/sessions/list endpoint (uses OpenClaw CLI).
+ * Works from both client and server contexts.
+ */
+async function fetchSessionsFromApi(params?: SessionListParams): Promise<SessionListResponse> {
+  const limit = params?.limit ?? 100;
+  const activeMinutes = 60;
+  const url = `/api/sessions/list?activeMinutes=${activeMinutes}&limit=${limit}`;
+
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch sessions: HTTP ${response.status}`);
   }
+
+  return response.json() as Promise<SessionListResponse>;
 }
 
 /**
  * List all sessions from OpenClaw.
- * 
+ *
+ * Uses the /api/sessions/list endpoint which calls the OpenClaw CLI
+ * (`openclaw sessions --json`), avoiding the non-existent HTTP RPC method.
+ *
  * @param params - Filter/limit params (optional)
  * @returns List of sessions with metadata
  */
 export async function listSessions(
   params?: SessionListParams
 ): Promise<SessionListResponse> {
-  const response = await openclawRpc<{
-    sessions: Array<{
-      key: string;
-      kind?: string;
-      model?: string;
-      status?: string;
-      updatedAt?: string;
-      inputTokens?: number;
-      outputTokens?: number;
-      totalTokens?: number;
-    }>;
-  }>('sessions.list', (params || {}) as Record<string, unknown>);
-
-  const sessions = (response.sessions || []).map((s) => ({
-    id: s.key,
-    name: s.key?.split(':').pop() || 'unknown',
-    type: mapSessionKind(s.kind || 'main'),
-    model: s.model || 'unknown',
-    status: 'idle' as const,
-    updatedAt: s.updatedAt || new Date().toISOString(),
-    createdAt: s.updatedAt || new Date().toISOString(),
-    tokens: {
-      input: s.inputTokens || 0,
-      output: s.outputTokens || 0,
-      total: s.totalTokens || 0,
-    },
-  }));
-
-  return { sessions, total: sessions.length };
+  return fetchSessionsFromApi(params);
 }
 
 /**
- * List sessions with effective model extracted from recent messages.
- * This queries message previews to determine the actual model being used.
+ * List sessions with effective model.
+ *
+ * The CLI-backed endpoint already returns the model from session metadata.
+ * For now this is identical to listSessions — preview-based model extraction
+ * can be layered back in if needed.
  */
 export async function listSessionsWithEffectiveModel(
   params?: SessionListParams
 ): Promise<SessionListResponse> {
-  const response = await openclawRpc<{
-    sessions: Array<{
-      key: string;
-      kind?: string;
-      model?: string;
-      updatedAt?: string;
-      inputTokens?: number;
-      outputTokens?: number;
-      totalTokens?: number;
-    }>;
-  }>('sessions.list', (params || {}) as Record<string, unknown>);
-
-  const sessionRows = response.sessions || [];
-  const sessionKeys = sessionRows.map((s) => s.key);
-
-  // Fetch previews to get actual model from messages
-  let previewData: {
-    previews?: Array<{
-      key: string;
-      items?: Array<{ role?: string; model?: string }>;
-    }>;
-  } = {};
-
-  if (sessionKeys.length > 0) {
-    try {
-      previewData = await openclawRpc<{
-        previews: Array<{
-          key: string;
-          items?: Array<{ role?: string; model?: string }>;
-        }>;
-      }>('sessions.preview', { keys: sessionKeys, limit: 5 });
-    } catch (err) {
-      console.warn('[OpenClaw API] Failed to fetch session previews:', err);
-    }
-  }
-
-  // Build a map of session key to effective model from preview messages
-  const effectiveModelMap = new Map<string, string>();
-  for (const preview of previewData.previews || []) {
-    for (const item of preview.items || []) {
-      if (item.model) {
-        effectiveModelMap.set(preview.key, item.model);
-        break;
-      }
-    }
-  }
-
-  // Map sessions with effective model
-  const sessions = sessionRows.map((s) => {
-    const key = s.key;
-    const effectiveModel = effectiveModelMap.get(key);
-    const sessionModel = s.model || 'unknown';
-
-    return {
-      id: key,
-      name: key?.split(':').pop() || 'unknown',
-      type: mapSessionKind(s.kind || 'main'),
-      model: sessionModel,
-      effectiveModel: effectiveModel || sessionModel,
-      status: 'idle' as const,
-      updatedAt: s.updatedAt || new Date().toISOString(),
-      createdAt: s.updatedAt || new Date().toISOString(),
-      tokens: {
-        input: s.inputTokens || 0,
-        output: s.outputTokens || 0,
-        total: s.totalTokens || 0,
-      },
-    };
-  });
-
-  return { sessions, total: sessions.length };
+  return fetchSessionsFromApi(params);
 }
 
 /**
@@ -236,21 +150,13 @@ export async function getSessionPreview(
     }>;
   };
 
-  // Fetch both preview and session list data in parallel
-  const [previewResponse, sessionsResponse] = await Promise.all([
+  // Fetch preview (RPC) and session list (CLI-backed API) in parallel
+  const [previewResponse, sessionsListResponse] = await Promise.all([
     openclawRpc<PreviewResponse>('sessions.preview', {
       keys: [sessionKey],
       limit: limit || 50,
     }),
-    openclawRpc<{
-      sessions: Array<{
-        key: string;
-        model?: string;
-        totalTokens?: number;
-        inputTokens?: number;
-        outputTokens?: number;
-      }>;
-    }>('sessions.list', { limit: 100 }),
+    fetchSessionsFromApi({ limit: 100 }),
   ]);
 
   const previewEntry = previewResponse.previews?.[0];
@@ -277,8 +183,8 @@ export async function getSessionPreview(
     };
   });
 
-  // Find session data from sessions.list for accurate token counts
-  const sessionData = sessionsResponse.sessions?.find((s) => s.key === sessionKey);
+  // Find session data from the CLI-backed sessions list for accurate token counts
+  const sessionData = sessionsListResponse.sessions?.find((s) => s.id === sessionKey);
 
   // Determine the model
   const effectiveModel =
@@ -286,10 +192,10 @@ export async function getSessionPreview(
     sessionData?.model ||
     'unknown';
 
-  // Get token counts
-  const tokensTotal = sessionData?.totalTokens || 0;
-  const tokensInput = sessionData?.inputTokens || 0;
-  const tokensOutput = sessionData?.outputTokens || 0;
+  // Get token counts from the mapped Session type
+  const tokensTotal = sessionData?.tokens?.total || 0;
+  const tokensInput = sessionData?.tokens?.input || 0;
+  const tokensOutput = sessionData?.tokens?.output || 0;
 
   // Calculate context percentage
   const contextPercentage =
