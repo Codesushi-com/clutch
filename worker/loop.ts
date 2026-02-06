@@ -10,6 +10,9 @@ import { ConvexHttpClient } from "convex/browser"
 import { loadConfig } from "./config"
 import { api } from "../convex/_generated/api"
 import { logRun, logCycleComplete } from "./logger"
+import { childManager } from "./children"
+import { sessionsPoller } from "./sessions"
+import { runReview } from "./phases/review"
 import type { Project } from "../lib/types"
 import { runWork } from "./phases/work"
 import { childManager } from "./children"
@@ -177,8 +180,16 @@ async function runProjectCycle(
     project.id,
     "review",
     async () => {
-      // TODO: Implement in ticket 6
-      return { success: true, actions: 0 }
+      const result = await runReview({
+        convex,
+        children: childManager,
+        sessions: sessionsPoller,
+        config: loadConfig(),
+        cycle,
+        projectId: project.id,
+        log: (params) => logRun(convex, params),
+      })
+      return { success: true, actions: result.spawnedCount }
     }
   )
 
