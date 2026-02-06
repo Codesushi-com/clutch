@@ -330,4 +330,28 @@ export default defineSchema({
     .index("by_prompt_version", ["prompt_version_id"])
     .index("by_outcome", ["outcome"])
     .index("by_analyzed", ["analyzed_at"]),
+
+  // Prompt Metrics - aggregated performance data per role+model+version
+  promptMetrics: defineTable({
+    id: v.string(), // UUID primary key (composite: role:model:version:period:start)
+    role: v.string(),
+    model: v.string(),
+    prompt_version_id: v.string(),
+    period: v.union(v.literal("day"), v.literal("week"), v.literal("all_time")),
+    period_start: v.number(), // start of the day/week, or 0 for all_time
+    total_tasks: v.number(),
+    success_count: v.number(),
+    failure_count: v.number(),
+    partial_count: v.number(),
+    abandoned_count: v.number(),
+    avg_tokens: v.number(),
+    avg_duration_ms: v.number(),
+    bounce_count: v.number(), // tasks that went in_progress → ready
+    failure_modes: v.optional(v.string()), // JSON: frequency map of failure categories
+    computed_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_role_model", ["role", "model"])
+    .index("by_prompt_version", ["prompt_version_id"])
+    .index("by_period", ["period", "period_start"]),
 })

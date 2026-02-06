@@ -14,6 +14,7 @@ import type * as comments from "../comments.js";
 import type * as gate from "../gate.js";
 import type * as notifications from "../notifications.js";
 import type * as projects from "../projects.js";
+import type * as promptMetrics from "../promptMetrics.js";
 import type * as promptVersions from "../promptVersions.js";
 import type * as seed from "../seed.js";
 import type * as signals from "../signals.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   gate: typeof gate;
   notifications: typeof notifications;
   projects: typeof projects;
+  promptMetrics: typeof promptMetrics;
   promptVersions: typeof promptVersions;
   seed: typeof seed;
   signals: typeof signals;

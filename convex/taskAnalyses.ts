@@ -169,6 +169,24 @@ export const listByOutcome = query({
   },
 })
 
+/**
+ * List analyses within a time range (for metrics computation)
+ */
+export const listInRange = query({
+  args: {
+    since: v.number(),
+    until: v.number(),
+  },
+  handler: async (ctx, args): Promise<TaskAnalysis[]> => {
+    const analyses = await ctx.db
+      .query('taskAnalyses')
+      .withIndex('by_analyzed', (q) => q.gte('analyzed_at', args.since).lte('analyzed_at', args.until))
+      .collect()
+
+    return analyses.map((a) => toTaskAnalysis(a))
+  },
+})
+
 // ============================================
 // Mutations
 // ============================================
