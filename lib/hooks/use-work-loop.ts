@@ -7,6 +7,7 @@ import type {
   WorkLoopRun,
   WorkLoopStats,
 } from "@/lib/types/work-loop"
+import type { Task } from "@/lib/types"
 
 /**
  * Reactive Convex subscription for work loop state.
@@ -61,7 +62,7 @@ export function useWorkLoopRuns(
 
 /**
  * Reactive Convex subscription for work loop stats.
- * 
+ *
  * Returns aggregated stats for today, updated in real-time.
  */
 export function useWorkLoopStats(
@@ -78,6 +79,31 @@ export function useWorkLoopStats(
 
   return {
     stats: result ?? null,
+    isLoading: result === undefined,
+    error: null,
+  }
+}
+
+/**
+ * Reactive Convex subscription for tasks with active agents.
+ *
+ * Returns tasks that currently have an active agent working on them,
+ * sorted by most recently active first.
+ */
+export function useActiveAgentTasks(
+  projectId: string | null
+): {
+  tasks: Task[] | null
+  isLoading: boolean
+  error: Error | null
+} {
+  const result = useQuery(
+    api.tasks.getWithActiveAgents,
+    projectId ? { projectId } : "skip"
+  )
+
+  return {
+    tasks: result ?? null,
     isLoading: result === undefined,
     error: null,
   }

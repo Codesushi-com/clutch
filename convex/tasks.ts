@@ -296,6 +296,26 @@ export const getWithDependencies = query({
   },
 })
 
+/**
+ * Get tasks with active agents for a project
+ * Returns tasks that have an agent_session_key set (indicating an active agent)
+ */
+export const getWithActiveAgents = query({
+  args: { projectId: v.string() },
+  handler: async (ctx, args): Promise<Task[]> => {
+    const tasks = await ctx.db
+      .query('tasks')
+      .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
+      .filter((q) => q.neq('agent_session_key', undefined))
+      .collect()
+
+    // Sort by most recently active first
+    return tasks
+      .sort((a, b) => (b.agent_last_active_at ?? 0) - (a.agent_last_active_at ?? 0))
+      .map((t) => toTask(t as Parameters<typeof toTask>[0]))
+  },
+})
+
 // ============================================
 // Mutations
 // ============================================
