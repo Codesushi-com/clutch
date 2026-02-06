@@ -252,9 +252,11 @@ async function getInReviewTasks(convex: ConvexHttpClient, projectId: string): Pr
 
 function findOpenPR(branchName: string): PRInfo | null {
   try {
+    // Use --json with all open PRs and filter by prefix, since dev agents
+    // may append descriptive suffixes to branch names (e.g. fix/058806db-chat-sidebar-agent-status)
     const result = execFileSync(
       "gh",
-      ["pr", "list", "--state", "open", "--head", branchName, "--json", "number,title"],
+      ["pr", "list", "--state", "open", "--json", "number,title,headRefName"],
       {
         encoding: "utf-8",
         timeout: 10_000,
@@ -262,13 +264,16 @@ function findOpenPR(branchName: string): PRInfo | null {
       }
     )
 
-    const prs = JSON.parse(result) as PRInfo[]
+    const prs = JSON.parse(result) as (PRInfo & { headRefName: string })[]
 
-    if (prs.length === 0) {
+    // Match by exact name or prefix (fix/abcd1234 matches fix/abcd1234-some-description)
+    const match = prs.find(pr => pr.headRefName === branchName || pr.headRefName.startsWith(branchName))
+
+    if (!match) {
       return null
     }
 
-    return prs[0] // Return first matching PR
+    return match
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.warn(`[ReviewPhase] Failed to check PR for branch ${branchName}: ${message}`)
