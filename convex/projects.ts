@@ -108,6 +108,50 @@ export const getAll = query({
 })
 
 /**
+ * Get all projects with per-status task counts and work loop state
+ */
+export const getAllWithStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const projects = await ctx.db.query('projects').collect()
+
+    const results = await Promise.all(
+      projects.map(async (project) => {
+        const tasks = await ctx.db
+          .query('tasks')
+          .withIndex('by_project', (q) => q.eq('project_id', project.id))
+          .collect()
+
+        const statusCounts = { backlog: 0, ready: 0, in_progress: 0, in_review: 0, done: 0 }
+        let lastActivity = project.updated_at
+        for (const task of tasks) {
+          statusCounts[task.status as keyof typeof statusCounts] += 1
+          if (task.updated_at > lastActivity) {
+            lastActivity = task.updated_at
+          }
+        }
+
+        const loopState = await ctx.db
+          .query('workLoopState')
+          .withIndex('by_project', (q) => q.eq('project_id', project.id))
+          .unique()
+
+        return {
+          ...toProject(project as Parameters<typeof toProject>[0]),
+          task_count: tasks.length,
+          status_counts: statusCounts,
+          active_agents: loopState?.active_agents ?? 0,
+          work_loop_status: loopState?.status ?? (project.work_loop_enabled ? 'stopped' : 'disabled') as string,
+          last_activity: lastActivity,
+        }
+      })
+    )
+
+    return results.sort((a, b) => a.name.localeCompare(b.name))
+  },
+})
+
+/**
  * Get a single project by UUID
  */
 export const getById = query({
