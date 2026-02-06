@@ -209,7 +209,6 @@ export function SessionsList({
 
   // Enrich sessions with task data
   useEffect(() => {
-    console.log('[SessionsList] Sessions updated:', allSessions.length);
     if (allSessions.length > 0) {
       const enriched = enrichSessionsWithTasks(allSessions, tasksBySessionId);
       setEnrichedSessions(enriched);
@@ -218,14 +217,11 @@ export function SessionsList({
 
   // Fetch sessions via HTTP API with effective model
   const fetchSessions = useCallback(async (isInitialLoad = false) => {
-    if (isInitialLoad) {
-      setLoading(true);
-    }
+    // Always set loading true at start, false at end
+    setLoading(true);
 
     try {
-      console.log('[SessionsList] Fetching sessions...');
       const response = await listSessionsWithEffectiveModel({ limit: 50 });
-      console.log(`[SessionsList] Fetched ${response.sessions?.length || 0} sessions`);
       setSessions(response.sessions);
       if (isInitialLoad) {
         setInitialized(true);
@@ -233,12 +229,10 @@ export function SessionsList({
       setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load sessions';
-      console.error('[SessionsList] Failed to fetch sessions:', err);
       setError(message);
     } finally {
-      if (isInitialLoad) {
-        setLoading(false);
-      }
+      // Always reset loading state, even on error
+      setLoading(false);
     }
   }, [listSessionsWithEffectiveModel, setSessions, setLoading, setInitialized, setError]);
 
@@ -246,18 +240,14 @@ export function SessionsList({
   // Also reset if we've been loading for too long without making progress
   useEffect(() => {
     if (isLoading) {
-      console.log('[SessionsList] Checking loading state, sessions:', allSessions.length, 'initialized:', isInitialized);
-      
       // If we have sessions, we're definitely not loading anymore
       if (allSessions.length > 0) {
-        console.log('[SessionsList] Has sessions, resetting loading state');
         setLoading(false);
         return;
       }
 
       // If we're initialized but have no sessions, we're also not loading
       if (isInitialized) {
-        console.log('[SessionsList] Initialized but no sessions, resetting loading state');
         setLoading(false);
         return;
       }
@@ -278,19 +268,16 @@ export function SessionsList({
   // Initial load - fetch on mount if not initialized or if we have no sessions
   const hasLoadedRef = useRef(false);
   const initialLoadStartedRef = useRef(false);
-  
+
   useEffect(() => {
-    console.log('[SessionsList] Mount effect running, initialized:', isInitialized, 'sessions:', allSessions.length);
-    
     // Prevent double fetch on mount and ensure we always try to load
     if (!initialLoadStartedRef.current) {
       initialLoadStartedRef.current = true;
-      
+
       // Always fetch on mount to ensure fresh data
       // The hasLoadedRef prevents duplicate fetches if the effect re-runs
       if (!hasLoadedRef.current) {
         hasLoadedRef.current = true;
-        console.log('[SessionsList] Starting initial fetch...');
         fetchSessions(true);
       }
     }
