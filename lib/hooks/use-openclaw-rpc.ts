@@ -5,6 +5,65 @@ import { useOpenClawWS } from "@/lib/providers/openclaw-ws-provider";
 import { useSessionStore } from "@/lib/stores/session-store";
 import { SessionListResponse, SessionListParams, SessionPreview, AgentListResponse, AgentListParams, AgentDetail, SessionType, Session } from "@/lib/types";
 
+/**
+ * Get the context window size for a given model.
+ * Returns the maximum number of tokens the model can handle.
+ */
+function getModelContextWindow(model: string): number {
+  const lowerModel = model.toLowerCase();
+  
+  // Anthropic models
+  if (lowerModel.includes("claude-opus-4-6")) return 200000;
+  if (lowerModel.includes("claude-opus-4-5")) return 200000;
+  if (lowerModel.includes("claude-opus")) return 200000;
+  if (lowerModel.includes("claude-sonnet-4")) return 200000;
+  if (lowerModel.includes("claude-sonnet")) return 200000;
+  if (lowerModel.includes("claude-haiku")) return 200000;
+  if (lowerModel.includes("claude")) return 200000;
+  
+  // Moonshot / Kimi models
+  if (lowerModel.includes("kimi-k2-thinking") || lowerModel.includes("kimi-k2.5-thinking")) return 131072; // 128k
+  if (lowerModel.includes("kimi-k2")) return 256000;
+  if (lowerModel.includes("kimi-for-coding")) return 262144;
+  if (lowerModel.includes("kimi")) return 200000;
+  if (lowerModel.includes("moonshot")) return 200000;
+  
+  // OpenAI models
+  if (lowerModel.includes("gpt-4.5")) return 128000;
+  if (lowerModel.includes("gpt-4o")) return 128000;
+  if (lowerModel.includes("gpt-4-turbo")) return 128000;
+  if (lowerModel.includes("gpt-4")) return 8192;
+  if (lowerModel.includes("gpt-3.5-turbo")) return 16385;
+  if (lowerModel.includes("gpt-3.5")) return 4096;
+  if (lowerModel.includes("gpt-5")) return 128000;
+  
+  // Google models
+  if (lowerModel.includes("gemini-1.5-pro")) return 2000000;
+  if (lowerModel.includes("gemini-1.5-flash")) return 1000000;
+  if (lowerModel.includes("gemini-1.5")) return 1000000;
+  if (lowerModel.includes("gemini")) return 1000000;
+  
+  // Z.AI / GLM models
+  if (lowerModel.includes("glm-4.5")) return 128000;
+  if (lowerModel.includes("glm-4")) return 128000;
+  if (lowerModel.includes("glm")) return 128000;
+  
+  // MiniMax models
+  if (lowerModel.includes("minimax")) return 1000000;
+  
+  // Default fallback for unknown models (assume 128k)
+  return 128000;
+}
+
+/**
+ * Calculate context percentage based on tokens used and model context window.
+ */
+function calculateContextPercentage(tokensTotal: number, model: string): number {
+  const contextWindow = getModelContextWindow(model);
+  const percentage = (tokensTotal / contextWindow) * 100;
+  return Math.min(percentage, 100); // Cap at 100%
+}
+
 export function useOpenClawRpc() {
   const { status, rpc } = useOpenClawWS();
 
@@ -234,9 +293,13 @@ export function useOpenClawRpc() {
       }>;
     };
 
-    const response = await rpc<PreviewResponse>("sessions.preview", { keys: [sessionKey], limit: limit || 50 });
+    // Fetch both preview and session list data in parallel
+    const [previewResponse, sessionsResponse] = await Promise.all([
+      rpc<PreviewResponse>("sessions.preview", { keys: [sessionKey], limit: limit || 50 }),
+      rpc<{ sessions: Array<Record<string, unknown>> }>("sessions.list", { limit: 100 }),
+    ]);
 
-    const previewEntry = response.previews?.[0];
+    const previewEntry = previewResponse.previews?.[0];
 
     if (!previewEntry || previewEntry.status === "missing") {
       throw new Error(`Session "${sessionKey}" not found`);
@@ -256,22 +319,45 @@ export function useOpenClawRpc() {
       timestamp: new Date().toISOString(), // Preview items don't include timestamps
     }));
 
-    // Get session data from the store to build the Session object
-    const session = useSessionStore.getState().getSessionById(sessionKey);
+    // Find session data from sessions.list for accurate token counts
+    const sessionData = sessionsResponse.sessions?.find(s => s.key === sessionKey);
+    
+    // Get session data from the store as fallback
+    const storedSession = useSessionStore.getState().getSessionById(sessionKey);
+
+    // Determine the model (from preview messages, session data, or store)
+    const effectiveModel = previewEntry.items.find(i => i.model)?.model 
+      || (sessionData?.model as string)
+      || storedSession?.model 
+      || "unknown";
+
+    // Get token counts from sessions.list response (most accurate)
+    const tokensTotal = (sessionData?.totalTokens as number) 
+      || storedSession?.tokens?.total 
+      || 0;
+
+    // Calculate context percentage based on tokens used / model context window
+    const contextPercentage = effectiveModel !== "unknown" 
+      ? calculateContextPercentage(tokensTotal, effectiveModel)
+      : 0;
 
     return {
-      session: session || {
+      session: storedSession || {
         id: sessionKey,
         name: sessionKey.split(":").pop() || sessionKey,
         type: "main",
-        model: previewEntry.items.find(i => i.model)?.model || "unknown",
+        model: effectiveModel,
         status: "idle",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        tokens: { input: 0, output: 0, total: 0 },
+        tokens: { 
+          input: (sessionData?.inputTokens as number) || 0, 
+          output: (sessionData?.outputTokens as number) || 0, 
+          total: tokensTotal 
+        },
       },
       messages,
-      contextPercentage: 0, // Would need additional API call to calculate this
+      contextPercentage,
     };
   }, [rpc]);
 

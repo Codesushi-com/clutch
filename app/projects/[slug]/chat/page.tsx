@@ -266,6 +266,10 @@ export default function ChatPage({ params }: PageProps) {
     }
 
     fetchSessionInfo()
+    
+    // Refresh session info periodically to keep context percentage up to date
+    const interval = setInterval(fetchSessionInfo, 30000)
+    return () => clearInterval(interval)
   }, [activeChat?.session_key, rpcConnected, getSessionPreview])
 
   // Fetch gateway status and format uptime
