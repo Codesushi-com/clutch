@@ -91,10 +91,43 @@ export default function ChatPage({ params }: PageProps) {
     // Clear typing indicator when message is complete
     setTyping(activeChat.id, "ada", false)
     
-    // Message persistence handled by trap-channel plugin (server-side)
-    // No need to save here - SSE will broadcast when server receives it
-    console.log("[Chat] WebSocket message received, server-side save via trap-channel")
-  }, [activeChat, settings.streamingEnabled, streamingMessages, clearStreamingMessage, setTyping])
+    // Extract text content from the message
+    const content = typeof msg.content === "string"
+      ? msg.content
+      : msg.content
+          ?.filter((c) => c.type === "text" && c.text)
+          .map((c) => c.text)
+          .join("\n\n") ?? ""
+    
+    if (!content.trim()) {
+      console.log("[Chat] Empty message received, skipping save")
+      return
+    }
+    
+    // Save AI response to Convex via API — Convex reactive query updates the UI
+    try {
+      const response = await fetch(`/api/chats/${activeChat.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          author: "ada",
+          run_id: runId,
+          session_key: sessionKey,
+        }),
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        // 409 = duplicate run_id, message already saved (e.g. by trap-channel plugin)
+        if (response.status !== 409) {
+          console.error("[Chat] Failed to save AI response:", errorText)
+        }
+      }
+    } catch (error) {
+      console.error("[Chat] Error saving AI response:", error)
+    }
+  }, [activeChat, settings.streamingEnabled, streamingMessages, clearStreamingMessage, setTyping, sessionKey])
 
   // Consolidated typing handler for OpenClaw WebSocket events
   const handleOpenClawTyping = useCallback((isTyping: boolean, state?: "thinking" | "typing") => {
