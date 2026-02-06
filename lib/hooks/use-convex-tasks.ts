@@ -88,9 +88,18 @@ export function useConvexBoardTasks(
       tasksByStatus[task.status].push(task)
     }
 
-    // Sort each column by position
+    // Sort each column
     for (const status of Object.keys(tasksByStatus) as TaskStatus[]) {
-      tasksByStatus[status].sort((a, b) => a.position - b.position)
+      if (status === "done") {
+        // Done column: most recently completed first
+        tasksByStatus[status].sort((a, b) => {
+          const aTime = a.completed_at ?? a.updated_at
+          const bTime = b.completed_at ?? b.updated_at
+          return bTime - aTime
+        })
+      } else {
+        tasksByStatus[status].sort((a, b) => a.position - b.position)
+      }
     }
   }
 
