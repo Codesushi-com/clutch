@@ -142,8 +142,8 @@ interface TaskProcessResult {
 async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessResult> {
   const { convex, agents, projectId } = ctx
 
-  // Derive branch name from task ID (first 8 chars)
-  const branchName = `fix/${task.id.slice(0, 8)}`
+  // Use recorded branch name if available, otherwise derive from task ID
+  const branchName = task.branch ?? `fix/${task.id.slice(0, 8)}`
 
   // Check if agent already running for this task
   if (agents.has(task.id)) {
@@ -158,8 +158,10 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
     }
   }
 
-  // Check for open PR on this branch
-  const pr = findOpenPR(branchName)
+  // Check for open PR - use PR number if recorded, otherwise search by branch
+  const pr = task.pr_number
+    ? await getPRByNumber(task.pr_number)
+    : findOpenPR(branchName)
 
   if (!pr) {
     return {
@@ -168,11 +170,13 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
         reason: "no_open_pr",
         taskId: task.id,
         branch: branchName,
+        pr_number: task.pr_number,
       },
     }
   }
 
   // Spawn reviewer via gateway RPC
+  // Use actual branch name for worktree path (handles descriptive suffixes)
   const worktreePath = `/home/dan/src/trap-worktrees/${branchName}`
   const prompt = buildReviewerPrompt(task, pr, branchName, worktreePath)
 
@@ -277,6 +281,36 @@ function findOpenPR(branchName: string): PRInfo | null {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.warn(`[ReviewPhase] Failed to check PR for branch ${branchName}: ${message}`)
+    return null
+  }
+}
+
+/**
+ * Get PR info by PR number (direct lookup)
+ */
+function getPRByNumber(prNumber: number): PRInfo | null {
+  try {
+    const result = execFileSync(
+      "gh",
+      ["pr", "view", String(prNumber), "--json", "number,title,state"],
+      {
+        encoding: "utf-8",
+        timeout: 10_000,
+        cwd: "/home/dan/src/trap",
+      }
+    )
+
+    const pr = JSON.parse(result) as PRInfo & { state: string }
+
+    // Only return if PR is open
+    if (pr.state !== "OPEN") {
+      return null
+    }
+
+    return { number: pr.number, title: pr.title }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`[ReviewPhase] Failed to get PR #${prNumber}: ${message}`)
     return null
   }
 }

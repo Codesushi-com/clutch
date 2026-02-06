@@ -199,12 +199,15 @@ ${params.taskDescription}
 
 ---
 
-**Setup worktree:**
+**Setup worktree and record branch:**
 \`\`\`bash
 cd /home/dan/src/trap
 git fetch origin main
 git worktree add ${params.worktreeDir} origin/main -b ${branchName}
 cd ${params.worktreeDir}
+
+# Record the branch name on the task
+curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"branch": "${branchName}"}'
 \`\`\`
 
 **After implementation, push and create PR:**
@@ -213,7 +216,16 @@ cd ${params.worktreeDir}
 git add -A
 git commit -m "feat: <description>"
 git push -u origin ${branchName}
-gh pr create --title "<title>" --body "Ticket: ${params.taskId}"
+\`\`\`
+
+Create the PR and capture the PR number:
+\`\`\`bash
+# Create PR and extract the PR number from the URL
+PR_URL=$(gh pr create --title "<title>" --body "Ticket: ${params.taskId}")
+PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+
+# Record the PR number on the task
+curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d "{\"pr_number\": $PR_NUMBER}"
 \`\`\`
 
 Then update ticket to in_review:

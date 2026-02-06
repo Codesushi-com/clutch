@@ -35,6 +35,8 @@ function toTask(doc: {
   agent_last_active_at?: number
   agent_tokens_in?: number
   agent_tokens_out?: number
+  branch?: string
+  pr_number?: number
   position: number
   created_at: number
   updated_at: number
@@ -62,6 +64,8 @@ function toTask(doc: {
     agent_last_active_at: doc.agent_last_active_at ?? null,
     agent_tokens_in: doc.agent_tokens_in ?? null,
     agent_tokens_out: doc.agent_tokens_out ?? null,
+    branch: doc.branch ?? null,
+    pr_number: doc.pr_number ?? null,
     position: doc.position,
     created_at: doc.created_at,
     updated_at: doc.updated_at,
@@ -442,6 +446,8 @@ export const update = mutation({
     tags: v.optional(v.string()),
     session_id: v.optional(v.string()),
     prompt_version_id: v.optional(v.string()),
+    branch: v.optional(v.string()),
+    pr_number: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Task> => {
     const existing = await ctx.db
@@ -476,6 +482,8 @@ export const update = mutation({
     if (args.tags !== undefined) updates.tags = args.tags
     if (args.session_id !== undefined) updates.session_id = args.session_id
     if (args.prompt_version_id !== undefined) updates.prompt_version_id = args.prompt_version_id
+    if (args.branch !== undefined) updates.branch = args.branch
+    if (args.pr_number !== undefined) updates.pr_number = args.pr_number
 
     await ctx.db.patch(existing._id, updates)
 
