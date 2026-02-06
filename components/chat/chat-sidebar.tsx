@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Plus, MessageSquare, Trash2, X, ChevronDown, ChevronRight, ListTodo, ExternalLink, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
 import { TaskModal } from "@/components/board/task-modal"
 import { NewIssueDialog } from "@/components/chat/new-issue-dialog"
+import { useConvexTasks } from "@/lib/hooks/use-convex-tasks"
 import type { Task } from "@/lib/types"
 
 interface ChatSidebarProps {
@@ -43,17 +44,17 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   const [creating, setCreating] = useState(false)
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null)
   
-  // Work queue state
-  const [workQueueSections, setWorkQueueSections] = useState<WorkQueueSection[]>([
-    { label: "In Review", status: "in_review", tasks: [], expanded: true },
-    { label: "In Progress", status: "in_progress", tasks: [], expanded: true },
-    { label: "Up Next", status: "ready", tasks: [], expanded: true },
-  ])
-  const [loadingTasks, setLoadingTasks] = useState(true)
-  const [readyCount, setReadyCount] = useState(0)
+  // Reactive Convex subscription for all project tasks (replaces polling)
+  const { tasks: allTasks, isLoading: loadingTasks } = useConvexTasks(projectId)
+  
+  // Section expansion state
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    in_review: true,
+    in_progress: true,
+    ready: true,
+  })
   
   // Recently shipped state
-  const [recentlyShipped, setRecentlyShipped] = useState<Task[]>([])
   const [recentlyShippedExpanded, setRecentlyShippedExpanded] = useState(true)
   
   // Task modal state
@@ -63,57 +64,42 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   // New issue dialog state
   const [newIssueDialogOpen, setNewIssueDialogOpen] = useState(false)
 
-  // Fetch work queue tasks
-  const fetchWorkQueue = useCallback(async () => {
-    try {
-      // Fetch tasks for each status (including done for recently shipped)
-      const [reviewRes, inProgressRes, readyRes, doneRes] = await Promise.all([
-        fetch(`/api/tasks?projectId=${projectId}&status=in_review`),
-        fetch(`/api/tasks?projectId=${projectId}&status=in_progress`),
-        fetch(`/api/tasks?projectId=${projectId}&status=ready`),
-        fetch(`/api/tasks?projectId=${projectId}&status=done&limit=3`),
-      ])
+  // Derive work queue sections from reactive task data
+  const workQueueSections = useMemo<WorkQueueSection[]>(() => {
+    if (!allTasks) return [
+      { label: "In Review", status: "in_review", tasks: [], expanded: true },
+      { label: "In Progress", status: "in_progress", tasks: [], expanded: true },
+      { label: "Up Next", status: "ready", tasks: [], expanded: true },
+    ]
 
-      const [reviewData, inProgressData, readyData, doneData] = await Promise.all([
-        reviewRes.json(),
-        inProgressRes.json(),
-        readyRes.json(),
-        doneRes.json(),
-      ])
+    const inReview = allTasks.filter(t => t.status === "in_review")
+    const inProgress = allTasks.filter(t => t.status === "in_progress")
+    const ready = allTasks.filter(t => t.status === "ready")
 
-      // Track full ready count for header display
-      const fullReadyTasks = readyData.tasks || []
-      setReadyCount(fullReadyTasks.length)
+    return [
+      { label: "In Review", status: "in_review", tasks: inReview, expanded: expandedSections.in_review },
+      { label: "In Progress", status: "in_progress", tasks: inProgress, expanded: expandedSections.in_progress },
+      { label: "Up Next", status: "ready", tasks: ready.slice(0, 2), expanded: expandedSections.ready },
+    ]
+  }, [allTasks, expandedSections])
 
-      setWorkQueueSections(prev => prev.map(section => {
-        if (section.status === "in_review") {
-          return { ...section, tasks: reviewData.tasks || [] }
-        }
-        if (section.status === "in_progress") {
-          return { ...section, tasks: inProgressData.tasks || [] }
-        }
-        if (section.status === "ready") {
-          // Only show top 2 ready tasks as "Up Next"
-          return { ...section, tasks: fullReadyTasks.slice(0, 2) }
-        }
-        return section
-      }))
-      
-      // Set recently shipped tasks
-      setRecentlyShipped(doneData.tasks || [])
-    } catch (error) {
-      console.error("Failed to fetch work queue:", error)
-    } finally {
-      setLoadingTasks(false)
-    }
-  }, [projectId])
+  // Derive ready count and recently shipped from reactive data
+  const readyCount = useMemo(() => {
+    if (!allTasks) return 0
+    return allTasks.filter(t => t.status === "ready").length
+  }, [allTasks])
 
-  useEffect(() => {
-    fetchWorkQueue()
-    // Poll every 30 seconds for updates
-    const interval = setInterval(fetchWorkQueue, 30000)
-    return () => clearInterval(interval)
-  }, [fetchWorkQueue])
+  const recentlyShipped = useMemo(() => {
+    if (!allTasks) return []
+    return allTasks
+      .filter(t => t.status === "done")
+      .sort((a, b) => {
+        const aTime = a.completed_at ?? a.updated_at
+        const bTime = b.completed_at ?? b.updated_at
+        return bTime - aTime
+      })
+      .slice(0, 3)
+  }, [allTasks])
 
   // Refetch chats when project changes
   useEffect(() => {
@@ -123,11 +109,10 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   }, [projectId, currentProjectId, fetchChats])
 
   const toggleSection = (status: string) => {
-    setWorkQueueSections(prev => prev.map(section => 
-      section.status === status 
-        ? { ...section, expanded: !section.expanded }
-        : section
-    ))
+    setExpandedSections(prev => ({
+      ...prev,
+      [status]: !prev[status],
+    }))
   }
 
   const handleTaskClick = (task: Task) => {
@@ -137,10 +122,7 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
 
   const handleTaskModalClose = (open: boolean) => {
     setTaskModalOpen(open)
-    if (!open) {
-      // Refresh work queue when modal closes to reflect any changes
-      fetchWorkQueue()
-    }
+    // No need to refresh - Convex reactive subscription updates automatically
   }
 
   const handleCreateChat = async () => {
@@ -635,8 +617,7 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
         open={newIssueDialogOpen}
         onOpenChange={setNewIssueDialogOpen}
         onCreated={(taskId) => {
-          // Refresh work queue to show the new task
-          fetchWorkQueue()
+          // Convex reactive subscription will update automatically
           console.log("New issue created:", taskId)
         }}
       />
