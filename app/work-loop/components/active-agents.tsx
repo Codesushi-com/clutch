@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { useWorkLoopState } from "@/lib/hooks/use-work-loop"
+import { useActiveAgentTasks } from "@/lib/hooks/use-work-loop"
 import { Cpu, Clock, Terminal, ExternalLink } from "lucide-react"
 import Link from "next/link"
 import { useMemo } from "react"
@@ -13,25 +13,23 @@ interface ActiveAgentsProps {
 }
 
 export function ActiveAgents({ projectId, projectSlug }: ActiveAgentsProps) {
-  const { state, isLoading } = useWorkLoopState(projectId)
+  const { tasks, isLoading } = useActiveAgentTasks(projectId)
 
-  // For now, we show state-based info. In the future, this could fetch
-  // detailed child process info from the orchestrator.
-  const activeCount = state?.active_agents ?? 0
-
-  // Generate placeholder agent cards based on active count
-  // Using useMemo with deterministic values based on index
+  // Transform tasks to agent cards
   const agents = useMemo(() => {
-    return Array.from({ length: Math.min(activeCount, 5) }, (_, i) => ({
-      id: `agent-${i}`,
-      taskId: `task-${i}`,
-      taskTitle: `Task ${i + 1}`,
-      role: ["dev", "reviewer", "qa", "pm"][i % 4],
-      model: ["kimi", "sonnet", "haiku"][i % 3],
-      duration: `${(i % 10) + 1}m`,
-      lastActivity: "Just now",
+    if (!tasks) return []
+    return tasks.map((task) => ({
+      id: task.id,
+      taskId: task.id,
+      taskTitle: task.title,
+      role: task.role ?? "dev",
+      model: task.agent_model ?? "unknown",
+      duration: formatDuration(task.agent_started_at),
+      lastActivity: formatLastActivity(task.agent_last_active_at),
     }))
-  }, [activeCount])
+  }, [tasks])
+
+  const activeCount = agents.length
 
   if (isLoading) {
     return (
@@ -144,4 +142,34 @@ function AgentCard({ agent, projectSlug }: AgentCardProps) {
       </div>
     </div>
   )
+}
+
+// Helper functions for formatting time
+
+function formatDuration(startedAt: number | null): string {
+  if (!startedAt) return "Unknown"
+
+  const elapsed = Date.now() - startedAt
+  const minutes = Math.floor(elapsed / 60000)
+  const hours = Math.floor(minutes / 60)
+
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m`
+  }
+  return `${minutes}m`
+}
+
+function formatLastActivity(lastActiveAt: number | null): string {
+  if (!lastActiveAt) return "Unknown"
+
+  const elapsed = Date.now() - lastActiveAt
+  const seconds = Math.floor(elapsed / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+
+  if (seconds < 10) return "Just now"
+  if (seconds < 60) return `${seconds}s ago`
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  return ">24h ago"
 }
