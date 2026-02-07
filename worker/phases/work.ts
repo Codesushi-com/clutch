@@ -157,6 +157,49 @@ async function loadSoulTemplate(role: string): Promise<string> {
 }
 
 // ============================================
+// Image URL Extraction
+// ============================================
+
+/**
+ * Extract image URLs from task description
+ * Looks for markdown image syntax: ![alt](url) or ![](url)
+ * Also detects data URLs and HTTP/HTTPS image URLs
+ */
+function extractImageUrls(description: string | null): string[] {
+  if (!description) return []
+
+  const urls: string[] = []
+
+  // Markdown image syntax: ![alt](url)
+  const markdownRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
+  let match
+  while ((match = markdownRegex.exec(description)) !== null) {
+    const url = match[2]
+    if (url.startsWith('http') || url.startsWith('data:')) {
+      urls.push(url)
+    }
+  }
+
+  // Plain image URLs (http/https)
+  const urlRegex = /(https?:\/\/[^\s\"<>]+\.(?:png|jpg|jpeg|gif|webp|svg))/gi
+  while ((match = urlRegex.exec(description)) !== null) {
+    if (!urls.includes(match[1])) {
+      urls.push(match[1])
+    }
+  }
+
+  // Data URLs
+  const dataUrlRegex = /(data:image\/[^;]+;base64,[a-zA-Z0-9+/=]+)/g
+  while ((match = dataUrlRegex.exec(description)) !== null) {
+    if (!urls.includes(match[1])) {
+      urls.push(match[1])
+    }
+  }
+
+  return urls
+}
+
+// ============================================
 // Main Work Phase
 // ============================================
 
@@ -289,6 +332,9 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     const repoDir = project?.local_path ?? "/home/dan/src/trap"
     const worktreeDir = `/home/dan/src/trap-worktrees/fix/${task.id.slice(0, 8)}`
 
+    // Extract image URLs for PM triage tasks
+    const imageUrls = role === "pm" ? extractImageUrls(task.description) : undefined
+
     const prompt = buildPrompt({
       role,
       taskId: task.id,
@@ -298,6 +344,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
       projectId,
       repoDir,
       worktreeDir,
+      imageUrls,
     })
 
     // --- 5. Spawn agent via gateway RPC ---

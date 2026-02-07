@@ -26,6 +26,8 @@ export interface PromptParams {
   repoDir: string
   /** The worktree directory for dev tasks */
   worktreeDir: string
+  /** Optional image URLs for the PM to analyze */
+  imageUrls?: string[]
 }
 
 // ============================================
@@ -33,55 +35,74 @@ export interface PromptParams {
 // ============================================
 
 /**
- * Build PM role instructions
+ * Build PM role instructions for triage mode
  */
 function buildPmInstructions(params: PromptParams): string {
+  const imageSection = params.imageUrls && params.imageUrls.length > 0
+    ? `\n## Attached Images\n\nThe following images are attached to this task:\n${params.imageUrls.map((url, i) => `- Image ${i + 1}: ${url}`).join('\n')}\n\n**Important:** Analyze these images carefully. They may contain screenshots, diagrams, or visual context crucial for understanding the issue.`
+    : ''
+
   return `## Task: ${params.taskTitle}
 
 **Read /home/dan/src/trap/AGENTS.md first.**
 
 Ticket ID: \`${params.taskId}\`
 Role: \`pm\`
+Mode: **TRIAGE**
 
-${params.taskDescription}
+${params.taskDescription}${imageSection}
 
 ---
 
-**Your job:** Analyze this ticket and break it down into actionable sub-tickets.
+**Your job:** Triage this issue and either:
+1. **Flesh it out** and change role to \`dev\` if it's clear enough
+2. **Create clarifying questions** as blocking signals if it needs more info
 
-**IMPORTANT:** Every sub-ticket MUST have:
-- \`role\` set (usually \`dev\`, or \`qa\`/\`research\` if appropriate)
-- Clear description with ## Summary, ## Implementation, ## Files, ## Acceptance Criteria
-- Proper priority (urgent/high/medium/low)
+### Triage Decision Guide
 
-**Create tickets:**
+**FLESH OUT when the issue has:**
+- Clear goal or user story
+- Some context about what needs to change
+- Enough to identify which files/components are involved
+
+**ASK QUESTIONS when:**
+- The goal is vague ("fix the thing")
+- No files or components are mentioned
+- Acceptance criteria are missing and unclear
+- The scope could be interpreted multiple ways
+- Images show issues but don't explain expected behavior
+
+### If Fleshing Out
+
+Update the task with a complete description:
 \`\`\`bash
-curl -X POST http://localhost:3002/api/tasks -H 'Content-Type: application/json' -d '{
-  "project_id": "${params.projectId}",
-  "title": "<title>",
-  "description": "<markdown description>",
-  "status": "ready",
-  "priority": "<urgent|high|medium|low>",
-  "role": "dev",
-  "tags": "[\\"tag1\\", \"tag2\\"]"
+curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{
+  "description": "## Summary\\n\\nWhat this does...\\n\\n## Implementation\\n\\nHow to implement...\\n\\n## Files\\n\\n- \\"/path/to/file.ts\\"\\n\\n## Acceptance Criteria\\n\\n- [ ] Criterion 1\\n- [ ] Criterion 2\\n- [ ] Criterion 3",
+  "role": "dev"
 }'
 \`\`\`
 
-**Create dependencies between tickets** (task cannot start until dependency is done):
+### If Asking Questions
+
+Create a blocking signal (get your session key from the task first):
 \`\`\`bash
-curl -X POST http://localhost:3002/api/tasks/<TASK_ID>/dependencies -H 'Content-Type: application/json' -d '{
-  "depends_on_id": "<DEPENDENCY_TASK_ID>"
-}'
+# Get your session key from the task
+SESSION_KEY=$(curl -s http://localhost:3002/api/tasks/${params.taskId} | grep -o '"session_id":"[^"]*"' | cut -d'"' -f4)
+
+# Create the blocking question signal
+curl -X POST http://localhost:3002/api/signal -H 'Content-Type: application/json' -d "{
+  \"taskId\": \"${params.taskId}\",
+  \"sessionKey\": \"$SESSION_KEY\",
+  \"agentId\": \"pm\",
+  \"kind\": \"question\",
+  \"message\": \"Your specific question here referencing the ambiguity\"
+}"
 \`\`\`
 
-Use the task IDs from the POST responses to wire up the dependency chain. If ticket B depends on ticket A, create the dependency after both exist.
-
-**When done:** Mark this ticket done:
+Then mark yourself done (the signal remains as the blocker):
 \`\`\`bash
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "done"}'
-\`\`\`
-
-**DO NOT:** Create branches, write code, or create PRs. You are a PM.`
+\`\`\``
 }
 
 /**
