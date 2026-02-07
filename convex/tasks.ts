@@ -141,6 +141,46 @@ export const getByStatus = query({
 })
 
 /**
+ * Get tasks with pending dispatch status.
+ * Optionally filter by project ID.
+ */
+export const getPendingDispatches = query({
+  args: {
+    projectId: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Task[]> => {
+    let tasks
+
+    if (args.projectId) {
+      // Get pending dispatches for a specific project
+      // Use by_project index and filter by dispatch_status
+      tasks = await ctx.db
+        .query('tasks')
+        .withIndex('by_project', (q) => q.eq('project_id', args.projectId!))
+        .filter((q) => q.eq('dispatch_status', 'pending'))
+        .collect()
+    } else {
+      // Get all pending dispatches across all projects
+      tasks = await ctx.db
+        .query('tasks')
+        .withIndex('by_dispatch_status', (q) => q.eq('dispatch_status', 'pending'))
+        .collect()
+    }
+
+    // Sort by priority then dispatch time
+    const priorityOrder: Record<TaskPriority, number> = { urgent: 1, high: 2, medium: 3, low: 4 }
+    return tasks
+      .sort((a, b) => {
+        const pa = priorityOrder[a.priority as TaskPriority] || 3
+        const pb = priorityOrder[b.priority as TaskPriority] || 3
+        if (pa !== pb) return pa - pb
+        return (a.dispatch_requested_at ?? 0) - (b.dispatch_requested_at ?? 0)
+      })
+      .map((t) => toTask(t as Parameters<typeof toTask>[0]))
+  },
+})
+
+/**
  * Get tasks by project with optional status filter
  */
 export const getByProject = query({
@@ -732,6 +772,57 @@ export const clearAgentActivity = mutation({
       agent_output_preview: undefined,
       updated_at: Date.now(),
     })
+  },
+})
+
+/**
+ * Update dispatch status for a task.
+ * Called when a dispatch is requested, started, completed, or failed.
+ */
+export const updateDispatchStatus = mutation({
+  args: {
+    id: v.string(),
+    dispatch_status: v.union(
+      v.literal('pending'),
+      v.literal('spawning'),
+      v.literal('active'),
+      v.literal('completed'),
+      v.literal('failed')
+    ),
+    dispatch_requested_at: v.optional(v.number()),
+    dispatch_requested_by: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Task> => {
+    const existing = await ctx.db
+      .query('tasks')
+      .withIndex('by_uuid', (q) => q.eq('id', args.id))
+      .unique()
+
+    if (!existing) {
+      throw new Error(`Task not found: ${args.id}`)
+    }
+
+    const now = Date.now()
+    const updates: Record<string, unknown> = {
+      dispatch_status: args.dispatch_status,
+      updated_at: now,
+    }
+
+    if (args.dispatch_requested_at !== undefined) {
+      updates.dispatch_requested_at = args.dispatch_requested_at
+    }
+    if (args.dispatch_requested_by !== undefined) {
+      updates.dispatch_requested_by = args.dispatch_requested_by
+    }
+
+    await ctx.db.patch(existing._id, updates)
+
+    const updated = await ctx.db.get(existing._id)
+    if (!updated) {
+      throw new Error('Failed to update dispatch status')
+    }
+
+    return toTask(updated as Parameters<typeof toTask>[0])
   },
 })
 

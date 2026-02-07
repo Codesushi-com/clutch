@@ -66,6 +66,14 @@ export async function POST(
     const now = Date.now()
     const requestedBy = body.requestedBy || "api"
 
+    // Update task dispatch status
+    await convex.mutation(api.tasks.updateDispatchStatus, {
+      id,
+      dispatch_status: 'pending',
+      dispatch_requested_at: now,
+      dispatch_requested_by: requestedBy,
+    })
+
     // Log event to events table for agent dispatch
     await convex.mutation(api.events.create, {
       projectId: task.project_id,

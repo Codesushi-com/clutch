@@ -86,7 +86,8 @@ export default defineSchema({
     .index("by_project_status", ["project_id", "status"])
     .index("by_assignee", ["assignee"])
     .index("by_project_position", ["project_id", "status", "position"])
-    .index("by_session_id", ["session_id"]),
+    .index("by_session_id", ["session_id"])
+    .index("by_dispatch_status", ["dispatch_status"]),
 
   // Comments
   comments: defineTable({
