@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus, BarChart3 } from "lucide-react"
+import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus, BarChart3, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useUpdateTask, useDeleteTask } from "@/lib/stores/task-store"
@@ -9,6 +9,7 @@ import { CommentThread } from "./comment-thread"
 import { CommentInput } from "./comment-input"
 import { DependencyPicker } from "./dependency-picker"
 import { TaskAnalysisContent } from "./task-analysis-content"
+import { MarkdownContent } from "@/components/chat/markdown-content"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
 import { useParams } from "next/navigation"
 import type { Task, TaskStatus, TaskPriority, TaskRole, Comment, DispatchStatus, TaskDependencySummary } from "@/lib/types"
@@ -79,6 +80,10 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   // Tab state
   const [activeTab, setActiveTab] = useState("description")
 
+  // Editing state for description and title
+  const [isEditingDescription, setIsEditingDescription] = useState(false)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+
   // Project slug for links
   const params = useParams()
   const projectSlug = params.slug as string
@@ -139,6 +144,10 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
       setTags(taskTags.join(", "))
       setShowDeleteConfirm(false)
       setDispatchStatus(task.dispatch_status)
+
+      // Reset editing states
+      setIsEditingDescription(false)
+      setIsEditingTitle(false)
 
       // Fetch comments
       fetchComments(task.id)
@@ -353,12 +362,31 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
               </div>
 
               {/* Title */}
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full bg-transparent text-xl font-semibold text-[var(--text-primary)] border-0 border-b border-transparent hover:border-[var(--border)] focus:border-[var(--accent-blue)] focus:outline-none px-0 py-1 transition-colors"
-                placeholder="Task title"
-              />
+              {isEditingTitle ? (
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  onBlur={() => setIsEditingTitle(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setIsEditingTitle(false)
+                    }
+                  }}
+                  className="w-full bg-transparent text-xl font-semibold text-[var(--text-primary)] border-0 border-b border-[var(--accent-blue)] focus:border-[var(--accent-blue)] focus:outline-none px-0 py-1 transition-colors"
+                  placeholder="Task title"
+                  autoFocus
+                />
+              ) : (
+                <div
+                  onClick={() => setIsEditingTitle(true)}
+                  className="w-full group cursor-text"
+                >
+                  <h1 className="text-xl font-semibold text-[var(--text-primary)] px-0 py-1 border-b border-transparent hover:border-[var(--border)] transition-colors flex items-center justify-between">
+                    {title || <span className="text-[var(--text-muted)]">Task title</span>}
+                    <Pencil className="h-4 w-4 text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </h1>
+                </div>
+              )}
 
               {/* Status badge */}
               <div className="mt-2 flex items-center gap-2">
@@ -415,12 +443,42 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                   <div className="flex-1 min-h-0 flex flex-col">
                     {/* Description Tab */}
                     <TabsContent value="description" className="mt-0 flex-1 flex flex-col">
-                      <textarea
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Add a description..."
-                        className="w-full flex-1 min-h-[200px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-y"
-                      />
+                      {isEditingDescription ? (
+                        <textarea
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          onBlur={() => setIsEditingDescription(false)}
+                          onKeyDown={(e) => {
+                            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                              setIsEditingDescription(false)
+                            }
+                          }}
+                          placeholder="Add a description..."
+                          className="w-full flex-1 min-h-[200px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-y"
+                          autoFocus
+                        />
+                      ) : (
+                        <div
+                          onClick={() => setIsEditingDescription(true)}
+                          className="w-full flex-1 min-h-[200px] bg-[var(--bg-primary)] border border-transparent hover:border-[var(--border)] rounded-lg px-3 py-2 cursor-text group transition-colors"
+                        >
+                          {description.trim() ? (
+                            <div className="relative">
+                              <MarkdownContent content={description} />
+                              <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity p-1">
+                                <Pencil className="h-4 w-4 text-[var(--text-muted)]" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="relative h-full flex items-start">
+                              <span className="text-[var(--text-muted)] text-sm">Click to add a description...</span>
+                              <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity p-1">
+                                <Pencil className="h-4 w-4 text-[var(--text-muted)]" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </TabsContent>
 
                     {/* Comments Tab */}
