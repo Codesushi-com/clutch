@@ -85,7 +85,9 @@ export class AgentManager {
     const now = Date.now()
 
     // Check tombstone — don't re-spawn agents that were recently reaped in the same role
-    const TOMBSTONE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+    // Analyzers get a shorter TTL since the analysis record is the primary guard against re-spawning
+    const isAnalyzer = params.role === "analyzer"
+    const TOMBSTONE_TTL_MS = isAnalyzer ? 30_000 : 10 * 60 * 1000 // 30s for analyzers, 10min for others
     const tombstoneKey = `${params.taskId}:${params.role}`
     const tombstoneTime = this.tombstones.get(tombstoneKey)
     if (tombstoneTime && (now - tombstoneTime) < TOMBSTONE_TTL_MS) {
@@ -359,9 +361,13 @@ export class AgentManager {
    * Check if a task+role was recently reaped (tombstoned).
    * Returns true if the task should NOT be re-spawned in this role.
    * If role is omitted, checks if ANY role for this task is tombstoned.
+   *
+   * Analyzers get a shorter TTL (30s) since the analysis record is the primary guard.
+   * Other roles get the standard 10 minute TTL.
    */
   isRecentlyReaped(taskId: string, role?: string): boolean {
-    const TOMBSTONE_TTL_MS = 10 * 60 * 1000
+    const isAnalyzer = role === "analyzer"
+    const TOMBSTONE_TTL_MS = isAnalyzer ? 30_000 : 10 * 60 * 1000
     const now = Date.now()
 
     if (role) {

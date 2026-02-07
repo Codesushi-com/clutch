@@ -374,6 +374,58 @@ async function runProjectCycle(
         }
       }
 
+      // Handle analyzer agents that were reaped without creating an analysis record
+      // This prevents infinite re-analysis loops by recording a failure analysis
+      if (outcome.role === "analyzer") {
+        try {
+          // Check if an analysis already exists for this task
+          const existingAnalysis = await convex.query(api.taskAnalyses.getByTask, {
+            task_id: outcome.taskId,
+          })
+
+          if (!existingAnalysis) {
+            // No analysis exists - create a failure record to prevent re-spawning
+            const isNoReply = outcome.reply === "completed" && !outcome.success
+            const isStale = outcome.reply === "stale_timeout"
+            const failureSummary = isStale
+              ? `Analyzer timed out after ${Math.round(outcome.durationMs / 60000)} minutes without completing analysis.`
+              : isNoReply
+                ? "Analyzer failed to produce a response (NO_REPLY)."
+                : `Analyzer failed: ${outcome.error || "unknown error"}`
+
+            await convex.mutation(api.taskAnalyses.create, {
+              task_id: outcome.taskId,
+              session_key: outcome.sessionKey,
+              role: "analyzer",
+              model: "sonnet",
+              prompt_version_id: "unknown", // We don't have access to the original prompt version here
+              outcome: "failure",
+              token_count: outcome.usage?.totalTokens ?? 0,
+              duration_ms: outcome.durationMs,
+              failure_modes: JSON.stringify(["agent_failed"]),
+              analysis_summary: failureSummary,
+              confidence: 1.0, // High confidence that the analysis failed
+            })
+
+            console.log(`[WorkLoop] Recorded failed analysis for task ${outcome.taskId}: ${isStale ? "stale" : isNoReply ? "no_reply" : "error"}`)
+            await logRun(convex, {
+              projectId: project.id,
+              cycle,
+              phase: "cleanup",
+              action: "analyzer_failure_recorded",
+              taskId: outcome.taskId,
+              details: {
+                reason: isStale ? "stale" : isNoReply ? "no_reply" : "error",
+                error: outcome.error,
+              },
+            })
+          }
+        } catch (err) {
+          // Non-fatal - log and continue
+          console.warn(`[WorkLoop] Failed to record analyzer failure for ${outcome.taskId}:`, err)
+        }
+      }
+
       // Handle reviewer agents that finished without merging
       // This detects "changes requested" and routes to fixer role
       if (!isStale && outcome.role === "reviewer") {
