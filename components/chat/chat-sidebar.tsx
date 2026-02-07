@@ -45,7 +45,8 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   const [creating, setCreating] = useState(false)
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null)
   
-  // Reactive Convex subscription for all project tasks (replaces polling)
+  // Reactive Convex subscription for all project tasks - updates in real-time
+  // when tasks are created, updated, moved, or deleted
   const { tasks: allTasks, isLoading: loadingTasks } = useConvexTasks(projectId)
   
   // Section expansion state
