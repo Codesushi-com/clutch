@@ -56,8 +56,10 @@ export const useSessionStore = create<SessionState>()(
   devtools(
     (set, get) => ({
       // Initial state
+      // NOTE: isLoading starts as false to prevent stuck skeleton on initial mount.
+      // The component will set isLoading to true when it starts fetching.
       sessions: [],
-      isLoading: true,
+      isLoading: false,
       isInitialized: false,
       error: null,
       filters: {},
