@@ -130,6 +130,17 @@ async function processTask(ctx: AnalyzeContext, task: Task): Promise<TaskProcess
     }
   }
 
+  // Check if this task was recently reaped — don't re-spawn
+  if (agents.isRecentlyReaped(task.id)) {
+    return {
+      spawned: false,
+      details: {
+        reason: "recently_reaped",
+        taskId: task.id,
+      },
+    }
+  }
+
   // Determine outcome based on status
   const outcome = determineOutcome(task)
 
@@ -142,13 +153,8 @@ async function processTask(ctx: AnalyzeContext, task: Task): Promise<TaskProcess
     }
   }
 
-  const promptVersionId = taskDetails.task.prompt_version_id
-  if (!promptVersionId) {
-    return {
-      spawned: false,
-      details: { reason: "no_prompt_version_id", taskId: task.id },
-    }
-  }
+  // Use prompt_version_id if available, otherwise "legacy" for older tasks
+  const promptVersionId = taskDetails.task.prompt_version_id ?? "legacy"
 
   // Build analyzer prompt
   const prompt = buildAnalyzerPrompt({

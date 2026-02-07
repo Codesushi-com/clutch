@@ -16,6 +16,7 @@ export default defineSchema({
     chat_layout: v.union(v.literal("slack"), v.literal("imessage")),
     work_loop_enabled: v.boolean(),
     work_loop_max_agents: v.optional(v.number()),
+    work_loop_schedule: v.optional(v.string()),
     created_at: v.number(),
     updated_at: v.number(),
   })
@@ -86,7 +87,8 @@ export default defineSchema({
     .index("by_project_status", ["project_id", "status"])
     .index("by_assignee", ["assignee"])
     .index("by_project_position", ["project_id", "status", "position"])
-    .index("by_session_id", ["session_id"]),
+    .index("by_session_id", ["session_id"])
+    .index("by_dispatch_status", ["dispatch_status"]),
 
   // Comments
   comments: defineTable({
@@ -214,6 +216,7 @@ export default defineSchema({
     blocking: v.boolean(),
     responded_at: v.optional(v.number()),
     response: v.optional(v.string()),
+    delivered_at: v.optional(v.number()), // When notification was sent to user
     created_at: v.number(),
   })
     .index("by_uuid", ["id"])
@@ -221,6 +224,7 @@ export default defineSchema({
     .index("by_kind", ["kind"])
     .index("by_blocking", ["blocking"])
     .index("by_responded", ["responded_at"])
+    .index("by_delivered", ["delivered_at"])
     .index("by_created", ["created_at"]),
 
   // Task Dependencies
@@ -242,6 +246,7 @@ export default defineSchema({
     cycle: v.number(),
     phase: v.union(
       v.literal("cleanup"),
+      v.literal("notify"),
       v.literal("review"),
       v.literal("work"),
       v.literal("analyze"),

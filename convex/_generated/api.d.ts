@@ -11,6 +11,7 @@
 import type * as _helpers from "../_helpers.js";
 import type * as chats from "../chats.js";
 import type * as comments from "../comments.js";
+import type * as events from "../events.js";
 import type * as gate from "../gate.js";
 import type * as metrics from "../metrics.js";
 import type * as notifications from "../notifications.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   _helpers: typeof _helpers;
   chats: typeof chats;
   comments: typeof comments;
+  events: typeof events;
   gate: typeof gate;
   metrics: typeof metrics;
   notifications: typeof notifications;

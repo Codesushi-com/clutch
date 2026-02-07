@@ -5,28 +5,22 @@ import { api } from "@/convex/_generated/api"
 type RouteParams = { params: Promise<{ id: string; depId: string }> }
 
 // DELETE /api/tasks/[id]/dependencies/[depId] — Remove a dependency
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  const { id, depId } = await params
+export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+  const { depId } = await params
 
   try {
     const convex = getConvexClient()
 
-    // Verify task exists
-    const taskResult = await convex.query(api.tasks.getById, { id })
-    if (!taskResult) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 })
+    // Call the remove mutation (by dependency ID)
+    const success = await convex.mutation(api.taskDependencies.remove, {
+      id: depId,
+    })
+
+    if (!success) {
+      return NextResponse.json({ error: "Dependency not found" }, { status: 404 })
     }
 
-    // TODO: needs Convex function - deleteDependency mutation
-    // For now, return error indicating not implemented
-    return NextResponse.json(
-      { error: "Removing dependencies not yet implemented in Convex" },
-      { status: 501 }
-    )
-
-    // When implemented:
-    // 1. Verify the dependency exists and belongs to this task
-    // 2. Delete the dependency link using depId
+    return NextResponse.json({ success: true }, { status: 200 })
   } catch (error) {
     console.error("[Dependencies API] Error removing dependency:", error)
     return NextResponse.json(

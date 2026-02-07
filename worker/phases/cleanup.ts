@@ -205,7 +205,91 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   })
   actions += worktreeActions
 
+  // ------------------------------------------------------------------
+  // 4. Close stale browser tabs
+  //
+  //    Agents open browser tabs for QA/review and often forget to close
+  //    them. Each Chromium tab leaks 100-500MB of memory, eventually
+  //    crashing the server. Close any tabs older than 10 minutes that
+  //    aren't the about:blank or extension pages.
+  // ------------------------------------------------------------------
+  const tabActions = await cleanStaleBrowserTabs({
+    projectId,
+    cycle,
+    log,
+  })
+  actions += tabActions
+
   return { actions }
+}
+
+// ============================================
+// Browser Tab Cleanup
+// ============================================
+
+interface BrowserCleanupContext {
+  projectId: string
+  cycle: number
+  log: (params: LogRunParams) => Promise<void>
+}
+
+async function cleanStaleBrowserTabs(ctx: BrowserCleanupContext): Promise<number> {
+  const { projectId, cycle, log } = ctx
+  let actions = 0
+
+  try {
+    // Query the browser control server for open tabs
+    const response = await fetch("http://127.0.0.1:18791/api/tabs", {
+      signal: AbortSignal.timeout(5_000),
+    })
+
+    if (!response.ok) return 0
+
+    const data = await response.json() as {
+      tabs?: Array<{ targetId: string; url: string; title: string }>
+    }
+
+    const tabs = data.tabs ?? []
+
+    // Close tabs that look like agent-opened pages (localhost:3002, trap URLs)
+    // Keep about:blank, chrome://, extension pages, and non-trap URLs
+    const stalePatterns = [
+      /localhost:3002/,
+      /192\.168\.7\.200:3002/,
+      /127\.0\.0\.1:3002/,
+    ]
+
+    for (const tab of tabs) {
+      const isAgentTab = stalePatterns.some(p => p.test(tab.url))
+      if (!isAgentTab) continue
+
+      try {
+        await fetch(`http://127.0.0.1:18791/api/close?targetId=${encodeURIComponent(tab.targetId)}`, {
+          method: "POST",
+          signal: AbortSignal.timeout(3_000),
+        })
+
+        await log({
+          projectId,
+          cycle,
+          phase: "cleanup",
+          action: "browser_tab_closed",
+          details: { url: tab.url, title: tab.title?.slice(0, 60) },
+        })
+        actions++
+      } catch {
+        // Non-fatal — tab may have already closed
+      }
+    }
+
+    if (actions > 0) {
+      console.log(`[cleanup] Closed ${actions} stale browser tab(s)`)
+    }
+  } catch {
+    // Browser control server may not be running — that's fine
+  }
+
+  return actions
 }
 
 // ============================================

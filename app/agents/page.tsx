@@ -2,216 +2,218 @@
 
 /**
  * Agents Page
- * Manage and monitor AI agents
+ * Shows work loop agent analytics grouped by role
  */
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
-import { Bot, Plus, Activity, Zap, Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useMemo } from 'react';
+import { Bot, Activity, Clock, Cpu, TrendingUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useOpenClawHttpRpc } from '@/lib/hooks/use-openclaw-http';
-import { Agent, AgentDetail } from '@/lib/types';
-import { AgentConfigModal } from '@/components/agents/agent-config-modal';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useQuery } from 'convex/react';
+import { api } from '@/convex/_generated/api';
+import Link from 'next/link';
+import type { Task } from '@/lib/types';
+import { useAgentHistory } from '@/lib/hooks/use-work-loop';
 
-function AgentCard({ 
-  agent, 
-  router, 
-  onConfigure 
-}: { 
-  agent: Agent; 
-  router: AppRouterInstance;
-  onConfigure: (agent: Agent) => void;
-}) {
-  const statusColors = {
-    active: 'bg-green-500',
-    idle: 'bg-yellow-500',
-    offline: 'bg-red-500',
-  };
+interface AgentStats {
+  role: string;
+  count: number;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  avgDuration: number;
+  models: Map<string, number>;
+}
 
-  const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = {
-    active: 'default',
-    idle: 'secondary',
-    offline: 'destructive',
-  };
+/**
+ * Finds the first project with work_loop_enabled from the projects list.
+ */
+function useWorkLoopProject(): { projectId: string; projectSlug: string } | null {
+  const projects = useQuery(api.projects.getAll, {});
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return 'Unknown';
-    try {
-      const date = new Date(dateStr);
-      // Check if the date is valid
-      if (isNaN(date.getTime())) {
-        return 'Unknown';
-      }
-      return date.toLocaleDateString();
-    } catch {
-      return 'Unknown';
+  if (!projects) return null;
+
+  const enabled = projects.find((p) => p.work_loop_enabled);
+  if (!enabled) return null;
+
+  return { projectId: enabled.id, projectSlug: enabled.slug };
+}
+
+function calculateStats(tasks: Task[] | null): AgentStats[] {
+  if (!tasks || tasks.length === 0) return [];
+
+  const roleMap = new Map<string, AgentStats>();
+
+  for (const task of tasks) {
+    const role = task.role || 'any';
+    
+    if (!roleMap.has(role)) {
+      roleMap.set(role, {
+        role,
+        count: 0,
+        totalTokensIn: 0,
+        totalTokensOut: 0,
+        avgDuration: 0,
+        models: new Map(),
+      });
     }
-  };
+
+    const stats = roleMap.get(role)!;
+    stats.count++;
+    stats.totalTokensIn += task.agent_tokens_in || 0;
+    stats.totalTokensOut += task.agent_tokens_out || 0;
+
+    // Track model usage
+    const model = task.agent_model || 'unknown';
+    stats.models.set(model, (stats.models.get(model) || 0) + 1);
+  }
+
+  // Calculate average duration for each role
+  for (const stats of roleMap.values()) {
+    const roleTasks = tasks.filter(t => (t.role || 'any') === stats.role);
+    const totalDuration = roleTasks.reduce((acc, t) => {
+      if (t.agent_started_at && t.agent_last_active_at) {
+        return acc + (t.agent_last_active_at - t.agent_started_at);
+      }
+      return acc;
+    }, 0);
+    stats.avgDuration = roleTasks.length > 0 ? totalDuration / roleTasks.length : 0;
+  }
+
+  return Array.from(roleMap.values()).sort((a, b) => b.count - a.count);
+}
+
+function formatDuration(ms: number): string {
+  if (ms === 0) return 'N/A';
+  const minutes = Math.floor(ms / 60000);
+  const hours = Math.floor(minutes / 60);
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m`;
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens === 0) return '0';
+  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`;
+  return tokens.toString();
+}
+
+const roleColors: Record<string, string> = {
+  dev: 'bg-blue-500/20 text-blue-600 border-blue-500/30',
+  reviewer: 'bg-purple-500/20 text-purple-600 border-purple-500/30',
+  qa: 'bg-orange-500/20 text-orange-600 border-orange-500/30',
+  pm: 'bg-green-500/20 text-green-600 border-green-500/30',
+  research: 'bg-cyan-500/20 text-cyan-600 border-cyan-500/30',
+  security: 'bg-red-500/20 text-red-600 border-red-500/30',
+  any: 'bg-gray-500/20 text-gray-600 border-gray-500/30',
+};
+
+const roleLabels: Record<string, string> = {
+  dev: 'Developer',
+  reviewer: 'Code Reviewer',
+  qa: 'QA Tester',
+  pm: 'Project Manager',
+  research: 'Researcher',
+  security: 'Security',
+  any: 'General',
+};
+
+function AgentRoleCard({ stats }: { stats: AgentStats }) {
+  const colorClass = roleColors[stats.role] || roleColors.any;
+  const label = roleLabels[stats.role] || stats.role;
+  const totalTokens = stats.totalTokensIn + stats.totalTokensOut;
 
   return (
-    <div className="rounded-lg border bg-card p-6">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-muted">
-            <Bot className="h-5 w-5" />
+    <Card className="hover:border-primary/50 transition-colors">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <div className={`p-2 rounded-lg ${colorClass}`}>
+              <Bot className="h-5 w-5" />
+            </div>
+            {label}
+          </CardTitle>
+          <Badge variant="secondary" className="font-mono">
+            {stats.count} tasks
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg bg-muted p-3">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+              <TrendingUp className="h-3 w-3" />
+              Tokens
+            </div>
+            <div className="text-lg font-semibold">{formatTokens(totalTokens)}</div>
+            <div className="text-xs text-muted-foreground">
+              {formatTokens(stats.totalTokensIn)} in / {formatTokens(stats.totalTokensOut)} out
+            </div>
           </div>
-          <div>
-            <h3 className="font-semibold">{agent.name}</h3>
-            <p className="text-sm text-muted-foreground">{agent.description || 'AI Agent'}</p>
+          <div className="rounded-lg bg-muted p-3">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+              <Clock className="h-3 w-3" />
+              Avg Duration
+            </div>
+            <div className="text-lg font-semibold">{formatDuration(stats.avgDuration)}</div>
           </div>
         </div>
-        <Badge variant={statusVariants[agent.status]}>
-          <span 
-            className={`w-2 h-2 rounded-full ${statusColors[agent.status]} mr-2`}
-          />
-          {agent.status}
-        </Badge>
-      </div>
 
-      <div className="space-y-2 text-sm">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Zap className="h-4 w-4" />
-          <span>Model: {agent.model || 'Unknown'}</span>
+        {/* Models Used */}
+        <div>
+          <div className="text-xs text-muted-foreground mb-2">Models Used</div>
+          <div className="flex flex-wrap gap-2">
+            {Array.from(stats.models.entries()).map(([model, count]) => (
+              <Badge key={model} variant="outline" className="text-xs font-mono">
+                {model.split('/').pop()} ({count})
+              </Badge>
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Activity className="h-4 w-4" />
-          <span>Sessions: {typeof agent.sessionCount === 'number' && !isNaN(agent.sessionCount) ? agent.sessionCount : 0}</span>
-        </div>
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Clock className="h-4 w-4" />
-          <span>Created: {formatDate(agent.createdAt)}</span>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AgentsPageSkeleton() {
+  return (
+    <div className="container mx-auto py-8 px-4 space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-48" />
+          <Skeleton className="h-4 w-64" />
         </div>
       </div>
-
-      <div className="mt-4 pt-4 border-t flex gap-2">
-        <Button 
-          variant="default" 
-          size="sm" 
-          className="flex-1"
-          onClick={() => router.push(`/agents/${agent.id}`)}
-        >
-          View Details
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="flex-1"
-          onClick={() => onConfigure(agent)}
-        >
-          Configure
-        </Button>
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Skeleton className="h-64" />
+        <Skeleton className="h-64" />
+        <Skeleton className="h-64" />
       </div>
     </div>
   );
 }
 
 export default function AgentsPage() {
-  const router = useRouter();
-  const { listAgents, getAgent, updateAgentConfig, connected, connecting } = useOpenClawHttpRpc();
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [configModalOpen, setConfigModalOpen] = useState(false);
-  const [configAgent, setConfigAgent] = useState<AgentDetail | null>(null);
+  const project = useWorkLoopProject();
+  const { tasks, isLoading } = useAgentHistory(project?.projectId ?? null);
 
-  const fetchAgents = useCallback(async () => {
-    try {
-      setError(null);
-      setLoading(true);
-      const response = await listAgents();
-      setAgents(response.agents);
-    } catch (err) {
-      console.error('Failed to fetch agents:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch agents');
-    } finally {
-      setLoading(false);
-    }
-  }, [listAgents]);
+  const stats = useMemo(() => calculateStats(tasks), [tasks]);
 
-  const handleConfigureAgent = useCallback(async (agent: Agent) => {
-    try {
-      setError(null);
-      
-      // Get detailed agent info for configuration
-      const response = await getAgent(agent.id);
-      setConfigAgent(response.agent);
-      setConfigModalOpen(true);
-    } catch (err) {
-      console.error('Failed to load agent details via RPC:', err);
-      
-      // Fallback: Create minimal AgentDetail from the basic Agent
-      // This allows the configuration modal to work even if OpenClaw RPC isn't fully implemented
-      const fallbackAgentDetail: AgentDetail = {
-        ...agent,
-        configuration: {
-          maxTokens: undefined,
-          temperature: undefined,
-          systemPrompt: undefined,
-        },
-        stats: {
-          totalMessages: 0,
-          averageResponseTime: undefined,
-          uptime: undefined,
-        },
-        activeSessions: [],
-        totalTokens: undefined,
-        lastActivity: agent.updatedAt,
-      };
-      
-      setConfigAgent(fallbackAgentDetail);
-      setConfigModalOpen(true);
-      
-      // Show a warning but don't block the user
-      setError(`Warning: Agent configuration may be limited. RPC error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }, [getAgent]);
+  const totalTasks = tasks?.length || 0;
+  const totalTokensIn = tasks?.reduce((acc, t) => acc + (t.agent_tokens_in || 0), 0) || 0;
+  const totalTokensOut = tasks?.reduce((acc, t) => acc + (t.agent_tokens_out || 0), 0) || 0;
+  const activeAgents = tasks?.filter(t => t.agent_session_key && !t.completed_at).length || 0;
 
-  const handleSaveConfig = useCallback(async (config: {
-    model: string;
-    maxTokens?: number;
-    temperature?: number;
-    systemPrompt?: string;
-    enabled: boolean;
-  }) => {
-    if (!configAgent) return;
-
-    try {
-      await updateAgentConfig(configAgent.id, config);
-      
-      // Refresh agents list to show updated config
-      await fetchAgents();
-      
-      // Close modal
-      setConfigModalOpen(false);
-      setConfigAgent(null);
-      
-      // Clear any previous warnings
-      setError(null);
-    } catch (err) {
-      console.error('Failed to save agent configuration:', err);
-      
-      // Check if this is a "not implemented" error
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      if (errorMessage.includes('Method not found') || errorMessage.includes('not implemented')) {
-        throw new Error('Agent configuration is not yet supported. The OpenClaw agent management API is still in development.');
-      } else {
-        throw err; // Re-throw for other errors so the modal can show them
-      }
-    }
-  }, [configAgent, updateAgentConfig, fetchAgents]);
-
-  useEffect(() => {
-    if (connected) {
-      fetchAgents();
-    }
-  }, [connected, fetchAgents]);
-
-  const activeAgents = agents.filter(a => a.status === 'active');
-  const idleAgents = agents.filter(a => a.status === 'idle');
-  const totalSessions = agents.reduce((acc, agent) => acc + (typeof agent.sessionCount === 'number' && !isNaN(agent.sessionCount) ? agent.sessionCount : 0), 0);
+  if (isLoading || !project) {
+    return <AgentsPageSkeleton />;
+  }
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -219,145 +221,89 @@ export default function AgentsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Bot className="h-8 w-8" />
+            <Cpu className="h-8 w-8" />
             Agents
           </h1>
           <p className="text-muted-foreground mt-1">
-            Manage and monitor your AI agents
+            Work loop agent analytics grouped by role
           </p>
         </div>
-        
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
-            onClick={fetchAgents}
-            disabled={loading || connecting}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button onClick={() => router.push('/agents/new')}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Agent
-          </Button>
-        </div>
       </div>
 
-      {/* Connection Status */}
-      {connecting && (
-        <Alert className="mb-8">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <AlertDescription>
-            Connecting to OpenClaw...
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {!connected && !connecting && (
-        <Alert className="mb-8" variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Not connected to OpenClaw. Unable to fetch agent data.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Error Alert */}
-      {error && (
-        <Alert className="mb-8" variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            {error}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Stats */}
+      {/* Stats Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm font-medium text-muted-foreground">Total Agents</div>
-          <div className="text-2xl font-bold mt-1">{agents.length}</div>
-        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm font-medium text-muted-foreground">Total Tasks</div>
+            <div className="text-2xl font-bold mt-1">{totalTasks}</div>
+          </CardContent>
+        </Card>
         
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm font-medium text-muted-foreground">Active</div>
-          <div className="text-2xl font-bold mt-1 text-green-600">
-            {activeAgents.length}
-          </div>
-        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm font-medium text-muted-foreground">Active Agents</div>
+            <div className="text-2xl font-bold mt-1 text-green-600">
+              {activeAgents}
+            </div>
+          </CardContent>
+        </Card>
         
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm font-medium text-muted-foreground">Idle</div>
-          <div className="text-2xl font-bold mt-1 text-yellow-600">
-            {idleAgents.length}
-          </div>
-        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm font-medium text-muted-foreground">Total Roles</div>
+            <div className="text-2xl font-bold mt-1 text-blue-600">
+              {stats.length}
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm font-medium text-muted-foreground">Total Sessions</div>
-          <div className="text-2xl font-bold mt-1">
-            {totalSessions}
-          </div>
-        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm font-medium text-muted-foreground">Total Tokens</div>
+            <div className="text-2xl font-bold mt-1">
+              {formatTokens(totalTokensIn + totalTokensOut)}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Loading State */}
-      {loading && connected && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="ml-2">Loading agents...</span>
-        </div>
-      )}
-
-      {/* Agents Grid */}
-      {!loading && agents.length > 0 && (
+      {/* Agent Roles Grid */}
+      {stats.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {agents.map((agent) => (
-            <AgentCard 
-              key={agent.id} 
-              agent={agent} 
-              router={router} 
-              onConfigure={handleConfigureAgent}
+          {stats.map((roleStats) => (
+            <AgentRoleCard
+              key={roleStats.role}
+              stats={roleStats}
             />
           ))}
         </div>
+      ) : (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12 text-muted-foreground">
+              <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <h3 className="text-lg font-semibold mb-2">No agent activity yet</h3>
+              <p className="max-w-md mx-auto">
+                Agents will appear here once the work loop starts dispatching tasks. 
+                Enable the work loop in project settings to get started.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Empty State */}
-      {!loading && agents.length === 0 && connected && !error && (
-        <div className="text-center py-12">
-          <Bot className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No agents found</h3>
-          <p className="text-muted-foreground mb-4">
-            Get started by adding your first AI agent
-          </p>
-          <Button onClick={() => router.push('/agents/new')}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Agent
-          </Button>
-        </div>
-      )}
-
-      {/* Footer info */}
-      {agents.length > 0 && (
+      {/* Recent Activity Link */}
+      {stats.length > 0 && (
         <div className="mt-8 text-center">
-          <div className="text-sm text-muted-foreground">
-            <Activity className="h-4 w-4 inline mr-1" />
-            Real-time agent monitoring via OpenClaw RPC
-          </div>
+          <Link 
+            href="/work-loop" 
+            className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-2"
+          >
+            <Activity className="h-4 w-4" />
+            View active agents in Work Loop →
+          </Link>
         </div>
       )}
-
-      {/* Configuration Modal */}
-      <AgentConfigModal
-        isOpen={configModalOpen}
-        onClose={() => {
-          setConfigModalOpen(false);
-          setConfigAgent(null);
-        }}
-        agent={configAgent}
-        onSave={handleSaveConfig}
-      />
     </div>
   );
 }

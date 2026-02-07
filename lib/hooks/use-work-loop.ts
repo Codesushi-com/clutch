@@ -108,3 +108,28 @@ export function useActiveAgentTasks(
     error: null,
   }
 }
+
+/**
+ * Reactive Convex subscription for agent activity history.
+ *
+ * Returns all tasks that have been worked on by agents (have agent_started_at),
+ * sorted by most recently started first. Used by the Agents page.
+ */
+export function useAgentHistory(
+  projectId: string | null
+): {
+  tasks: Task[] | null
+  isLoading: boolean
+  error: Error | null
+} {
+  const result = useQuery(
+    api.tasks.getAgentHistory,
+    projectId ? { projectId } : "skip"
+  )
+
+  return {
+    tasks: result ?? null,
+    isLoading: result === undefined,
+    error: null,
+  }
+}

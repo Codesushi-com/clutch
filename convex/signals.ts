@@ -22,6 +22,7 @@ function toSignal(doc: {
   blocking: boolean
   responded_at?: number
   response?: string
+  delivered_at?: number
   created_at: number
 }): Signal {
   return {
@@ -35,6 +36,7 @@ function toSignal(doc: {
     blocking: doc.blocking ? 1 : 0,
     responded_at: doc.responded_at ?? null,
     response: doc.response ?? null,
+    delivered_at: doc.delivered_at ?? null,
     created_at: doc.created_at,
   }
 }
@@ -231,6 +233,34 @@ export const getPending = query({
   },
 })
 
+/**
+ * Get undelivered blocking signals (for notification routing)
+ */
+export const getUndeliveredBlocking = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<Signal[]> => {
+    const signals = await ctx.db
+      .query('signals')
+      .withIndex('by_blocking', (q) => q.eq('blocking', true))
+      .collect()
+
+    return signals
+      .filter((s) => !s.delivered_at && !s.responded_at)
+      .sort((a, b) => {
+        const severityOrder: Record<SignalSeverity, number> = {
+          critical: 0,
+          high: 1,
+          normal: 2,
+        }
+        const sevDiff = severityOrder[a.severity as SignalSeverity] - severityOrder[b.severity as SignalSeverity]
+        if (sevDiff !== 0) return sevDiff
+        return b.created_at - a.created_at
+      })
+      .slice(0, args.limit ?? 10)
+      .map((s) => toSignal(s as Parameters<typeof toSignal>[0]))
+  },
+})
+
 // ============================================
 // Mutations
 // ============================================
@@ -331,6 +361,42 @@ export const respond = mutation({
     await ctx.db.patch(existing._id, {
       response: args.response,
       responded_at: now,
+    })
+
+    const updated = await ctx.db.get(existing._id)
+    if (!updated) {
+      throw new Error('Failed to update signal')
+    }
+
+    return toSignal(updated as Parameters<typeof toSignal>[0])
+  },
+})
+
+/**
+ * Mark a signal as delivered (notification sent to user)
+ */
+export const markDelivered = mutation({
+  args: {
+    id: v.string(),
+  },
+  handler: async (ctx, args): Promise<Signal> => {
+    const existing = await ctx.db
+      .query('signals')
+      .withIndex('by_uuid', (q) => q.eq('id', args.id))
+      .unique()
+
+    if (!existing) {
+      throw new Error(`Signal not found: ${args.id}`)
+    }
+
+    if (existing.delivered_at) {
+      throw new Error('Signal has already been delivered')
+    }
+
+    const now = Date.now()
+
+    await ctx.db.patch(existing._id, {
+      delivered_at: now,
     })
 
     const updated = await ctx.db.get(existing._id)

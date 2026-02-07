@@ -155,6 +155,17 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
     }
   }
 
+  // Check if this task was recently reaped — don't re-spawn
+  if (agents.isRecentlyReaped(task.id)) {
+    return {
+      spawned: false,
+      details: {
+        reason: "recently_reaped",
+        taskId: task.id,
+      },
+    }
+  }
+
   // Check for open PR - use PR number if recorded, otherwise search by branch
   const pr = task.pr_number
     ? await getPRByNumber(task.pr_number)
@@ -374,6 +385,12 @@ ${task.description ? `**Description:**\n${task.description}\n` : ""}
 - **DO NOT mark done** based only on code compilation — browser test required for UI changes
 - Be thorough but constructive in feedback
 - If you find architectural concerns or security issues, escalate rather than merging
+
+## CRITICAL: Browser Cleanup
+If you open ANY browser tabs during review (for UI verification, screenshots, etc.),
+you MUST close every tab you opened before finishing. Use the browser close action.
+Leaving tabs open leaks memory on the shared machine and crashes the server.
+**Close tabs immediately after taking screenshots — do not leave them open.**
 
 Start by reading \`/home/dan/src/trap/AGENTS.md\` to understand project conventions, then proceed with the review.
 `

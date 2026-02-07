@@ -59,6 +59,8 @@ export class AgentManager {
   private gateway: GatewayRpcClient
   private completedQueue: AgentOutcome[] = []
   private sessionFileReader: SessionFileReader
+  /** Tombstones: taskId → reap timestamp. Prevents re-spawning recently reaped agents. */
+  private tombstones = new Map<string, number>()
 
   constructor() {
     this.gateway = getGatewayClient()
@@ -77,6 +79,19 @@ export class AgentManager {
 
     const sessionKey = `agent:main:trap:${params.role}:${params.taskId.slice(0, 8)}`
     const now = Date.now()
+
+    // Check tombstone — don't re-spawn agents that were recently reaped
+    const TOMBSTONE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+    const tombstoneTime = this.tombstones.get(params.taskId)
+    if (tombstoneTime && (now - tombstoneTime) < TOMBSTONE_TTL_MS) {
+      const agoSec = Math.round((now - tombstoneTime) / 1000)
+      console.log(`[AgentManager] Skipping spawn for ${params.taskId.slice(0, 8)} — reaped ${agoSec}s ago (tombstone)`)
+      throw new Error(`Task ${params.taskId.slice(0, 8)} was reaped ${agoSec}s ago, skipping re-spawn`)
+    }
+    // Clear expired tombstones periodically
+    for (const [tid, ts] of this.tombstones) {
+      if ((now - ts) > TOMBSTONE_TTL_MS) this.tombstones.delete(tid)
+    }
 
     // Create the long-running RPC promise
     const promise = this._runAgent(params, sessionKey, now)
@@ -223,6 +238,7 @@ export class AgentManager {
         reaped.push(outcome)
         this.completedQueue.push(outcome)
         this.agents.delete(taskId)
+        this.tombstones.set(taskId, now)
       }
     }
 
@@ -283,6 +299,21 @@ export class AgentManager {
    */
   has(taskId: string): boolean {
     return this.agents.has(taskId)
+  }
+
+  /**
+   * Check if a task was recently reaped (tombstoned).
+   * Returns true if the task should NOT be re-spawned.
+   */
+  isRecentlyReaped(taskId: string): boolean {
+    const TOMBSTONE_TTL_MS = 10 * 60 * 1000
+    const ts = this.tombstones.get(taskId)
+    if (!ts) return false
+    if ((Date.now() - ts) > TOMBSTONE_TTL_MS) {
+      this.tombstones.delete(taskId)
+      return false
+    }
+    return true
   }
 
   /**

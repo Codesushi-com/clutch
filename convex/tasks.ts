@@ -141,6 +141,46 @@ export const getByStatus = query({
 })
 
 /**
+ * Get tasks with pending dispatch status.
+ * Optionally filter by project ID.
+ */
+export const getPendingDispatches = query({
+  args: {
+    projectId: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Task[]> => {
+    let tasks
+
+    if (args.projectId) {
+      // Get pending dispatches for a specific project
+      // Use by_project index and filter by dispatch_status
+      tasks = await ctx.db
+        .query('tasks')
+        .withIndex('by_project', (q) => q.eq('project_id', args.projectId!))
+        .filter((q) => q.eq('dispatch_status', 'pending'))
+        .collect()
+    } else {
+      // Get all pending dispatches across all projects
+      tasks = await ctx.db
+        .query('tasks')
+        .withIndex('by_dispatch_status', (q) => q.eq('dispatch_status', 'pending'))
+        .collect()
+    }
+
+    // Sort by priority then dispatch time
+    const priorityOrder: Record<TaskPriority, number> = { urgent: 1, high: 2, medium: 3, low: 4 }
+    return tasks
+      .sort((a, b) => {
+        const pa = priorityOrder[a.priority as TaskPriority] || 3
+        const pb = priorityOrder[b.priority as TaskPriority] || 3
+        if (pa !== pb) return pa - pb
+        return (a.dispatch_requested_at ?? 0) - (b.dispatch_requested_at ?? 0)
+      })
+      .map((t) => toTask(t as Parameters<typeof toTask>[0]))
+  },
+})
+
+/**
  * Get tasks by project with optional status filter
  */
 export const getByProject = query({
@@ -318,6 +358,27 @@ export const getWithActiveAgents = query({
     // Sort by most recently active first
     return tasks
       .sort((a, b) => (b.agent_last_active_at ?? 0) - (a.agent_last_active_at ?? 0))
+      .map((t) => toTask(t as Parameters<typeof toTask>[0]))
+  },
+})
+
+/**
+ * Get agent activity history for a project
+ * Returns all tasks that have been worked on by agents (have agent_started_at)
+ * Used by the Agents page to show agent analytics grouped by role
+ */
+export const getAgentHistory = query({
+  args: { projectId: v.string() },
+  handler: async (ctx, args): Promise<Task[]> => {
+    const tasks = await ctx.db
+      .query('tasks')
+      .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
+      .filter((q) => q.neq('agent_started_at', undefined))
+      .collect()
+
+    // Sort by most recently started first
+    return tasks
+      .sort((a, b) => (b.agent_started_at ?? 0) - (a.agent_started_at ?? 0))
       .map((t) => toTask(t as Parameters<typeof toTask>[0]))
   },
 })
@@ -735,6 +796,57 @@ export const clearAgentActivity = mutation({
   },
 })
 
+/**
+ * Update dispatch status for a task.
+ * Called when a dispatch is requested, started, completed, or failed.
+ */
+export const updateDispatchStatus = mutation({
+  args: {
+    id: v.string(),
+    dispatch_status: v.union(
+      v.literal('pending'),
+      v.literal('spawning'),
+      v.literal('active'),
+      v.literal('completed'),
+      v.literal('failed')
+    ),
+    dispatch_requested_at: v.optional(v.number()),
+    dispatch_requested_by: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Task> => {
+    const existing = await ctx.db
+      .query('tasks')
+      .withIndex('by_uuid', (q) => q.eq('id', args.id))
+      .unique()
+
+    if (!existing) {
+      throw new Error(`Task not found: ${args.id}`)
+    }
+
+    const now = Date.now()
+    const updates: Record<string, unknown> = {
+      dispatch_status: args.dispatch_status,
+      updated_at: now,
+    }
+
+    if (args.dispatch_requested_at !== undefined) {
+      updates.dispatch_requested_at = args.dispatch_requested_at
+    }
+    if (args.dispatch_requested_by !== undefined) {
+      updates.dispatch_requested_by = args.dispatch_requested_by
+    }
+
+    await ctx.db.patch(existing._id, updates)
+
+    const updated = await ctx.db.get(existing._id)
+    if (!updated) {
+      throw new Error('Failed to update dispatch status')
+    }
+
+    return toTask(updated as Parameters<typeof toTask>[0])
+  },
+})
+
 // ============================================
 // Helper Functions
 // ============================================
@@ -941,10 +1053,9 @@ export const getBySessionId = query({
  *
  * Returns tasks that:
  * - Are in 'done' status OR were bounced (ready after in_progress) OR abandoned (backlog after in_progress)
- * - Have a prompt_version_id (tracking enabled)
  * - Don't have a taskAnalyses record yet
  *
- * For successful tasks (done), only ~25% are sampled randomly.
+ * For successful tasks (done), analyzes all tasks (not sampled) to populate metrics quickly.
  * For failed tasks (bounced/abandoned), all are returned.
  */
 export const getUnanalyzed = query({
@@ -953,18 +1064,20 @@ export const getUnanalyzed = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Task[]> => {
-    // Get all tasks for this project that have prompt_version_id
+    // Get all completed/failed tasks for this project (not just those with prompt_version_id)
     const allTasks = await ctx.db
       .query('tasks')
       .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
       .collect()
 
-    const tasksWithTracking = allTasks.filter((t) => t.prompt_version_id !== undefined && t.prompt_version_id !== null)
+    // Filter to terminal states that should be analyzed
+    const terminalTasks = allTasks.filter((t) => {
+      return t.status === 'done' || t.status === 'ready' || t.status === 'backlog'
+    })
 
-    // Get all existing analyses for these tasks
     const unanalyzedTasks: Task[] = []
 
-    for (const task of tasksWithTracking) {
+    for (const task of terminalTasks) {
       // Check if task already has an analysis
       const existingAnalysis = await ctx.db
         .query('taskAnalyses')
@@ -976,13 +1089,9 @@ export const getUnanalyzed = query({
       }
 
       // Check if task qualifies for analysis
-      // 1. Done tasks - sample ~25%
+      // 1. Done tasks - analyze all (removed 25% sampling to populate metrics)
       if (task.status === 'done') {
-        // Simple random sampling - use task ID hash for determinism
-        const hash = task.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-        if (hash % 4 === 0) { // 25% sample
-          unanalyzedTasks.push(toTask(task as Parameters<typeof toTask>[0]))
-        }
+        unanalyzedTasks.push(toTask(task as Parameters<typeof toTask>[0]))
         continue
       }
 

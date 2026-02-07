@@ -114,17 +114,24 @@ export interface RpcResponse<T = unknown> {
 let _consecutiveFailures = 0;
 let _backoffUntil = 0;  // timestamp (ms) — skip calls until this time
 
-function _recordFailure(): void {
-  _consecutiveFailures++;
+/** Calculate backoff delay with exponential increase (cap at 60s) */
+function _getBackoffDelay(): number {
   // Exponential backoff: 5s → 10s → 20s → 40s → 60s (cap)
-  const delaySec = Math.min(5 * Math.pow(2, _consecutiveFailures - 1), 60);
+  return Math.min(5 * Math.pow(2, _consecutiveFailures - 1), 60);
+}
+
+function _recordFailure(retryAfterSeconds?: number): void {
+  _consecutiveFailures++;
+  
+  // If server sent Retry-After, use that (with a small buffer), otherwise use exponential backoff
+  const delaySec = retryAfterSeconds 
+    ? retryAfterSeconds + 1  // Add 1s buffer to server's suggestion
+    : _getBackoffDelay();
+    
   _backoffUntil = Date.now() + delaySec * 1000;
+  
   if (_consecutiveFailures <= 3) {
     console.warn(`[OpenClaw RPC] Failure #${_consecutiveFailures} — backing off ${delaySec}s`);
-  }
-  // After the longest backoff expires, reset so the next call tries fresh
-  if (_consecutiveFailures === 1) {
-    // Only log once per backoff cycle
   }
 }
 
@@ -165,7 +172,12 @@ export async function openclawRpc<T = unknown>(
     });
 
     if (!response.ok) {
-      _recordFailure();
+      // Check for 503 with Retry-After header (server is temporarily unavailable)
+      const retryAfter = response.status === 503 
+        ? parseInt(response.headers.get('Retry-After') || '5', 10)
+        : undefined;
+      
+      _recordFailure(retryAfter);
       throw new Error(`OpenClaw HTTP ${response.status}: ${response.statusText}`);
     }
 
