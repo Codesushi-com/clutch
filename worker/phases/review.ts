@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process"
 import type { ConvexHttpClient } from "convex/browser"
 import { api } from "../../convex/_generated/api"
 import type { AgentManager } from "../agent-manager"
-// SessionsPoller removed — agent tracking now via AgentManager + Convex
 import type { WorkLoopConfig } from "../config"
 import type { Task } from "../../lib/types"
 
@@ -26,7 +25,6 @@ interface LogRunParams {
 interface ReviewContext {
   convex: ConvexHttpClient
   agents: AgentManager
-  sessions?: unknown // unused, kept for interface compat
   config: WorkLoopConfig
   cycle: number
   projectId: string

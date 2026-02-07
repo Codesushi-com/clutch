@@ -11,7 +11,6 @@ import { loadConfig } from "./config"
 import { api } from "../convex/_generated/api"
 import { logRun, logCycleComplete } from "./logger"
 import { agentManager } from "./agent-manager"
-import { sessionsPoller } from "./sessions"
 import { runCleanup } from "./phases/cleanup"
 import { runReview } from "./phases/review"
 import type { Project } from "../lib/types"
@@ -245,7 +244,6 @@ async function runProjectCycle(
       const result = await runReview({
         convex,
         agents: agentManager,
-        sessions: sessionsPoller,
         config: loadConfig(),
         cycle,
         projectId: project.id,
