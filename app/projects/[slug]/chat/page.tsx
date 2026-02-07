@@ -257,8 +257,17 @@ export default function ChatPage({ params }: PageProps) {
     // Save user message to Convex
     await sendMessageToDb(activeChat.id, messageContent, "dan")
 
-    // Show thinking indicator immediately (optimistic - local + Convex)
+    // Show thinking indicator immediately (optimistic local update)
     void setTyping(activeChat.id, "ada", "thinking")
+
+    // Also write to Convex so the agent_end clear (which only clears Convex)
+    // has something to delete. Without this, the local indicator persists because
+    // Convex never had a typing state to clear, so the subscription never fires.
+    void fetch(`/api/chats/${activeChat.id}/typing`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ typing: true, author: "ada", state: "thinking" }),
+    })
 
     // Build message for OpenClaw (include project context on first message)
     let openClawMessage = messageContent
@@ -272,8 +281,13 @@ export default function ChatPage({ params }: PageProps) {
       await sendChatMessage(sessionKey, openClawMessage)
     } catch (error) {
       console.error("[Chat] Failed to send to OpenClaw:", error)
-      // Clear typing indicator on send failure
+      // Clear typing indicator on send failure (both local and Convex)
       void setTyping(activeChat.id, "ada", false)
+      void fetch(`/api/chats/${activeChat.id}/typing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ typing: false, author: "ada" }),
+      })
     }
   }
 
@@ -286,6 +300,12 @@ export default function ChatPage({ params }: PageProps) {
       console.error("[Chat] Failed to abort chat:", error)
     } finally {
       void setTyping(activeChat.id, "ada", false)
+      // Also clear Convex typing in case abort doesn't trigger agent_end cleanly
+      void fetch(`/api/chats/${activeChat.id}/typing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ typing: false, author: "ada" }),
+      })
       await sendMessageToDb(activeChat.id, "_Response cancelled by user_", "system")
     }
   }

@@ -355,12 +355,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const currentTyping = state.typingIndicators[chatId] || []
 
       // Clear typing indicators for authors who have new messages
-      // (e.g., Ada's thinking indicator clears when her response arrives)
+      // (e.g., Ada's thinking indicator clears when her response arrives).
+      // Compare last message IDs rather than lengths — length-only comparison
+      // can miss updates from edits, reorders, or reference identity changes.
       let updatedTyping = currentTyping
-      if (currentTyping.length > 0 && messages.length > prevMessages.length) {
-        const newMessages = messages.slice(prevMessages.length)
-        const authorsWithNewMessages = new Set(newMessages.map((m) => m.author))
-        updatedTyping = currentTyping.filter((t) => !authorsWithNewMessages.has(t.author))
+      if (currentTyping.length > 0 && messages.length > 0) {
+        const prevLastId = prevMessages.length > 0 ? prevMessages[prevMessages.length - 1].id : null
+        const newLastId = messages[messages.length - 1].id
+        if (prevLastId !== newLastId) {
+          // Find messages that weren't in the previous set
+          const prevIds = new Set(prevMessages.map((m) => m.id))
+          const newMessages = messages.filter((m) => !prevIds.has(m.id))
+          if (newMessages.length > 0) {
+            const authorsWithNewMessages = new Set(newMessages.map((m) => m.author))
+            updatedTyping = currentTyping.filter((t) => !authorsWithNewMessages.has(t.author))
+          }
+        }
       }
 
       return {
