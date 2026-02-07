@@ -64,7 +64,19 @@ export async function POST(
       status: newStatus,
     })
 
-    // TODO: Log event to events table - needs Convex events.create function
+    // Log event to events table
+    await convex.mutation(api.events.create, {
+      projectId: task.project_id,
+      taskId: id,
+      type: 'task_completed',
+      actor: author,
+      data: JSON.stringify({
+        previous_status: task.status,
+        new_status: newStatus,
+        pr_url: prUrl ?? null,
+        has_notes: !!notes,
+      }),
+    })
 
     return NextResponse.json({
       success: true,

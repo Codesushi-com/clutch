@@ -66,8 +66,19 @@ export async function POST(
     const now = Date.now()
     const requestedBy = body.requestedBy || "api"
 
-    // TODO: Update task with dispatch request - needs Convex tasks.updateDispatchStatus mutation
-    // For now, just return success with the planned dispatch info
+    // Log event to events table for agent dispatch
+    await convex.mutation(api.events.create, {
+      projectId: task.project_id,
+      taskId: id,
+      type: 'agent_started',
+      actor: requestedBy,
+      data: JSON.stringify({
+        agent_id: agentId,
+        dispatch_status: 'pending',
+        requested_at: now,
+      }),
+    })
+
     const dispatchInfo = {
       taskId: task.id,
       agentId,
@@ -76,8 +87,6 @@ export async function POST(
       requestedAt: now,
       requestedBy,
     }
-
-    // TODO: Log event to events table - needs Convex events.create function
 
     return NextResponse.json({
       success: true,
