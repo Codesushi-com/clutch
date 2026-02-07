@@ -472,12 +472,15 @@ function deriveSessionStatus(lastActiveAt: number | undefined): SessionStatus {
 }
 
 function mapSessionType(sessionKey: string): SessionType {
+  if (!sessionKey) return 'main'
   if (sessionKey.includes(':isolated:')) return 'isolated'
   if (sessionKey.includes(':subagent:')) return 'subagent'
   return 'main'
 }
 
 function extractSessionName(sessionKey: string, taskTitle: string): string {
+  // Guard against empty/falsy session keys
+  if (!sessionKey) return taskTitle
   // Try to extract meaningful name from session key
   const parts = sessionKey.split(':')
   const lastPart = parts[parts.length - 1]
@@ -515,8 +518,11 @@ export const getAgentSessions = query({
       ? sortedTasks.slice(0, args.limit)
       : sortedTasks
 
+    // Filter out tasks with empty/falsy agent_session_key
+    const validTasks = limitedTasks.filter((t) => t.agent_session_key)
+
     // Map tasks to session-like objects
-    return limitedTasks.map((task) => {
+    return validTasks.map((task) => {
       const sessionKey = task.agent_session_key!
       const startedAt = task.agent_started_at ?? Date.now()
       const lastActiveAt = task.agent_last_active_at ?? startedAt
