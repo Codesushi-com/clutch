@@ -35,7 +35,7 @@ function WorkLoopSkeleton() {
           <div className="h-48 bg-muted rounded animate-pulse" />
           <div className="h-96 bg-muted rounded animate-pulse" />
         </div>
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-1 min-w-0 space-y-4">
           <div className="h-32 bg-muted rounded animate-pulse" />
           <div className="h-32 bg-muted rounded animate-pulse" />
           <div className="h-32 bg-muted rounded animate-pulse" />
