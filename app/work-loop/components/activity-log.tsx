@@ -22,6 +22,8 @@ interface CycleGroup {
   lastRunAt: number
   totalDurationMs: number
   meaningfulActionCount: number
+  skipCount: number
+  blockCount: number
   hasSpawns: boolean
   hasClaims: boolean
   hasErrors: boolean
@@ -42,6 +44,22 @@ const NOISE_ACTIONS = new Set([
 const SPAWN_ACTIONS = new Set(["agent_spawned", "reviewer_spawned", "spawn_failed"])
 const CLAIM_ACTIONS = new Set(["task_claimed", "dependency_blocked"])
 const ERROR_ACTIONS = new Set(["spawn_failed", "phase_failed", "error"])
+
+// Actions that count as "skipped"
+const SKIP_ACTIONS = new Set([
+  "analyzer_skipped",
+  "reviewer_skipped",
+  "signals_skip",
+])
+
+// Actions that count as "blocked"
+const BLOCK_ACTIONS = new Set([
+  "limit_reached",
+  "tombstone_blocked",
+  "no_ready_tasks",
+  "capacity_check",
+  "worktree_dirty_skip",
+])
 
 export function ActivityLog({ projectId, projectSlug }: ActivityLogProps) {
   const { runs, isLoading } = useWorkLoopRuns(projectId, 100)
@@ -73,6 +91,10 @@ export function ActivityLog({ projectId, projectSlug }: ActivityLogProps) {
         (r) => !NOISE_ACTIONS.has(r.action)
       ).length
 
+      // Count skips and blocks
+      const skipCount = cycleRuns.filter((r) => SKIP_ACTIONS.has(r.action)).length
+      const blockCount = cycleRuns.filter((r) => BLOCK_ACTIONS.has(r.action)).length
+
       // Check for important actions
       const hasSpawns = cycleRuns.some((r) => SPAWN_ACTIONS.has(r.action))
       const hasClaims = cycleRuns.some((r) => CLAIM_ACTIONS.has(r.action))
@@ -88,6 +110,8 @@ export function ActivityLog({ projectId, projectSlug }: ActivityLogProps) {
         lastRunAt: lastRun?.created_at ?? 0,
         totalDurationMs,
         meaningfulActionCount,
+        skipCount,
+        blockCount,
         hasSpawns,
         hasClaims,
         hasErrors,
@@ -222,6 +246,18 @@ function CycleRow({ cycle, projectSlug, isExpanded, onToggle }: CycleRowProps) {
             {cycle.meaningfulActionCount !== 1 ? "s" : ""}
           </span>
 
+          {/* Skip/block hints */}
+          {cycle.blockCount > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">
+              {cycle.blockCount} blocked
+            </span>
+          )}
+          {cycle.skipCount > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 whitespace-nowrap">
+              {cycle.skipCount} skipped
+            </span>
+          )}
+
           {/* Duration */}
           <span className="text-sm text-muted-foreground whitespace-nowrap">
             {formatDuration(cycle.totalDurationMs)}
@@ -230,19 +266,34 @@ function CycleRow({ cycle, projectSlug, isExpanded, onToggle }: CycleRowProps) {
           {/* Indicators for important events */}
           <div className="flex items-center gap-2 ml-auto">
             {cycle.hasErrors && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">
-                error
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 cursor-help">
+                    error
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>An error occurred this cycle</TooltipContent>
+              </Tooltip>
             )}
             {cycle.hasSpawns && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                spawn
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 cursor-help">
+                    spawn
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>An agent was started this cycle</TooltipContent>
+              </Tooltip>
             )}
             {cycle.hasClaims && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                claim
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 cursor-help">
+                    claim
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>A task was picked up for work this cycle</TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -266,6 +317,8 @@ interface RunRowProps {
 }
 
 function RunRow({ run, projectSlug }: RunRowProps) {
+  const { text, tooltip } = formatAction(run.action, run.details)
+
   return (
     <div className="flex items-center gap-3 px-4 py-2 hover:bg-muted/30 text-sm border-b last:border-b-0">
       {/* Indent to align with cycle chevron */}
@@ -278,9 +331,18 @@ function RunRow({ run, projectSlug }: RunRowProps) {
 
       {/* Action */}
       <div className="flex-1 min-w-0 truncate">
-        <span className="text-muted-foreground">
-          {formatAction(run.action, run.details)}
-        </span>
+        {tooltip ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-muted-foreground cursor-help border-b border-dotted border-muted-foreground/50">
+                {text}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{tooltip}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="text-muted-foreground">{text}</span>
+        )}
       </div>
 
       {/* Timestamp */}
@@ -310,40 +372,205 @@ function RunRow({ run, projectSlug }: RunRowProps) {
   )
 }
 
+interface FormattedAction {
+  text: string
+  tooltip?: string
+}
+
 /**
  * Format an action string with relevant details for display.
  * Parses the JSON details string to extract meaningful context.
+ * Returns both display text and optional tooltip for cryptic terms.
  */
-function formatAction(action: string, detailsJson: string | null): string {
-  if (!detailsJson) return action
+function formatAction(action: string, detailsJson: string | null): FormattedAction {
+  if (!detailsJson) {
+    return { text: action }
+  }
 
   try {
     const details = JSON.parse(detailsJson) as Record<string, unknown>
 
     switch (action) {
       case "dependency_blocked":
-        return details.title ? `blocked: ${details.title}` : action
+        return {
+          text: details.title ? `blocked: ${details.title}` : action,
+        }
       case "task_claimed":
-        return details.title ? `claimed: ${details.title}` : action
+        return {
+          text: details.title ? `claimed: ${details.title}` : action,
+        }
       case "agent_spawned":
-        return details.role ? `spawned ${details.role} agent` : action
+        return {
+          text: details.role ? `spawned ${details.role} agent` : action,
+        }
       case "spawn_failed":
-        return details.error ? `spawn failed: ${details.error}` : action
+        return {
+          text: details.error ? `spawn failed: ${details.error}` : action,
+        }
       case "ready_tasks_found":
-        return `${details.count ?? 0} ready tasks`
+        return {
+          text: `${details.count ?? 0} ready tasks`,
+        }
       case "no_claimable_tasks":
-        return `${details.readyCount ?? 0} ready but all blocked`
+        return {
+          text: `${details.readyCount ?? 0} ready but all blocked`,
+        }
       case "capacity_check":
-        return `at capacity (${details.reason ?? "limit"})`
+        return {
+          text: "at capacity",
+          tooltip: `Maximum concurrent agents reached. New work will start when a running agent finishes. (${details.reason ?? "limit"})`,
+        }
       case "cycle_complete":
-        return `cycle done (${details.total_actions ?? 0} actions)`
+        return {
+          text: `cycle done (${details.total_actions ?? 0} actions)`,
+        }
       case "reviewer_spawned":
-        return details.prTitle ? `reviewing: ${details.prTitle}` : action
+        return {
+          text: details.prTitle ? `reviewing: ${details.prTitle}` : action,
+        }
+
+      // New action types with human-readable descriptions
+      case "limit_reached":
+        return {
+          text: `Hit agent limit (global max ${details.limit ?? 4})`,
+          tooltip: "Maximum concurrent agents reached. New work will start when a running agent finishes.",
+        }
+      case "analyzer_spawned":
+        return {
+          text: "Spawned post-mortem analyzer",
+          tooltip: "An analyzer agent was started to review a completed or failed task.",
+        }
+      case "analyzer_skipped": {
+        const reason = details.reason as string
+        const reasonMap: Record<string, string> = {
+          recently_reaped: "analyzed recently",
+          analyzer_already_running: "analyzer already running",
+          task_not_found: "task not found",
+          spawn_failed: "failed to spawn",
+        }
+        return {
+          text: `Skipped analysis: ${reasonMap[reason] ?? reason}`,
+          tooltip: "Analysis was skipped because the task is not ready for post-mortem analysis.",
+        }
+      }
+      case "reviewer_skipped": {
+        const reason = details.reason as string
+        return {
+          text: `Skipped review: ${reason}`,
+          tooltip: "Review was skipped because the task is not ready for code review.",
+        }
+      }
+      case "tombstone_blocked":
+        return {
+          text: "Skipped (recently failed, cooling down)",
+          tooltip: "This task's agent was terminated recently. It will be retried after the cooldown period (10 min).",
+        }
+      case "no_ready_tasks":
+        return {
+          text: "No ready tasks",
+          tooltip: "No tasks are currently in the 'ready' state and eligible to be worked on.",
+        }
+      case "fetch_failed":
+        return {
+          text: details.error ? `Failed to fetch tasks: ${details.error}` : "Failed to fetch tasks",
+        }
+      case "claim_failed":
+        return {
+          text: details.title ? `Claim race lost on: ${details.title}` : "Claim race lost",
+          tooltip: "Another agent claimed this task first. The work loop will try another task.",
+        }
+      case "reset_orphaned_in_progress":
+        return {
+          text: "Rescued orphaned task",
+          tooltip: "A task was stuck in 'in_progress' with no active agent. It has been reset to 'ready'.",
+        }
+      case "clear_stale_agent_fields":
+        return {
+          text: "Cleared stale agent data",
+          tooltip: "Removed old agent session information from a task that no longer has a running agent.",
+        }
+      case "clear_ghost_agent_in_review":
+        return {
+          text: "Cleared ghost agent from review task",
+          tooltip: "A review task had stale agent data for a non-existent agent. It has been cleaned up.",
+        }
+      case "agent_stale_reaped":
+        return {
+          text: "Reaped agent (stale)",
+          tooltip: "An agent that was unresponsive has been terminated.",
+        }
+      case "agent_reaped":
+        return {
+          text: "Reaped agent (finished)",
+          tooltip: "A finished agent has been cleaned up.",
+        }
+      case "browser_tab_closed":
+        return {
+          text: "Closed leftover browser tab",
+          tooltip: "Cleaned up a browser tab that was left open by a previous agent.",
+        }
+      case "worktree_removed":
+        return {
+          text: "Cleaned up worktree",
+          tooltip: "Removed a temporary git worktree that was no longer needed.",
+        }
+      case "worktree_dirty_skip":
+        return {
+          text: "Skipped dirty worktree cleanup",
+          tooltip: "A worktree has uncommitted changes and cannot be safely removed.",
+        }
+      case "signal_notified":
+        return {
+          text: "Sent PM signal notification",
+          tooltip: "A private message notification was sent via Signal.",
+        }
+      case "signals_skip":
+        return {
+          text: "Skipped notifications (none needed)",
+          tooltip: "No notifications were sent because none were required at this time.",
+        }
+      case "signals_error":
+        return {
+          text: details.error ? `Notification error: ${details.error}` : "Notification error",
+        }
+      case "signals_requeued":
+        return {
+          text: `${details.count ?? 0} notifications requeued`,
+          tooltip: "Some notifications failed to send and will be retried later.",
+        }
+      case "notify_failed":
+        return {
+          text: details.error ? `Failed to send notification: ${details.error}` : "Failed to send notification",
+        }
+      case "phase_error":
+        return {
+          text: details.error ? `Phase error: ${details.error}` : "Phase error",
+        }
+      case "cycle_error":
+        return {
+          text: details.error ? `Cycle error: ${details.error}` : "Cycle error",
+        }
+      case "phase_start":
+        return {
+          text: `Started ${details.phase ?? "phase"}`,
+        }
+      case "phase_complete":
+        return {
+          text: `Completed ${details.phase ?? "phase"}`,
+        }
+      case "phase_failed":
+        return {
+          text: details.error ? `Phase failed: ${details.error}` : "Phase failed",
+        }
+      case "tasks_found":
+        return {
+          text: `${details.count ?? 0} tasks found`,
+        }
       default:
-        return action
+        return { text: action }
     }
   } catch {
-    return action
+    return { text: action }
   }
 }
 
