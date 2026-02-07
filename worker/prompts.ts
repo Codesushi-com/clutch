@@ -229,6 +229,9 @@ cd ${params.worktreeDir}
 
 # Record the branch name on the task
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"branch": "${branchName}"}'
+
+# Post progress comment
+ curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Started work. Branch: \`${branchName}\`, worktree: \`${params.worktreeDir}\`"}'
 \`\`\`
 
 **After implementation, push and create PR:**
@@ -244,14 +247,24 @@ Create the PR and capture the PR number:
 # Create PR and extract the PR number from the URL
 PR_URL=$(gh pr create --title "<title>" --body "Ticket: ${params.taskId}")
 PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+PR_TITLE="<title>"
 
 # Record the PR number on the task
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d "{\"pr_number\": $PR_NUMBER}"
+
+# Post progress comment
+curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d "{\"content\": \"Implementation complete. PR #$PR_NUMBER opened: $PR_TITLE\"}"
 \`\`\`
 
 Then update ticket to in_review:
 \`\`\`bash
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "in_review"}'
+\`\`\`
+
+**If you encounter blockers:**
+\`\`\`bash
+# Post a comment about any issues during implementation
+curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Blocker: <description of issue>"}'
 \`\`\``
 }
 
