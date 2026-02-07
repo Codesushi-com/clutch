@@ -120,9 +120,9 @@ ${params.taskDescription}
 
 ---
 
-**Your job:** Verify this ticket's requirements are met via browser QA.
+**Your job:** Verify this ticket's requirements are met via code review and testing.
 
-Use the managed browser (\`profile=openclaw\`) to navigate to http://192.168.7.200:3002 and verify functionality.
+**NOTE:** You do NOT have browser access. Verify via code review, type checking, and lint. If manual browser QA is needed, leave the ticket in \`in_review\` with a comment noting what needs visual verification.
 
 **When verified:** Mark done:
 \`\`\`bash
@@ -194,7 +194,7 @@ ${params.taskDescription}
 1. Check the diff: \`gh pr diff <number>\`
 2. Verify types: \`cd ${params.worktreeDir} && pnpm typecheck\`
 3. Verify lint: \`cd ${params.worktreeDir} && pnpm lint\`
-4. Browser QA if UI changes (use managed browser, \`profile=openclaw\`, navigate to http://192.168.7.200:3002)
+4. **You do NOT have browser access.** If UI changes need visual verification, note it in your review comment
 
 **If approved:**
 \`\`\`bash

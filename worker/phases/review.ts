@@ -366,7 +366,7 @@ ${task.description ? `**Description:**\n${task.description}\n` : ""}
 4. **Check lint in worktree:**\n   \`\`\`bash\n   cd ${worktreePath} && pnpm lint\n   \`\`\`
 5. **Verify scope** — changes should match ticket, no unrelated modifications
 6. **Check coding standards** — module imports, error handling, no inline imports
-7. **Browser QA for UI changes** — If this is a UI change, you MUST:\n   - Start the dev server if needed (or use an existing one)\n   - Open the relevant page in a browser\n   - Take a screenshot to verify the feature works\n   - Include the screenshot in your review
+7. **You do NOT have browser access.** If UI changes need visual verification, note it in your review comment
 
 ## After Review
 
@@ -382,15 +382,9 @@ ${task.description ? `**Description:**\n${task.description}\n` : ""}
 ## Important Notes
 
 - **DO NOT merge** if any check fails
-- **DO NOT mark done** based only on code compilation — browser test required for UI changes
 - Be thorough but constructive in feedback
 - If you find architectural concerns or security issues, escalate rather than merging
-
-## CRITICAL: Browser Cleanup
-If you open ANY browser tabs during review (for UI verification, screenshots, etc.),
-you MUST close every tab you opened before finishing. Use the browser close action.
-Leaving tabs open leaks memory on the shared machine and crashes the server.
-**Close tabs immediately after taking screenshots — do not leave them open.**
+- If the PR has UI changes that need visual verification, note "needs browser QA" in your review
 
 Start by reading \`/home/dan/src/trap/AGENTS.md\` to understand project conventions, then proceed with the review.
 `

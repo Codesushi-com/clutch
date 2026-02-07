@@ -77,19 +77,15 @@ Branch naming: `fix/<ticket-id-prefix>-<short-desc>` or `feat/<ticket-id-prefix>
 
 ---
 
-## Ticket Verification (REQUIRED)
+## Ticket Verification
 
-**Before marking any ticket as `done`:**
+**You do NOT have browser access.** Do not attempt to use the `browser` tool, CDP, or screenshots.
 
-1. **Browser test required** — Actually load the UI and verify the feature works
-2. **Screenshot evidence** — Take a screenshot showing the working feature if possible
-3. **If you can't test** — Leave ticket in `in_review`, note what needs manual testing
+**Before marking a ticket as `in_review`:**
+1. TypeScript compiles (`pnpm typecheck`)
+2. Lint passes (`pnpm lint`)
+3. Code review — does the implementation match the ticket?
 
-**Do NOT mark done based on:**
-- Code compiles ❌
-- Tests pass ❌
-- PR merged ❌
-
-**Only mark done when:**
-- Feature visually works in browser ✅
-- Or explicitly noted as "needs manual QA" ✅
+**If the ticket involves UI changes:**
+- Note "needs browser QA" in your PR description
+- Leave the ticket in `in_review` — a human or the main agent will verify visually
