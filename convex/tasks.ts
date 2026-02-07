@@ -10,7 +10,7 @@ import { logTaskEvent } from './task_events'
 
 type TaskStatus = "backlog" | "ready" | "in_progress" | "in_review" | "done"
 type TaskPriority = "low" | "medium" | "high" | "urgent"
-type TaskRole = "any" | "pm" | "dev" | "qa" | "research" | "security"
+type TaskRole = "any" | "pm" | "dev" | "qa" | "research" | "security" | "fixer"
 type DispatchStatus = "pending" | "spawning" | "active" | "completed" | "failed"
 
 // Convert Convex document to Task type
@@ -40,6 +40,8 @@ function toTask(doc: {
   agent_retry_count?: number
   branch?: string
   pr_number?: number
+  review_comments?: string
+  review_count?: number
   position: number
   created_at: number
   updated_at: number
@@ -71,6 +73,8 @@ function toTask(doc: {
     agent_retry_count: doc.agent_retry_count ?? null,
     branch: doc.branch ?? null,
     pr_number: doc.pr_number ?? null,
+    review_comments: doc.review_comments ?? null,
+    review_count: doc.review_count ?? null,
     position: doc.position,
     created_at: doc.created_at,
     updated_at: doc.updated_at,
@@ -787,7 +791,8 @@ export const update = mutation({
       v.literal('dev'),
       v.literal('qa'),
       v.literal('research'),
-      v.literal('security')
+      v.literal('security'),
+      v.literal('fixer')
     )),
     assignee: v.optional(v.string()),
     requires_human_review: v.optional(v.boolean()),
@@ -796,6 +801,8 @@ export const update = mutation({
     prompt_version_id: v.optional(v.string()),
     branch: v.optional(v.string()),
     pr_number: v.optional(v.number()),
+    review_comments: v.optional(v.string()),
+    review_count: v.optional(v.number()),
     agent_retry_count: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Task> => {
@@ -833,6 +840,8 @@ export const update = mutation({
     if (args.prompt_version_id !== undefined) updates.prompt_version_id = args.prompt_version_id
     if (args.branch !== undefined) updates.branch = args.branch
     if (args.pr_number !== undefined) updates.pr_number = args.pr_number
+    if (args.review_comments !== undefined) updates.review_comments = args.review_comments
+    if (args.review_count !== undefined) updates.review_count = args.review_count
     if (args.agent_retry_count !== undefined) updates.agent_retry_count = args.agent_retry_count
 
     await ctx.db.patch(existing._id, updates)

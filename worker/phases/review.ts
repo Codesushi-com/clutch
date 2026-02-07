@@ -303,6 +303,136 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
 }
 
 // ============================================
+// Post-Reap Reviewer Handling
+// ============================================
+
+import type { AgentOutcome } from "../agent-manager"
+
+interface HandleReviewerReapParams {
+  convex: ConvexHttpClient
+  outcome: AgentOutcome
+  project: ProjectInfo
+  log: (params: LogRunParams) => Promise<void>
+  cycle: number
+}
+
+/**
+ * Handle a reviewer agent that has finished reaping.
+ *
+ * If the task is still in_review after the reviewer finishes, it means
+the reviewer
+ * did NOT merge the PR. In this case:
+ * 1. Add a comment with the reviewer feedback
+ * 2. Set role to "fixer" and store review_comments
+ * 3. Move task to "ready" for the fixer to pick up
+ */
+export async function handleReviewerReap(
+  params: HandleReviewerReapParams
+): Promise<void> {
+  const { convex, outcome, project, log, cycle } = params
+
+  // Only handle reviewer role outcomes
+  if (outcome.role !== "reviewer") return
+
+  // Fetch the current task state
+  let task: Task | null = null
+  try {
+    const result = await convex.query(api.tasks.getById, { id: outcome.taskId })
+    if (result) {
+      task = result.task
+    }
+  } catch (error) {
+    console.error(`[ReviewPhase] Failed to fetch task ${outcome.taskId}:`, error)
+    return
+  }
+
+  if (!task) {
+    console.log(`[ReviewPhase] Task ${outcome.taskId} not found, skipping`)
+    return
+  }
+
+  // If task is already done, the reviewer merged it - nothing to do
+  if (task.status === "done") {
+    console.log(`[ReviewPhase] Task ${outcome.taskId.slice(0, 8)} already done, reviewer merged`)
+    return
+  }
+
+  // If task is not in_review, something else happened - don't interfere
+  if (task.status !== "in_review") {
+    console.log(
+      `[ReviewPhase] Task ${outcome.taskId.slice(0, 8)} is ${task.status}, not handling`
+    )
+    return
+  }
+
+  // Task is still in_review - reviewer did NOT merge
+  console.log(
+    `[ReviewPhase] Task ${outcome.taskId.slice(0, 8)} still in_review after reviewer, handling changes-requested`
+  )
+
+  // Extract reviewer feedback from outcome
+  const reviewerOutput = outcome.reply || "Review completed with requested changes"
+
+  // 1. Add a comment with reviewer findings
+  try {
+    await convex.mutation(api.comments.create, {
+      taskId: task.id,
+      author: "reviewer",
+      authorType: "agent",
+      content: `**Review Feedback:**\n\n${reviewerOutput}`,
+      type: "message",
+    })
+    console.log(`[ReviewPhase] Added review comment to task ${outcome.taskId.slice(0, 8)}`)
+  } catch (error) {
+    console.error(`[ReviewPhase] Failed to add comment:`, error)
+    // Non-fatal - continue
+  }
+
+  // 2. Update task: set role to fixer, store review_comments, increment review_count
+  const newReviewCount = (task.review_count ?? 0) + 1
+  try {
+    await convex.mutation(api.tasks.update, {
+      id: task.id,
+      role: "fixer",
+      review_comments: reviewerOutput,
+      review_count: newReviewCount,
+    })
+    console.log(
+      `[ReviewPhase] Set task ${outcome.taskId.slice(0, 8)} role=fixer, review_count=${newReviewCount}`
+    )
+  } catch (error) {
+    console.error(`[ReviewPhase] Failed to update task role:`, error)
+    return
+  }
+
+  // 3. Move task back to ready
+  try {
+    await convex.mutation(api.tasks.move, {
+      id: task.id,
+      status: "ready",
+    })
+    console.log(`[ReviewPhase] Moved task ${outcome.taskId.slice(0, 8)} to ready for fixer`)
+  } catch (error) {
+    console.error(`[ReviewPhase] Failed to move task to ready:`, error)
+    return
+  }
+
+  // 4. Log the action
+  await log({
+    projectId: project.id,
+    cycle,
+    phase: "review",
+    action: "changes_requested",
+    taskId: task.id,
+    sessionKey: outcome.sessionKey,
+    details: {
+      reviewCount: newReviewCount,
+      outputPreview: reviewerOutput.slice(0, 200),
+    },
+  })
+}
+
+// ============================================
 // Convex Queries
 // ============================================
 

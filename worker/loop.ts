@@ -12,7 +12,7 @@ import { api } from "../convex/_generated/api"
 import { logRun, logCycleComplete } from "./logger"
 import { agentManager } from "./agent-manager"
 import { runCleanup } from "./phases/cleanup"
-import { runReview } from "./phases/review"
+import { runReview, handleReviewerReap } from "./phases/review"
 import type { Project, WorkLoopPhase } from "../lib/types"
 import { runWork } from "./phases/work"
 import { runAnalyze } from "./phases/analyze"
@@ -371,6 +371,23 @@ async function runProjectCycle(
         } catch (err) {
           // Non-fatal — log and continue
           console.warn(`[WorkLoop] Failed to handle orphan task ${outcome.taskId}:`, err)
+        }
+      }
+
+      // Handle reviewer agents that finished without merging
+      // This detects "changes requested" and routes to fixer role
+      if (!isStale && outcome.role === "reviewer") {
+        try {
+          await handleReviewerReap({
+            convex,
+            outcome,
+            project,
+            log: (params) => logRun(convex, params),
+            cycle,
+          })
+        } catch (err) {
+          // Non-fatal — log and continue
+          console.warn(`[WorkLoop] Failed to handle reviewer reap for ${outcome.taskId}:`, err)
         }
       }
     }

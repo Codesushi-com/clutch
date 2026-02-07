@@ -49,7 +49,8 @@ export default defineSchema({
       v.literal("dev"),
       v.literal("qa"),
       v.literal("research"),
-      v.literal("security")
+      v.literal("security"),
+      v.literal("fixer")
     )),
     assignee: v.optional(v.string()),
     requires_human_review: v.boolean(),
@@ -77,6 +78,9 @@ export default defineSchema({
     // Git/PR tracking (written by dev agents)
     branch: v.optional(v.string()),
     pr_number: v.optional(v.number()),
+    // Review cycle tracking
+    review_comments: v.optional(v.string()), // Reviewer feedback for fixer
+    review_count: v.optional(v.number()), // Number of review cycles completed
     position: v.number(),
     created_at: v.number(),
     updated_at: v.number(),

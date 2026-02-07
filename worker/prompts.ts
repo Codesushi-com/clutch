@@ -10,7 +10,7 @@
 // ============================================
 
 export interface PromptParams {
-  /** The role of the agent (dev, pm, qa, research, reviewer) */
+  /** The role of the agent (dev, pm, qa, research, reviewer, fixer) */
   role: string
   /** The task ID */
   taskId: string
@@ -30,6 +30,8 @@ export interface PromptParams {
   signalResponses?: Array<{ question: string; response: string }>
   /** Optional image URLs for the PM to analyze */
   imageUrls?: string[]
+  /** Reviewer feedback for fixer tasks */
+  reviewComments?: string | null
 }
 
 // ============================================
@@ -417,6 +419,100 @@ curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Conte
 \`\`\``
 }
 
+/**
+ * Build Fixer role instructions
+ *
+ * Fixers address review feedback on existing PRs. They work in the existing
+ * worktree and branch rather than creating a new one.
+ */
+function buildFixerInstructions(params: PromptParams): string {
+  const branchName = params.taskId.slice(0, 8)
+  const reviewFeedback = params.reviewComments ?? "Address the review feedback on the PR"
+
+  return `## Task: ${params.taskTitle}
+
+**Read ${params.repoDir}/AGENTS.md first** (use: \`exec(command="cat ${params.repoDir}/AGENTS.md")\`).
+
+## Tool Usage (CRITICAL)
+- **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
+- **Use \`exec\` with \`cat\` to read files:** \`exec(command="cat /path/to/file.ts")\`
+- **Use \`rg\` to search code:** \`exec(command="rg 'pattern' ${params.worktreeDir}/app -t ts")\` (note: \`-t ts\` covers both .ts AND .tsx — do NOT use \`-t tsx\`, it doesn't exist)
+- **Use \`fd\` to find files:** \`exec(command="fd '\\.tsx$' ${params.worktreeDir}/app")\`
+- **Quote paths with brackets:** Next.js uses \`[slug]\` dirs — always quote these in shell: \`cat '${params.worktreeDir}/app/projects/[slug]/page.tsx'\`
+- **All work happens in your worktree:** \`${params.worktreeDir}\` (NOT in ${params.repoDir})
+
+Ticket ID: \`${params.taskId}\`
+Role: \`fixer\`
+
+${params.taskDescription}
+
+---
+
+## Review Feedback to Address
+
+${reviewFeedback}
+
+---
+
+**Your job:** Address the review feedback and update the existing PR.
+
+**Setup (use existing worktree):**
+\`\`\`bash
+cd ${params.repoDir}
+
+# The worktree should already exist from the original dev work
+# Just verify it exists and checkout the branch
+cd ${params.worktreeDir}
+git status
+
+# If the worktree doesn't exist, recreate it from the PR branch
+cd ${params.repoDir}
+git worktree add ${params.worktreeDir} origin/fix/${branchName} || git worktree add ${params.worktreeDir} fix/${branchName}
+cd ${params.worktreeDir}
+\`\`\`
+
+**Make your changes:**
+\`\`\`bash
+cd ${params.worktreeDir}
+
+# Make changes to address the review feedback
+# ... edit files ...
+
+# Verify types and lint pass
+pnpm typecheck
+pnpm lint
+\`\`\`
+
+**Push to the existing PR:**
+\`\`\`bash
+cd ${params.worktreeDir}
+git add -A
+git commit -m "fix: address review feedback"
+git push
+\`\`\`
+
+**Post progress comment and move back to in_review:**
+\`\`\`bash
+# Post progress comment
+curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Addressed review feedback and pushed updates to PR"}'
+
+# Move back to in_review for re-review
+curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "in_review", "role": "dev"}'
+\`\`\`
+
+**Key differences from dev role:**
+- You do NOT create a new branch or PR — use the existing one
+- You do NOT create a new worktree — use the existing one
+- Your job is to fix the issues identified in review, not implement new features
+- After fixing, the task goes back to in_review for another round of review
+
+**If you encounter blockers:**
+\`\`\`bash
+# Post a comment about any issues
+curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Fixer blocker: <description of issue>"}'
+\`\`\``
+}
+
 // ============================================
 // Main Prompt Builder
 // ============================================
@@ -444,6 +540,8 @@ export function buildPrompt(params: PromptParams): string {
         return buildResearchInstructions(params)
       case "reviewer":
         return buildReviewerInstructions(params)
+      case "fixer":
+        return buildFixerInstructions(params)
       case "dev":
       default:
         return buildDevInstructions(params)
