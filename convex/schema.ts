@@ -72,6 +72,7 @@ export default defineSchema({
     agent_last_active_at: v.optional(v.number()),
     agent_tokens_in: v.optional(v.number()),
     agent_tokens_out: v.optional(v.number()),
+    agent_output_preview: v.optional(v.string()), // ~500 chars max
     // Git/PR tracking (written by dev agents)
     branch: v.optional(v.string()),
     pr_number: v.optional(v.number()),

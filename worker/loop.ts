@@ -16,6 +16,7 @@ import { runReview } from "./phases/review"
 import type { Project } from "../lib/types"
 import { runWork } from "./phases/work"
 import { runAnalyze } from "./phases/analyze"
+import { sessionFileReader } from "./session-file-reader"
 
 // ============================================
 // Types
@@ -166,6 +167,32 @@ async function runProjectCycle(
           tokens: outcome.usage?.totalTokens,
         },
       })
+
+      // For finished agents (not stale), write accurate JSONL-sourced data to Convex
+      // before clearing. This captures the real model, token counts, and output preview.
+      if (!isStale) {
+        const sessionInfo = sessionFileReader.getSessionInfo(outcome.sessionKey)
+        if (sessionInfo?.lastAssistantMessage) {
+          try {
+            const startedAt = Date.now() - outcome.durationMs
+            await convex.mutation(api.tasks.updateAgentActivity, {
+              updates: [{
+                task_id: outcome.taskId,
+                agent_session_key: outcome.sessionKey,
+                agent_model: sessionInfo.lastAssistantMessage.model,
+                agent_started_at: startedAt,
+                agent_last_active_at: sessionInfo.fileMtimeMs,
+                agent_tokens_in: sessionInfo.lastAssistantMessage.usage.input,
+                agent_tokens_out: sessionInfo.lastAssistantMessage.usage.output,
+                agent_output_preview: sessionInfo.lastAssistantMessage.textPreview,
+              }],
+            })
+          } catch (err) {
+            // Non-fatal — log and continue to clear
+            console.warn(`[WorkLoop] Failed to write JSONL data for ${outcome.taskId}: ${err}`)
+          }
+        }
+      }
 
       // Clear agent fields on the task
       try {
