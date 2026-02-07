@@ -176,8 +176,6 @@
   
   /* Ensure code blocks are properly contained */
   .markdown-content pre {
-    word-wrap: break-word;
-    white-space: pre-wrap;
     max-width: 100%;
     min-width: 0;
     overflow-x: auto;
