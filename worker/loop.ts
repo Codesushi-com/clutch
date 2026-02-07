@@ -13,16 +13,15 @@ import { logRun, logCycleComplete } from "./logger"
 import { agentManager } from "./agent-manager"
 import { runCleanup } from "./phases/cleanup"
 import { runReview } from "./phases/review"
-import type { Project } from "../lib/types"
+import type { Project, WorkLoopPhase } from "../lib/types"
 import { runWork } from "./phases/work"
 import { runAnalyze } from "./phases/analyze"
+import { runNotify } from "./phases/notify"
 import { sessionFileReader } from "./session-file-reader"
 
 // ============================================
 // Types
 // ============================================
-
-type WorkLoopPhase = "cleanup" | "review" | "work" | "analyze" | "idle" | "error"
 
 interface PhaseResult {
   success: boolean
@@ -252,6 +251,32 @@ async function runProjectCycle(
     }
   )
 
+  // Update state to notify phase
+  await convex.mutation(api.workLoop.upsertState, {
+    project_id: project.id,
+    status: "running",
+    current_phase: "notify",
+    current_cycle: cycle,
+    active_agents: agentManager.activeCount(project.id),
+    max_agents: project.work_loop_max_agents ?? 2,
+  })
+
+  // Phase 2: Notify (route PM signals to user)
+  const notifyResult = await runPhase(
+    convex,
+    project.id,
+    "notify",
+    async () => {
+      const result = await runNotify({
+        convex,
+        cycle,
+        projectId: project.id,
+        log: (params) => logRun(convex, params),
+      })
+      return { success: true, actions: result.notifiedCount }
+    }
+  )
+
   // Update state to review phase
   await convex.mutation(api.workLoop.upsertState, {
     project_id: project.id,
@@ -262,7 +287,7 @@ async function runProjectCycle(
     max_agents: project.work_loop_max_agents ?? 2,
   })
 
-  // Phase 2: Review
+  // Phase 4: Review
   const reviewResult = await runPhase(
     convex,
     project.id,
@@ -290,7 +315,7 @@ async function runProjectCycle(
     max_agents: project.work_loop_max_agents ?? 2,
   })
 
-  // Phase 3: Work
+  // Phase 5: Work
   const workResult = await runPhase(
     convex,
     project.id,
@@ -323,7 +348,7 @@ async function runProjectCycle(
     max_agents: project.work_loop_max_agents ?? 2,
   })
 
-  // Phase 4: Analyze
+  // Phase 6: Analyze
   const analyzeResult = await runPhase(
     convex,
     project.id,
@@ -348,7 +373,7 @@ async function runProjectCycle(
 
   // Calculate cycle duration and log completion
   const cycleDurationMs = Date.now() - cycleStart
-  const totalActions = cleanupResult.actions + reviewResult.actions + workResult.actions + analyzeResult.actions
+  const totalActions = cleanupResult.actions + notifyResult.actions + reviewResult.actions + workResult.actions + analyzeResult.actions
 
   await logCycleComplete(convex, {
     projectId: project.id,
@@ -357,6 +382,7 @@ async function runProjectCycle(
     totalActions,
     phases: {
       cleanup: cleanupResult.success,
+      notify: notifyResult.success,
       review: reviewResult.success,
       work: workResult.success,
       analyze: analyzeResult.success,

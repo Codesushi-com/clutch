@@ -12,7 +12,7 @@ import { api } from "../convex/_generated/api"
 // Types
 // ============================================
 
-type WorkLoopPhase = "cleanup" | "review" | "work" | "analyze" | "idle" | "error"
+type WorkLoopPhase = "cleanup" | "notify" | "review" | "work" | "analyze" | "idle" | "error"
 
 export interface LogRunParams {
   projectId: string
@@ -32,6 +32,7 @@ interface LogCycleCompleteParams {
   totalActions: number
   phases: {
     cleanup: boolean
+    notify: boolean
     review: boolean
     work: boolean
     analyze: boolean

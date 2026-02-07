@@ -214,6 +214,7 @@ export default defineSchema({
     blocking: v.boolean(),
     responded_at: v.optional(v.number()),
     response: v.optional(v.string()),
+    delivered_at: v.optional(v.number()), // When notification was sent to user
     created_at: v.number(),
   })
     .index("by_uuid", ["id"])
@@ -221,6 +222,7 @@ export default defineSchema({
     .index("by_kind", ["kind"])
     .index("by_blocking", ["blocking"])
     .index("by_responded", ["responded_at"])
+    .index("by_delivered", ["delivered_at"])
     .index("by_created", ["created_at"]),
 
   // Task Dependencies
@@ -242,6 +244,7 @@ export default defineSchema({
     cycle: v.number(),
     phase: v.union(
       v.literal("cleanup"),
+      v.literal("notify"),
       v.literal("review"),
       v.literal("work"),
       v.literal("analyze"),

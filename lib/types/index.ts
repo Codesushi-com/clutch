@@ -172,6 +172,7 @@ export interface Signal {
   blocking: number // SQLite boolean (1/0)
   responded_at: number | null
   response: string | null
+  delivered_at: number | null // When notification was sent to user
   created_at: number
 }
 
