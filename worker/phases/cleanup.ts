@@ -149,6 +149,44 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   }
 
   // ------------------------------------------------------------------
+  // 1b. Clear stale agent fields on in_review tasks with no active agent
+  //
+  //     After reaping, tasks may retain agent_* fields even though no
+  //     agent is running. This causes the UI to show ghost agents.
+  // ------------------------------------------------------------------
+  const inReviewTasks = await convex.query(api.tasks.getByProject, {
+    projectId,
+    status: "in_review",
+  })
+
+  for (const task of inReviewTasks) {
+    if (!task.agent_session_key) continue
+    if (agents.has(task.id)) continue // agent is actually running
+
+    // Agent fields present but no active agent — clear them
+    try {
+      await convex.mutation(api.tasks.clearAgentActivity, {
+        task_id: task.id,
+      })
+    } catch {
+      continue
+    }
+
+    await log({
+      projectId,
+      cycle,
+      phase: "cleanup",
+      action: "clear_ghost_agent_in_review",
+      taskId: task.id,
+      details: {
+        agentSessionKey: task.agent_session_key,
+        agentModel: task.agent_model,
+      },
+    })
+    actions++
+  }
+
+  // ------------------------------------------------------------------
   // 2. Clear stale agent fields on done/ready tasks
   //
   //    Tasks that finished or were reset may still carry agent_* fields.
@@ -195,10 +233,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
     worktreesPath,
     doneTasks,
     inProgressTasks,
-    inReviewTasks: await convex.query(api.tasks.getByProject, {
-      projectId,
-      status: "in_review",
-    }),
+    inReviewTasks,
     projectId,
     cycle,
     log,
