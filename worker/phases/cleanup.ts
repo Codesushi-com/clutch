@@ -88,7 +88,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
 
   // Derive paths from project configuration
   const repoPath = project.local_path!
-  const worktreesPath = `${repoPath.replace(/\/[^/]+$/, "-worktrees")}/fix`
+  const worktreesPath = `${repoPath}-worktrees/fix`
 
   // Fetch task lists from Convex
   const inProgressTasks = await convex.query(api.tasks.getByProject, {
