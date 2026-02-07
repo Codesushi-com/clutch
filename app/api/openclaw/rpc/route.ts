@@ -9,6 +9,12 @@ import { getOpenClawClient, initializeOpenClawClient } from "@/lib/openclaw/clie
  * there is no HTTP /rpc endpoint — so we bridge through the WS client.
  */
 
+/** Max time to wait for WS connection before returning error (ms) */
+const CONNECTION_TIMEOUT_MS = 10000
+
+/** Poll interval for checking connection status (ms) */
+const CONNECTION_POLL_MS = 100
+
 /** Ensure the WS client is connected (lazy init). */
 function ensureClient() {
   const client = getOpenClawClient()
@@ -16,6 +22,28 @@ function ensureClient() {
     initializeOpenClawClient()
   }
   return client
+}
+
+/** Wait for the client to connect, with timeout */
+async function waitForConnection(
+  client: ReturnType<typeof getOpenClawClient>,
+  timeoutMs: number
+): Promise<boolean> {
+  if (client.getStatus() === "connected") {
+    return true
+  }
+
+  const startTime = Date.now()
+  
+  while (Date.now() - startTime < timeoutMs) {
+    if (client.getStatus() === "connected") {
+      return true
+    }
+    // Wait a bit before checking again
+    await new Promise((resolve) => setTimeout(resolve, CONNECTION_POLL_MS))
+  }
+  
+  return client.getStatus() === "connected"
 }
 
 export async function POST(request: NextRequest) {
@@ -39,15 +67,19 @@ export async function POST(request: NextRequest) {
 
   const client = ensureClient()
 
-  // If the WS client isn't connected yet, give it a brief window to connect.
-  if (client.getStatus() !== "connected") {
-    await new Promise((r) => setTimeout(r, 2000))
-  }
+  // Wait for connection with longer timeout and polling
+  const isConnected = await waitForConnection(client, CONNECTION_TIMEOUT_MS)
 
-  if (client.getStatus() !== "connected") {
+  if (!isConnected) {
+    // Return 503 with Retry-After header to help client-side backoff
     return NextResponse.json(
       { type: "res", id, ok: false, error: { message: "OpenClaw gateway not connected" } },
-      { status: 502 },
+      { 
+        status: 503,
+        headers: {
+          "Retry-After": "5",
+        }
+      },
     )
   }
 
