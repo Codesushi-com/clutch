@@ -65,9 +65,7 @@ export function ChatThread({
   // Local state for loading more indicator
   const [loadingMore, setLoadingMore] = useState(false)
   
-  // Track chat switches and pending scroll after messages load
-  const prevChatIdRef = useRef(chatId)
-  const needsScrollOnLoadRef = useRef(false)
+  // Unused refs removed — scroll tracking handled by scrolledForChatRef
 
   // Check if user is near bottom of chat (within threshold)
   const isNearBottom = useCallback(() => {
@@ -121,48 +119,46 @@ export function ChatThread({
     }
   }, [chatId, loadingMore, hasMore, loadMoreMessages])
 
-  // Detect chat switch and mark that we need to scroll after messages load
+  // Track which chatId we last scrolled for, so we only auto-scroll
+  // once per chat switch (not on every message update)
+  const scrolledForChatRef = useRef<string | null>(null)
+
+  // Reset scroll state when switching chats
   useEffect(() => {
-    if (chatId !== prevChatIdRef.current) {
-      prevChatIdRef.current = chatId
-      // Mark that we need to scroll after messages load
-      needsScrollOnLoadRef.current = true
-    }
+    hasScrolledUpRef.current = false
+    prevMessagesLengthRef.current = 0
+    scrolledForChatRef.current = null
   }, [chatId])
 
-  // Scroll after messages load (on chat switch) or restore saved position
+  // Scroll to correct position once Convex data has loaded for this chat.
+  // `loading` is driven by Convex's useQuery (undefined = loading, value = loaded),
+  // so we know conclusively when messages are ready.
   useEffect(() => {
-    if (!needsScrollOnLoadRef.current) return
-    if (!containerRef.current) return
-    
-    // Wait for messages to be loaded (non-empty and not loading)
-    // Note: messages can be empty for a new chat, so also check if loading is done
     if (loading) return
-    
-    // Messages have loaded - now scroll
-    needsScrollOnLoadRef.current = false
-    
+    if (scrolledForChatRef.current === chatId) return
+    if (!containerRef.current) return
+
+    scrolledForChatRef.current = chatId
     const savedPosition = getScrollPosition(chatId)
-    
-    if (savedPosition > 0) {
-      // Restore saved scroll position (user was here before)
-      isAutoScrollingRef.current = true
-      containerRef.current.scrollTop = savedPosition
-      // Check if we restored to a scrolled-up position
-      hasScrolledUpRef.current = !isNearBottom()
-      setTimeout(() => {
-        isAutoScrollingRef.current = false
-      }, 100)
-    } else {
-      // First time viewing this chat - scroll to bottom instantly
-      isAutoScrollingRef.current = true
-      bottomRef.current?.scrollIntoView({ behavior: "instant" })
-      hasScrolledUpRef.current = false
-      setTimeout(() => {
-        isAutoScrollingRef.current = false
-      }, 100)
-    }
-  }, [chatId, messages, loading, getScrollPosition, isNearBottom])
+
+    requestAnimationFrame(() => {
+      if (!containerRef.current) return
+
+      if (savedPosition > 0) {
+        isAutoScrollingRef.current = true
+        containerRef.current.scrollTop = savedPosition
+        hasScrolledUpRef.current = !isNearBottom()
+        setTimeout(() => { isAutoScrollingRef.current = false }, 100)
+      } else {
+        isAutoScrollingRef.current = true
+        bottomRef.current?.scrollIntoView({ behavior: "instant" })
+        hasScrolledUpRef.current = false
+        setTimeout(() => { isAutoScrollingRef.current = false }, 100)
+      }
+
+      prevMessagesLengthRef.current = messages.length
+    })
+  }, [chatId, loading, messages.length, getScrollPosition, isNearBottom])
 
   // Auto-scroll on new messages or typing indicators (only if user is at bottom)
   useEffect(() => {

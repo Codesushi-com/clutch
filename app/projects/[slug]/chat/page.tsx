@@ -169,33 +169,43 @@ export default function ChatPage({ params }: PageProps) {
   // Project init & chat selection
   // ==========================================================================
 
-  // Reset active chat when project changes - ensures we load chats for the new project
+  // Single init effect — handles both initial load and project switches.
+  // Clearing stale state and loading new data happens in one sequential flow,
+  // eliminating races between separate effects.
   useEffect(() => {
-    setActiveChat(null)
-  }, [slug, setActiveChat])
+    let cancelled = false
 
-  useEffect(() => {
     async function init() {
-      const response = await fetch(`/api/projects/${slug}`)
-      if (response.ok) {
-        const data = await response.json()
-        setProject(data.project)
-        setProjectId(data.project.id)
-        await fetchChats(data.project.id)
+      // Clear stale state from previous project
+      setActiveChat(null)
+      setProjectId(null)
+      setProject(null)
+      setProjectContext(null)
 
-        try {
-          const contextResponse = await fetch(`/api/projects/${slug}/context`)
-          if (contextResponse.ok) {
-            const contextData = await contextResponse.json()
-            setProjectContext(contextData.formatted || null)
-          }
-        } catch (error) {
-          console.error("[Chat] Failed to fetch project context:", error)
+      const response = await fetch(`/api/projects/${slug}`)
+      if (cancelled || !response.ok) return
+
+      const data = await response.json()
+      setProject(data.project)
+      setProjectId(data.project.id)
+      await fetchChats(data.project.id)
+
+      if (cancelled) return
+
+      try {
+        const contextResponse = await fetch(`/api/projects/${slug}/context`)
+        if (!cancelled && contextResponse.ok) {
+          const contextData = await contextResponse.json()
+          setProjectContext(contextData.formatted || null)
         }
+      } catch (error) {
+        console.error("[Chat] Failed to fetch project context:", error)
       }
     }
+
     init()
-  }, [slug, fetchChats])
+    return () => { cancelled = true }
+  }, [slug, fetchChats, setActiveChat])
 
   // Auto-select chat when project loads: prefer last active chat for this project,
   // fall back to first chat if no previous selection or chat no longer exists
@@ -327,7 +337,7 @@ export default function ChatPage({ params }: PageProps) {
   return (
     <>
       {/* Convex reactive sync — bridges real-time data into zustand store */}
-      <ConvexChatSync chatId={activeChat?.id ?? null} projectId={projectId} />
+      <ConvexChatSync key={slug} chatId={activeChat?.id ?? null} projectId={projectId} />
 
       <div className="flex h-[calc(100vh-140px)] bg-[var(--bg-primary)] rounded-lg border border-[var(--border)] overflow-hidden min-w-0 max-w-full">
         <ChatSidebar

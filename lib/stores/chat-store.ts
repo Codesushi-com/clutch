@@ -15,14 +15,14 @@ interface ChatState {
   chats: ChatWithLastMessage[]
   activeChat: ChatWithLastMessage | null
   messages: Record<string, ChatMessage[]>
+  hasMoreMessages: Record<string, boolean> // chatId -> has more pages
   scrollPositions: Record<string, number> // chatId -> scroll position
+  lastActiveChatByProject: Record<string, string> // projectId -> chatId
   loading: boolean
   loadingMessages: boolean
   error: string | null
   currentProjectId: string | null
   typingIndicators: Record<string, { author: string; state: "thinking" | "typing" }[]> // chatId -> typing info
-  hasMoreMessages: Record<string, boolean> // chatId -> whether more messages exist
-  lastActiveChatIds: Record<string, string> // projectId -> last active chatId
 
   // Actions
   fetchChats: (projectId: string) => Promise<void>
@@ -38,37 +38,47 @@ interface ChatState {
 
   // Convex reactivity handlers
   receiveMessage: (chatId: string, message: ChatMessage) => void
-  setTyping: (chatId: string, author: string, state: "thinking" | "typing" | false) => Promise<void>
+  setTyping: (chatId: string, author: string, state: "thinking" | "typing" | false) => void
 
   // Convex sync
   syncMessages: (chatId: string, messages: ChatMessage[]) => void
   syncChats: (chats: ChatWithLastMessage[]) => void
   syncTyping: (chatId: string, typingState: { author: string; state: "thinking" | "typing" }[]) => void
-  syncHasMoreMessages: (chatId: string, hasMore: boolean) => void
+
+  // Loading state (driven by Convex subscription)
+  setLoadingMessages: (loading: boolean) => void
+  setHasMore: (chatId: string, hasMore: boolean) => void
 
   // Scroll position tracking
   setScrollPosition: (chatId: string, position: number) => void
   getScrollPosition: (chatId: string) => number
-
-  // Per-project last active chat
   getLastActiveChatForProject: (projectId: string) => string | null
+  setLastActiveChatForProject: (projectId: string, chatId: string) => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   chats: [],
   activeChat: null,
   messages: {},
+  hasMoreMessages: {},
   scrollPositions: {},
+  lastActiveChatByProject: {} as Record<string, string>,
   loading: false,
   loadingMessages: false,
   error: null,
   currentProjectId: null,
   typingIndicators: {},
-  hasMoreMessages: {},
-  lastActiveChatIds: {},
 
   fetchChats: async (projectId) => {
-    set({ loading: true, error: null, currentProjectId: projectId })
+    const prev = get().currentProjectId
+    // Clear stale data when switching projects
+    const projectChanged = prev && prev !== projectId
+    set({
+      loading: true,
+      error: null,
+      currentProjectId: projectId,
+      ...(projectChanged ? { messages: {}, scrollPositions: {}, typingIndicators: {} } : {}),
+    })
     
     const response = await fetch(`/api/chats?projectId=${projectId}`)
     
@@ -130,17 +140,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setActiveChat: (chat) => {
-    const currentProjectId = get().currentProjectId
-    set((state) => ({
-      activeChat: chat,
-      // Save the last active chat ID for the current project
-      ...(chat && currentProjectId
-        ? { lastActiveChatIds: { ...state.lastActiveChatIds, [currentProjectId]: chat.id } }
-        : {}),
-    }))
+    set({ activeChat: chat, loadingMessages: !!chat })
+    // Track last active chat per project for smart auto-select
     if (chat) {
-      get().fetchMessages(chat.id)
+      const projectId = get().currentProjectId
+      if (projectId) {
+        get().setLastActiveChatForProject(projectId, chat.id)
+      }
     }
+    // Messages are loaded reactively via ConvexChatSync when chatId changes.
   },
 
   deleteChat: async (chatId) => {
@@ -267,17 +275,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Receive a message from Convex (avoid duplicates)
-  // Note: Typing state is managed by Convex. The plugin clears typing
-  // via clearTyping mutation after saving responses.
   receiveMessage: (chatId, message) => {
     set((state) => {
       const existing = state.messages[chatId] || []
-
+      
       // Check if message already exists (by id)
       if (existing.some((m) => m.id === message.id)) {
         return state
       }
-
+      
       return {
         messages: {
           ...state.messages,
@@ -297,21 +303,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
               }
             : c
         ),
-        // Typing state is managed by Convex (single source of truth)
+        // Clear typing indicator for this author
+        typingIndicators: {
+          ...state.typingIndicators,
+          [chatId]: (state.typingIndicators[chatId] || []).filter((t) => t.author !== message.author),
+        },
       }
     })
   },
 
-  // Set typing indicator - writes to Convex (reactive sync via syncTyping)
-  // Note: This is an optimistic update that immediately reflects in local state
-  // and also persists to Convex. The Convex subscription will confirm the state.
-  setTyping: async (chatId, author, state) => {
-    // Optimistic local update first
+  // Handle typing indicator from Convex
+  setTyping: (chatId, author, state) => {
     set((store) => {
       const current = store.typingIndicators[chatId] || []
       const existing = current.find((t) => t.author === author)
-
+      
       if (state && !existing) {
+        // Add new typing indicator
         return {
           typingIndicators: {
             ...store.typingIndicators,
@@ -319,6 +327,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           },
         }
       } else if (state && existing && existing.state !== state) {
+        // Update state (thinking -> typing)
         return {
           typingIndicators: {
             ...store.typingIndicators,
@@ -326,6 +335,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           },
         }
       } else if (!state && existing) {
+        // Remove typing indicator
         return {
           typingIndicators: {
             ...store.typingIndicators,
@@ -333,48 +343,48 @@ export const useChatStore = create<ChatState>((set, get) => ({
           },
         }
       }
-
+      
       return store
     })
-
-    // Persist to Convex via API
-    try {
-      await fetch(`/api/chats/${chatId}/typing`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          typing: !!state,
-          author,
-          state: state || "thinking",
-        }),
-      })
-    } catch (error) {
-      console.error("[ChatStore] Failed to persist typing state:", error)
-      // Note: We keep the optimistic update even if the API fails
-      // The UI will show the indicator, and Convex subscription will eventually sync
-    }
   },
 
   // Sync messages from Convex reactive query (replaces fetch-based loading)
-  // Note: Typing state is managed by Convex (single source of truth).
-  // The plugin clears typing via clearTyping mutation after saving responses.
   syncMessages: (chatId, messages) => {
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [chatId]: messages,
-      },
-      loadingMessages: false,
-    }))
+    set((state) => {
+      const prevMessages = state.messages[chatId] || []
+      const currentTyping = state.typingIndicators[chatId] || []
+
+      // Clear typing indicators for authors who have new messages
+      // (e.g., Ada's thinking indicator clears when her response arrives)
+      let updatedTyping = currentTyping
+      if (currentTyping.length > 0 && messages.length > prevMessages.length) {
+        const newMessages = messages.slice(prevMessages.length)
+        const authorsWithNewMessages = new Set(newMessages.map((m) => m.author))
+        updatedTyping = currentTyping.filter((t) => !authorsWithNewMessages.has(t.author))
+      }
+
+      return {
+        messages: {
+          ...state.messages,
+          [chatId]: messages,
+        },
+        loadingMessages: false,
+        typingIndicators: {
+          ...state.typingIndicators,
+          [chatId]: updatedTyping,
+        },
+      }
+    })
   },
 
   // Sync chat list from Convex reactive query
   syncChats: (chats) => {
     set((state) => {
-      // Preserve activeChat reference if it still exists
+      // Preserve activeChat only if it exists in the new chat list.
+      // Do NOT fall back to state.activeChat — it may belong to a different project.
       const activeChat = state.activeChat
-        ? chats.find((c) => c.id === state.activeChat?.id) ?? state.activeChat
-        : state.activeChat
+        ? chats.find((c) => c.id === state.activeChat?.id) ?? null
+        : null
 
       return {
         chats,
@@ -394,6 +404,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
   },
 
+  // Set loading state (driven by Convex subscription status)
+  setLoadingMessages: (loading) => {
+    set({ loadingMessages: loading })
+  },
+
+  // Set hasMore flag for a chat (from Convex query)
+  setHasMore: (chatId, hasMore) => {
+    set((state) => ({
+      hasMoreMessages: {
+        ...state.hasMoreMessages,
+        [chatId]: hasMore,
+      },
+    }))
+  },
+
   // Store scroll position for a chat
   setScrollPosition: (chatId, position) => {
     set((state) => ({
@@ -409,18 +434,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return get().scrollPositions[chatId] || 0
   },
 
-  // Sync hasMore state from Convex reactive query
-  syncHasMoreMessages: (chatId, hasMore) => {
-    set((state) => ({
-      hasMoreMessages: {
-        ...state.hasMoreMessages,
-        [chatId]: hasMore,
-      },
-    }))
+  // Track last active chat per project for smart auto-select on switch
+  getLastActiveChatForProject: (projectId) => {
+    return get().lastActiveChatByProject[projectId] || null
   },
 
-  // Get the last active chat ID for a project
-  getLastActiveChatForProject: (projectId) => {
-    return get().lastActiveChatIds[projectId] || null
+  setLastActiveChatForProject: (projectId, chatId) => {
+    set((state) => ({
+      lastActiveChatByProject: {
+        ...state.lastActiveChatByProject,
+        [projectId]: chatId,
+      },
+    }))
   },
 }))
