@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus, BarChart3, Pencil } from "lucide-react"
+import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus, BarChart3, Pencil, History } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useUpdateTask, useDeleteTask } from "@/lib/stores/task-store"
@@ -9,7 +9,9 @@ import { CommentThread } from "./comment-thread"
 import { CommentInput } from "./comment-input"
 import { DependencyPicker } from "./dependency-picker"
 import { TaskAnalysisContent } from "./task-analysis-content"
+import { TaskTimeline } from "./task-timeline"
 import { MarkdownContent } from "@/components/chat/markdown-content"
+import { useTaskEvents } from "@/lib/hooks/use-task-events"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
 import { useParams } from "next/navigation"
 import type { Task, TaskStatus, TaskPriority, TaskRole, Comment, DispatchStatus, TaskDependencySummary } from "@/lib/types"
@@ -95,6 +97,9 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   const { dependencies, refresh: refreshDependencies } = useDependencies(task?.id || null)
   const dependsOn = dependencies.depends_on
   const blocks = dependencies.blocks
+
+  // Task events (history)
+  const { events: taskEvents, isLoading: loadingEvents } = useTaskEvents(task?.id || null)
 
   // Keyboard shortcut for dependency picker and Escape to close modal
   useEffect(() => {
@@ -434,6 +439,12 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                       Analysis
                     </span>
                   </TabsTrigger>
+                  <TabsTrigger value="history">
+                    <span className="flex items-center gap-2">
+                      <History className="h-4 w-4" />
+                      History
+                    </span>
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -498,6 +509,15 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     {/* Analysis Tab */}
                     <TabsContent value="analysis" className="mt-0">
                       <TaskAnalysisContent taskId={task.id} projectSlug={projectSlug} />
+                    </TabsContent>
+
+                    {/* History Tab */}
+                    <TabsContent value="history" className="mt-0">
+                      <TaskTimeline 
+                        events={taskEvents} 
+                        isLoading={loadingEvents}
+                        projectSlug={projectSlug}
+                      />
                     </TabsContent>
                   </div>
 
