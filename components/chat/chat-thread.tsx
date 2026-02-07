@@ -35,6 +35,9 @@ interface ChatThreadProps {
   projectSlug?: string
 }
 
+// Threshold in pixels for considering the user "at the bottom"
+const BOTTOM_THRESHOLD = 50
+
 export function ChatThread({
   chatId,
   messages,
@@ -50,44 +53,48 @@ export function ChatThread({
   const containerRef = useRef<HTMLDivElement>(null)
   const { setScrollPosition, getScrollPosition } = useChatStore()
   const isAutoScrollingRef = useRef(false)
-  // Track which chat we've already scrolled for (initial load vs new messages)
-  const scrolledChatIdRef = useRef<string | null>(null)
+  const hasScrolledUpRef = useRef(false)
+  const prevMessagesLengthRef = useRef(messages.length)
+  const prevTypingIndicatorsLengthRef = useRef(typingIndicators.length)
 
-  // Check if user is near bottom of chat (within 100px)
+  // Check if user is near bottom of chat (within threshold)
   const isNearBottom = useCallback(() => {
     if (!containerRef.current) return true
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current
-    return scrollHeight - scrollTop - clientHeight < 100
+    return scrollHeight - scrollTop - clientHeight < BOTTOM_THRESHOLD
   }, [])
 
   // Save scroll position to store (debounced to avoid excessive saves)
   const saveScrollPosition = useCallback(() => {
     if (!containerRef.current || isAutoScrollingRef.current) return
-
     const { scrollTop } = containerRef.current
     setScrollPosition(chatId, scrollTop)
   }, [chatId, setScrollPosition])
 
-  // Handle scroll behavior on chat switch or initial load
+  // Handle scroll events to track if user has scrolled up
+  const handleScroll = useCallback(() => {
+    if (!containerRef.current || isAutoScrollingRef.current) return
+    const nearBottom = isNearBottom()
+    hasScrolledUpRef.current = !nearBottom
+    saveScrollPosition()
+  }, [isNearBottom, saveScrollPosition])
+
+  // Initial scroll and chat switch handling
   useEffect(() => {
     if (!containerRef.current) return
-
-    // Only run when chatId changes (switching chats)
-    if (scrolledChatIdRef.current === chatId) return
-
-    // Mark this chat as scrolled so we don't re-run on message updates
-    scrolledChatIdRef.current = chatId
 
     const savedPosition = getScrollPosition(chatId)
 
     // Use setTimeout to ensure DOM is updated with new messages
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (!containerRef.current) return
 
       if (savedPosition > 0) {
         // Restore saved scroll position (user was here before)
         isAutoScrollingRef.current = true
         containerRef.current.scrollTop = savedPosition
+        // Check if we restored to a scrolled-up position
+        hasScrolledUpRef.current = !isNearBottom()
         setTimeout(() => {
           isAutoScrollingRef.current = false
         }, 100)
@@ -95,20 +102,49 @@ export function ChatThread({
         // First time viewing this chat - scroll to bottom instantly
         isAutoScrollingRef.current = true
         bottomRef.current?.scrollIntoView({ behavior: "instant" })
+        hasScrolledUpRef.current = false
         setTimeout(() => {
           isAutoScrollingRef.current = false
         }, 100)
       }
     }, 50)
-  }, [chatId, getScrollPosition])
 
-  // Auto-scroll to bottom for new messages (only if user is already near bottom)
+    return () => clearTimeout(timeoutId)
+  }, [chatId, getScrollPosition, isNearBottom])
+
+  // Auto-scroll on new messages or typing indicators (only if user is at bottom)
   useEffect(() => {
-    // Skip if we haven't done initial scroll for this chat yet
-    if (scrolledChatIdRef.current !== chatId) return
+    const messagesChanged = messages.length !== prevMessagesLengthRef.current
+    const typingChanged = typingIndicators.length !== prevTypingIndicatorsLengthRef.current
 
-    // Only auto-scroll if user is near bottom (they haven't scrolled up to read history)
-    if (isNearBottom()) {
+    // Update refs for next comparison
+    prevMessagesLengthRef.current = messages.length
+    prevTypingIndicatorsLengthRef.current = typingIndicators.length
+
+    // Only scroll if something actually changed and user hasn't scrolled up
+    if ((messagesChanged || typingChanged) && !hasScrolledUpRef.current) {
+      isAutoScrollingRef.current = true
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+      hasScrolledUpRef.current = false
+
+      // Clear auto-scroll flag after animation
+      setTimeout(() => {
+        isAutoScrollingRef.current = false
+      }, 500)
+    }
+  }, [messages.length, typingIndicators.length])
+
+  // MutationObserver to catch streaming content changes
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const observer = new MutationObserver(() => {
+      // Only process if we're not currently auto-scrolling and user hasn't scrolled up
+      if (isAutoScrollingRef.current) return
+      if (hasScrolledUpRef.current) return
+
+      // Scroll to bottom on any content change
       isAutoScrollingRef.current = true
       bottomRef.current?.scrollIntoView({ behavior: "smooth" })
 
@@ -116,27 +152,34 @@ export function ChatThread({
       setTimeout(() => {
         isAutoScrollingRef.current = false
       }, 500)
-    }
-  }, [messages.length, typingIndicators.length, isNearBottom, chatId])
+    })
 
-  // Set up scroll event listener for saving position
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+
+    return () => observer.disconnect()
+  }, [])
+
+  // Set up scroll event listener for saving position and tracking scroll state
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
-    let timeoutId: NodeJS.Timeout
-    const handleScroll = () => {
-      // Debounce scroll position saving
-      clearTimeout(timeoutId)
-      timeoutId = setTimeout(saveScrollPosition, 150)
+    let debounceTimeout: NodeJS.Timeout
+    const onScroll = () => {
+      clearTimeout(debounceTimeout)
+      debounceTimeout = setTimeout(handleScroll, 50)
     }
 
-    container.addEventListener('scroll', handleScroll)
+    container.addEventListener('scroll', onScroll)
     return () => {
-      container.removeEventListener('scroll', handleScroll)
-      clearTimeout(timeoutId)
+      container.removeEventListener('scroll', onScroll)
+      clearTimeout(debounceTimeout)
     }
-  }, [saveScrollPosition])
+  }, [handleScroll])
 
   if (loading) {
     return (
