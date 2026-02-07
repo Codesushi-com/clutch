@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { Plus, MessageSquare, Trash2, X, ChevronDown, ChevronRight, ListTodo, ExternalLink, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
 import { TaskModal } from "@/components/board/task-modal"
 import { NewIssueDialog } from "@/components/chat/new-issue-dialog"
@@ -12,7 +13,7 @@ import { AgentStatus, formatDuration } from "@/components/agents/agent-status"
 import type { Task } from "@/lib/types"
 
 interface ChatSidebarProps {
-  projectId: string
+  projectId: string | null
   projectSlug?: string
   isOpen?: boolean
   onClose?: () => void
@@ -41,13 +42,13 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, isMobile = false }: ChatSidebarProps) {
-  const { chats, activeChat, setActiveChat, createChat, deleteChat, loading, fetchChats, currentProjectId } = useChatStore()
+  const { chats, activeChat, setActiveChat, createChat, deleteChat, loading: chatsLoading, fetchChats, currentProjectId } = useChatStore()
   const [creating, setCreating] = useState(false)
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null)
-  
+
   // Reactive Convex subscription for all project tasks - updates in real-time
   // when tasks are created, updated, moved, or deleted
-  const { tasks: allTasks, isLoading: loadingTasks } = useConvexTasks(projectId)
+  const { tasks: allTasks, isLoading: loadingTasks } = useConvexTasks(projectId ?? "")
   
   // Section expansion state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -110,6 +111,9 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
     }
   }, [projectId, currentProjectId, fetchChats])
 
+  // Determine loading state - either projectId is null or data is loading
+  const isLoading = !projectId || chatsLoading
+
   const toggleSection = (status: string) => {
     setExpandedSections(prev => ({
       ...prev,
@@ -128,6 +132,7 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   }
 
   const handleCreateChat = async () => {
+    if (!projectId) return
     setCreating(true)
     try {
       const chat = await createChat(projectId)
@@ -248,8 +253,30 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
       
       {/* Chat list */}
       <div className="overflow-y-auto" style={{ maxHeight: 'calc(50vh - 100px)' }}>
-        {loading ? (
-          <div className="p-4 text-sm text-[var(--text-muted)]">Loading...</div>
+        {isLoading ? (
+          <div className="p-3 space-y-3">
+            <div className="flex items-start gap-2">
+              <Skeleton className="h-2 w-2 rounded-full mt-1.5 flex-shrink-0" />
+              <div className="flex-1 space-y-2 min-w-0">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Skeleton className="h-2 w-2 rounded-full mt-1.5 flex-shrink-0" />
+              <div className="flex-1 space-y-2 min-w-0">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-3/4" />
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Skeleton className="h-2 w-2 rounded-full mt-1.5 flex-shrink-0" />
+              <div className="flex-1 space-y-2 min-w-0">
+                <Skeleton className="h-4 w-4/5" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </div>
+          </div>
         ) : chats.length === 0 ? (
           <div className="p-4 text-center">
             <MessageSquare className="h-8 w-8 mx-auto text-[var(--text-muted)] mb-2" />
@@ -349,7 +376,7 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
           variant="outline"
           size="sm"
           onClick={handleCreateChat}
-          disabled={creating}
+          disabled={!projectId || creating}
           className="w-full"
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -359,6 +386,7 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
           variant="outline"
           size="sm"
           onClick={() => setNewIssueDialogOpen(true)}
+          disabled={!projectId}
           className="w-full"
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -397,8 +425,50 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
 
       {/* Work Queue sections */}
       <div className="flex-1 overflow-y-auto">
-        {loadingTasks ? (
-          <div className="p-4 text-sm text-[var(--text-muted)]">Loading tasks...</div>
+        {loadingTasks || !projectId ? (
+          <div className="p-3 space-y-4">
+            {/* In Progress skeleton */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-3 w-3" />
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-6" />
+              </div>
+              <div className="pl-5 space-y-2">
+                <div className="flex items-start gap-2">
+                  <Skeleton className="h-2 w-2 rounded-full mt-1 flex-shrink-0" />
+                  <div className="flex-1 space-y-1">
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-2 w-16" />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Skeleton className="h-2 w-2 rounded-full mt-1 flex-shrink-0" />
+                  <div className="flex-1 space-y-1">
+                    <Skeleton className="h-3 w-4/5" />
+                    <Skeleton className="h-2 w-12" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* In Review skeleton */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-3 w-3" />
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-3 w-6" />
+              </div>
+              <div className="pl-5">
+                <div className="flex items-start gap-2">
+                  <Skeleton className="h-2 w-2 rounded-full mt-1 flex-shrink-0" />
+                  <div className="flex-1 space-y-1">
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-2 w-14" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : totalWorkItems === 0 ? (
           <div className="p-4 text-center">
             <ListTodo className="h-8 w-8 mx-auto text-[var(--text-muted)] mb-2" />
@@ -533,15 +603,17 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
         open={taskModalOpen}
         onOpenChange={handleTaskModalClose}
       />
-      <NewIssueDialog
-        projectId={projectId}
-        open={newIssueDialogOpen}
-        onOpenChange={setNewIssueDialogOpen}
-        onCreated={(taskId) => {
-          // Convex reactive subscription will update automatically
-          console.log("New issue created:", taskId)
-        }}
-      />
+      {projectId && (
+        <NewIssueDialog
+          projectId={projectId}
+          open={newIssueDialogOpen}
+          onOpenChange={setNewIssueDialogOpen}
+          onCreated={(taskId) => {
+            // Convex reactive subscription will update automatically
+            console.log("New issue created:", taskId)
+          }}
+        />
+      )}
     </>
   )
 }
