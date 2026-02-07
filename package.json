@@ -2,6 +2,9 @@
   "name": "trap-6",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "trap": "./bin/trap.ts"
+  },
   "scripts": {
     "dev": "volta run node ./node_modules/next/dist/bin/next dev -p 3002",
     "build": "next build",
