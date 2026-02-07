@@ -322,6 +322,27 @@ export const getWithActiveAgents = query({
   },
 })
 
+/**
+ * Get agent activity history for a project
+ * Returns all tasks that have been worked on by agents (have agent_started_at)
+ * Used by the Agents page to show agent analytics grouped by role
+ */
+export const getAgentHistory = query({
+  args: { projectId: v.string() },
+  handler: async (ctx, args): Promise<Task[]> => {
+    const tasks = await ctx.db
+      .query('tasks')
+      .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
+      .filter((q) => q.neq('agent_started_at', undefined))
+      .collect()
+
+    // Sort by most recently started first
+    return tasks
+      .sort((a, b) => (b.agent_started_at ?? 0) - (a.agent_started_at ?? 0))
+      .map((t) => toTask(t as Parameters<typeof toTask>[0]))
+  },
+})
+
 // ============================================
 // Mutations
 // ============================================
