@@ -25,6 +25,34 @@ Statuses: `backlog` → `ready` → `in_progress` → `in_review` → `done`
 - Don't kill port 3002
 - Use `pnpm`, not `npm`
 
+## Tool Usage
+
+**`read` tool — ALWAYS pass a `path` parameter:**
+```
+read(path="/home/dan/src/trap/some/file.ts")
+```
+Never call `read()` with no arguments — it will fail. If you need to explore the project structure, use `exec` with `find` or `ls` instead.
+
+**`exec` tool — use for shell commands:**
+```
+exec(command="ls /home/dan/src/trap/app/")
+exec(command="cat /home/dan/src/trap/package.json")
+```
+
+**Prefer `exec` with `cat`/`ls`/`find` for file exploration.** Use `read` only when you have a specific file path.
+
+**Common patterns:**
+```bash
+# Find files
+find /home/dan/src/trap/app -name "*.tsx" | head -20
+
+# Read a file
+cat /home/dan/src/trap/app/page.tsx
+
+# Search for code
+grep -rn "functionName" /home/dan/src/trap/app/ --include="*.ts"
+```
+
 ## Git Worktrees (REQUIRED)
 
 **NEVER switch branches in `/home/dan/src/trap`** — the dev server runs there on `main`.

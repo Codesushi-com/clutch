@@ -172,7 +172,12 @@ curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type:
 function buildReviewerInstructions(params: PromptParams): string {
   return `## Task: ${params.taskTitle}
 
-**Read /home/dan/src/trap/AGENTS.md first.**
+**Read /home/dan/src/trap/AGENTS.md first** (use: \`exec(command="cat /home/dan/src/trap/AGENTS.md")\`).
+
+## Tool Usage (CRITICAL)
+- **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
+- **Use \`exec\` with \`cat\` to read files:** \`exec(command="cat /path/to/file.ts")\`
+- **Use \`exec\` with \`grep\`/\`find\` to explore code:** \`exec(command="grep -rn 'pattern' /path --include='*.ts'")\`
 
 Ticket ID: \`${params.taskId}\`
 Role: \`reviewer\`
@@ -211,7 +216,13 @@ function buildDevInstructions(params: PromptParams): string {
 
   return `## Task: ${params.taskTitle}
 
-**Read /home/dan/src/trap/AGENTS.md first.**
+**Read /home/dan/src/trap/AGENTS.md first** (use: \`exec(command="cat /home/dan/src/trap/AGENTS.md")\`).
+
+## Tool Usage (CRITICAL)
+- **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
+- **Use \`exec\` with \`cat\` to read files:** \`exec(command="cat /path/to/file.ts")\`
+- **Use \`exec\` with \`find\`/\`ls\`/\`grep\` to explore:** \`exec(command="find ${params.worktreeDir}/app -name '*.tsx' | head -20")\`
+- **All work happens in your worktree:** \`${params.worktreeDir}\` (NOT in /home/dan/src/trap)
 
 Ticket ID: \`${params.taskId}\`
 Role: \`dev\`
