@@ -8,6 +8,11 @@ import Link from "next/link"
 import { formatDistanceToNow } from "@/lib/utils"
 import { ChevronRight, ChevronDown } from "lucide-react"
 import type { WorkLoopRun } from "@/lib/types/work-loop"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface ActivityLogProps {
   projectId: string
@@ -200,9 +205,16 @@ function CycleRow({ cycle, projectSlug, isExpanded, onToggle }: CycleRowProps) {
             Cycle {cycle.cycle}
           </span>
 
-          <span className="text-sm text-muted-foreground whitespace-nowrap">
-            {formatTimeAgo(cycle.firstRunAt)}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-sm text-muted-foreground whitespace-nowrap cursor-help">
+                {formatTimeAgo(cycle.firstRunAt)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {formatTimestamp(cycle.firstRunAt)}
+            </TooltipContent>
+          </Tooltip>
 
           {/* Action count badge */}
           <span
@@ -264,6 +276,18 @@ function RunRow({ run, projectSlug }: RunRowProps) {
     <div className="flex items-center gap-3 px-4 py-2 hover:bg-muted/30 text-sm border-b last:border-b-0">
       {/* Indent to align with cycle chevron */}
       <div className="w-4 flex-shrink-0" />
+
+      {/* Timestamp */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="w-20 flex-shrink-0 text-xs text-muted-foreground cursor-help">
+            {formatTimestamp(run.created_at)}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>
+          {new Date(run.created_at).toLocaleString()}
+        </TooltipContent>
+      </Tooltip>
 
       {/* Phase badge */}
       <div className="w-20 flex-shrink-0">
@@ -354,4 +378,33 @@ function formatDuration(ms: number): string {
   const hours = Math.floor(minutes / 60)
   const remainingMinutes = minutes % 60
   return `${hours}h ${remainingMinutes}m`
+}
+
+/**
+ * Format a timestamp as a concise absolute time.
+ * Shows "10:32 PM" for today, "Feb 6 10:32 PM" for older dates.
+ */
+function formatTimestamp(timestamp: number): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+  const isThisYear = date.getFullYear() === now.getFullYear()
+
+  const timeStr = date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+
+  if (isToday) {
+    return timeStr
+  }
+
+  const dateStr = date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(isThisYear ? {} : { year: "numeric" }),
+  })
+
+  return `${dateStr} ${timeStr}`
 }

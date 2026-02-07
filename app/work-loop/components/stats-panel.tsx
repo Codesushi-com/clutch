@@ -2,7 +2,12 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useWorkLoopState, useWorkLoopStats, useActiveAgentCount } from "@/lib/hooks/use-work-loop"
-import { Activity, AlertCircle, Clock, Users } from "lucide-react"
+import { Activity, AlertCircle, Clock, Users, RefreshCw } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface StatsPanelProps {
   projectId: string
@@ -57,6 +62,31 @@ export function StatsPanel({ projectId }: StatsPanelProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{state?.current_cycle ?? 0}</div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 text-muted-foreground" />
+            Last Cycle
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {state?.last_cycle_at ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-2xl font-bold cursor-help">
+                  {formatTimeAgo(state.last_cycle_at)}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {formatTimestamp(state.last_cycle_at)}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <div className="text-2xl font-bold">—</div>
+          )}
         </CardContent>
       </Card>
 
@@ -119,4 +149,48 @@ function StatsCardSkeleton() {
       </CardContent>
     </Card>
   )
+}
+
+function formatTimeAgo(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+
+  if (seconds < 60) {
+    return `${seconds}s ago`
+  } else if (minutes < 60) {
+    return `${minutes}m ago`
+  } else if (hours < 24) {
+    return `${hours}h ago`
+  } else {
+    return `${days}d ago`
+  }
+}
+
+function formatTimestamp(timestamp: number): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+  const isThisYear = date.getFullYear() === now.getFullYear()
+
+  const timeStr = date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+
+  if (isToday) {
+    return timeStr
+  }
+
+  const dateStr = date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(isThisYear ? {} : { year: "numeric" }),
+  })
+
+  return `${dateStr} ${timeStr}`
 }

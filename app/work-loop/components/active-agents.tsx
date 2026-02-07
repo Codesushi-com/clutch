@@ -6,6 +6,11 @@ import { useActiveAgentTasks } from "@/lib/hooks/use-work-loop"
 import { Cpu, Clock, Terminal, ExternalLink } from "lucide-react"
 import Link from "next/link"
 import { useMemo } from "react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface ActiveAgentsProps {
   projectId: string
@@ -25,7 +30,9 @@ export function ActiveAgents({ projectId, projectSlug }: ActiveAgentsProps) {
       role: task.role ?? "dev",
       model: task.agent_model ?? "unknown",
       duration: formatDuration(task.agent_started_at),
+      durationTimestamp: task.agent_started_at,
       lastActivity: formatLastActivity(task.agent_last_active_at),
+      lastActivityTimestamp: task.agent_last_active_at,
     }))
   }, [tasks])
 
@@ -93,7 +100,9 @@ interface AgentCardProps {
     role: string
     model: string
     duration: string
+    durationTimestamp: number | null
     lastActivity: string
+    lastActivityTimestamp: number | null
   }
   projectSlug: string
 }
@@ -136,14 +145,28 @@ function AgentCard({ agent, projectSlug }: AgentCardProps) {
       </div>
 
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Clock className="h-3 w-3" />
-          {agent.duration}
-        </span>
-        <span className="flex items-center gap-1">
-          <Terminal className="h-3 w-3" />
-          {agent.lastActivity}
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-center gap-1 cursor-help">
+              <Clock className="h-3 w-3" />
+              {agent.duration}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            Started: {agent.durationTimestamp ? formatTimestamp(agent.durationTimestamp) : "Unknown"}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-center gap-1 cursor-help">
+              <Terminal className="h-3 w-3" />
+              {agent.lastActivity}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            Last activity: {agent.lastActivityTimestamp ? formatTimestamp(agent.lastActivityTimestamp) : "Unknown"}
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )
@@ -177,4 +200,33 @@ function formatLastActivity(lastActiveAt: number | null): string {
   if (minutes < 60) return `${minutes}m ago`
   if (hours < 24) return `${hours}h ago`
   return ">24h ago"
+}
+
+/**
+ * Format a timestamp as a concise absolute time.
+ * Shows "10:32 PM" for today, "Feb 6 10:32 PM" for older dates.
+ */
+function formatTimestamp(timestamp: number): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+  const isThisYear = date.getFullYear() === now.getFullYear()
+
+  const timeStr = date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+
+  if (isToday) {
+    return timeStr
+  }
+
+  const dateStr = date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(isThisYear ? {} : { year: "numeric" }),
+  })
+
+  return `${dateStr} ${timeStr}`
 }
