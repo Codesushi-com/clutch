@@ -56,34 +56,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const convex = getConvexClient()
 
-    // Verify task exists
-    const taskResult = await convex.query(api.tasks.getById, { id })
-    if (!taskResult) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 })
-    }
-
-    // Verify the dependency task exists
-    const depResult = await convex.query(api.tasks.getById, { id: depends_on_id })
-    if (!depResult) {
+    // Check for circular dependency first (the add mutation doesn't check this)
+    const wouldCycle = await convex.query(api.taskDependencies.wouldCreateCycle, {
+      taskId: id,
+      dependsOnId: depends_on_id,
+    })
+    if (wouldCycle) {
       return NextResponse.json(
-        { error: "Dependency task not found" },
-        { status: 404 }
+        { error: "Circular dependency detected" },
+        { status: 400 }
       )
     }
 
-    // TODO: needs Convex function - addDependency mutation
-    // For now, return error indicating not implemented
-    return NextResponse.json(
-      { error: "Adding dependencies not yet implemented in Convex" },
-      { status: 501 }
-    )
+    // Call the add mutation
+    const result = await convex.mutation(api.taskDependencies.add, {
+      taskId: id,
+      dependsOnId: depends_on_id,
+    })
 
-    // When implemented, the mutation should:
-    // 1. Check if dependency already exists
-    // 2. Check for circular dependency
-    // 3. Create the dependency link
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error("[Dependencies API] Error adding dependency:", error)
+
+    // Handle specific error messages from the mutation
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
+    if (errorMessage.includes('already exists')) {
+      return NextResponse.json({ error: "Dependency already exists" }, { status: 409 })
+    }
+    if (errorMessage.includes('self-dependency') || errorMessage.includes('self')) {
+      return NextResponse.json({ error: "Task cannot depend on itself" }, { status: 400 })
+    }
+
     return NextResponse.json(
       { error: "Failed to add dependency" },
       { status: 500 }
