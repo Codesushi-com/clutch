@@ -81,7 +81,12 @@ export async function POST(request: NextRequest) {
       work_loop_max_agents: work_loop_max_agents ?? undefined,
     })
 
-    // TODO: Create default "General" chat for the project - needs Convex chat.create function
+    // Create default "General" chat for the project
+    await convex.mutation(api.chats.create, {
+      project_id: project.id,
+      title: "General",
+      participants: "[]",
+    })
 
     return NextResponse.json({ project }, { status: 201 })
   } catch (error) {
