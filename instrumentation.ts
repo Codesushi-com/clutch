@@ -92,9 +92,9 @@ export async function register() {
       }
     })
 
-    // Start the work loop if enabled
-    const { startWorkLoop } = await import('@/worker/loop')
-    startWorkLoop()
+    // Work loop runs as a separate process (npx tsx worker/loop.ts)
+    // to avoid blocking the Next.js event loop with heavy I/O.
+    // Do NOT start it here.
 
     console.log('[Trap] Backend services initialized')
   }
