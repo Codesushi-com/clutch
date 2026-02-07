@@ -252,9 +252,12 @@ export function ChatThread({
     )
   }
 
+  // Filter out system messages (e.g., "Response cancelled by user", "Session reset...")
+  const visibleMessages = messages.filter((msg) => msg.author !== "system")
+
   // Group consecutive messages by same author
   const groupedMessages: { author: string; messages: ChatMessage[] }[] = []
-  messages.forEach((msg) => {
+  visibleMessages.forEach((msg) => {
     const lastGroup = groupedMessages[groupedMessages.length - 1]
     if (lastGroup && lastGroup.author === msg.author) {
       lastGroup.messages.push(msg)
