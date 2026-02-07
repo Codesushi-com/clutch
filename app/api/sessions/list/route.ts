@@ -2,6 +2,18 @@ import { execFileSync } from "node:child_process"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
+ * Server-side cache to prevent subprocess spam.
+ * Multiple rapid requests will share the same cached response.
+ */
+interface CacheEntry {
+  data: { sessions: unknown[]; total: number }
+  timestamp: number
+}
+
+let cache: CacheEntry | null = null
+const CACHE_TTL_MS = 5000 // 5 seconds cache to prevent subprocess spam
+
+/**
  * @deprecated This endpoint is deprecated. Use the Convex `tasks.getAgentSessions` query instead.
  * The Sessions tab now uses Convex for reactive session data derived from task agent tracking.
  * This endpoint is kept for backward compatibility but may be removed in a future version.
@@ -83,14 +95,28 @@ function deriveStatus(session: OpenClawSession): "running" | "idle" | "completed
  * GET /api/sessions/list?activeMinutes=60&limit=50
  *
  * Returns sessions from the OpenClaw CLI, formatted for the frontend Session type.
+ *
+ * Server-side caching: Responses are cached for 5 seconds to prevent subprocess spam
+ * when multiple components request session data simultaneously.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const activeMinutes = parseInt(searchParams.get("activeMinutes") || "60", 10)
   const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200)
 
-  const rawSessions = fetchOpenClawSessions(activeMinutes)
+  // Check cache first
   const now = Date.now()
+  if (cache && (now - cache.timestamp) < CACHE_TTL_MS) {
+    // Return cached data, but still respect the limit parameter
+    const cachedSessions = cache.data.sessions.slice(0, limit)
+    return NextResponse.json({
+      sessions: cachedSessions,
+      total: cachedSessions.length,
+    })
+  }
+
+  // Cache miss or expired - fetch fresh data
+  const rawSessions = fetchOpenClawSessions(activeMinutes)
 
   const sessions = rawSessions.slice(0, limit).map((s) => {
     const updatedAtMs = s.updatedAt || now
@@ -118,5 +144,13 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  return NextResponse.json({ sessions, total: sessions.length })
+  const responseData = { sessions, total: sessions.length }
+
+  // Update cache
+  cache = {
+    data: responseData,
+    timestamp: now,
+  }
+
+  return NextResponse.json(responseData)
 }

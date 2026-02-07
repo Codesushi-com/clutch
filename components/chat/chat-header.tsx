@@ -6,7 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
-import { useAgentSessions, type AgentSession } from "@/lib/hooks/use-agent-sessions"
+import { useSessionStore } from "@/lib/stores/session-store"
 
 interface ChatHeaderProps {
   chat: ChatWithLastMessage
@@ -18,17 +18,16 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
   const [editTitle, setEditTitle] = useState(chat.title)
   const [isUpdating, setIsUpdating] = useState(false)
 
-  // Get agent sessions from Convex (reactive, no polling)
-  const { sessions: agentSessions, isLoading: loadingSession } = useAgentSessions(
-    chat.project_id ?? "",
-    100
-  )
+  // Get sessions from the global store (single source of truth)
+  // SessionProvider in root layout handles the polling
+  const sessions = useSessionStore((state) => state.sessions)
+  const loadingSession = useSessionStore((state) => state.isLoading)
 
   // Find session matching this chat's session_key
-  const session = agentSessions?.find(
-    (s: AgentSession) => s.id === chat.session_key
-  ) || agentSessions?.find(
-    (s: AgentSession) => s.id.endsWith(chat.session_key ?? "")
+  const session = sessions.find(
+    (s) => s.id === chat.session_key
+  ) || sessions.find(
+    (s) => s.id.endsWith(chat.session_key ?? "")
   )
 
   // Derive session info from Convex data

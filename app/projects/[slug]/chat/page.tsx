@@ -13,7 +13,7 @@ import { SessionInfoDropdown } from "@/components/chat/session-info-dropdown"
 import { resetSession } from "@/lib/openclaw"
 import { Button } from "@/components/ui/button"
 import { sendChatMessage, abortSession } from "@/lib/openclaw"
-import { useAgentSessions, type AgentSession } from "@/lib/hooks/use-agent-sessions"
+import { useSessionStore } from "@/lib/stores/session-store"
 import type { ChatMessage } from "@/lib/types"
 import type { SlashCommandResult } from "@/lib/slash-commands"
 
@@ -105,10 +105,11 @@ export default function ChatPage({ params }: PageProps) {
     uptimeString?: string;
   } | null>(null)
 
-  // Get agent sessions from Convex (reactive, no polling)
-  const { sessions: agentSessions } = useAgentSessions(projectId ?? "", 100)
+  // Get sessions from the global store (single source of truth)
+  // SessionProvider in root layout handles the polling
+  const sessions = useSessionStore((state) => state.sessions)
 
-  // Derive session info for the active chat from Convex data
+  // Derive session info for the active chat from shared store data
   const sessionInfo = ((): {
     model?: string;
     contextPercent?: number;
@@ -120,12 +121,12 @@ export default function ChatPage({ params }: PageProps) {
     updatedAt?: number;
     thinking?: boolean;
   } | null => {
-    if (!activeChat?.session_key || !agentSessions) return null
+    if (!activeChat?.session_key || !sessions) return null
 
-    const session = agentSessions.find(
-      (s: AgentSession) => s.id === activeChat.session_key
-    ) || agentSessions.find(
-      (s: AgentSession) => s.id.endsWith(activeChat.session_key!)
+    const session = sessions.find(
+      (s) => s.id === activeChat.session_key
+    ) || sessions.find(
+      (s) => s.id.endsWith(activeChat.session_key!)
     )
 
     if (!session) return null

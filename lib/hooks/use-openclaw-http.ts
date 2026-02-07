@@ -18,70 +18,61 @@ import {
   Session,
 } from "@/lib/types";
 import * as openclawApi from "@/lib/openclaw/api";
+import { useSessionStore } from "@/lib/stores/session-store";
 
 // Re-export API functions for direct use
 export { openclawApi };
 
 /**
  * Hook for session list with auto-refresh
+ *
+ * SINGLE SOURCE OF TRUTH: This hook uses the global session store (useSessionStore)
+ * to ensure all components share the same session data and polling is consolidated.
+ *
+ * Only ONE instance of this hook should mount the poller (controlled via shouldPoll param).
+ * The SessionProvider component handles this at the app level.
  */
-export function useSessionList(refreshIntervalMs = 30000) {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
+export function useSessionList(refreshIntervalMs = 30000, shouldPoll = false) {
+  // Read from the global store (single source of truth)
+  const sessions = useSessionStore((state) => state.sessions);
+  const isLoading = useSessionStore((state) => state.isLoading);
+  const error = useSessionStore((state) => state.error);
+  const isInitialized = useSessionStore((state) => state.isInitialized);
+  const fetchAndUpdate = useSessionStore((state) => state.fetchAndUpdate);
+
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchSessions = useCallback(async (isInitialLoad = false) => {
-    if (isInitialLoad) {
-      setIsLoading(true);
-    }
-
-    try {
-      const response = await openclawApi.listSessionsWithEffectiveModel({ limit: 100 });
-      setSessions(response.sessions);
-      if (isInitialLoad) {
-        setIsInitialized(true);
-      }
-      setError(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load sessions";
-      setError(message);
-    } finally {
-      if (isInitialLoad) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  // Initial load
+  // Initial load - only on mount
   useEffect(() => {
-    fetchSessions(true);
-  }, [fetchSessions]);
-
-  // Auto-refresh
-  useEffect(() => {
-    if (refreshIntervalMs > 0) {
-      refreshIntervalRef.current = setInterval(() => {
-        fetchSessions(false);
-      }, refreshIntervalMs);
+    if (!isInitialized) {
+      fetchAndUpdate(true);
     }
+  }, [fetchAndUpdate, isInitialized]);
+
+  // Auto-refresh - only when shouldPoll is true (controlled by SessionProvider)
+  useEffect(() => {
+    if (!shouldPoll || refreshIntervalMs <= 0) return;
+
+    // Clear any existing interval first
+    if (refreshIntervalRef.current) {
+      clearInterval(refreshIntervalRef.current);
+    }
+
+    refreshIntervalRef.current = setInterval(() => {
+      fetchAndUpdate(false);
+    }, refreshIntervalMs);
 
     return () => {
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
       }
     };
-  }, [refreshIntervalMs, fetchSessions]);
+  }, [refreshIntervalMs, shouldPoll, fetchAndUpdate]);
 
   const refresh = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      await fetchSessions(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchSessions]);
+    await fetchAndUpdate(false);
+  }, [fetchAndUpdate]);
 
   return {
     sessions,

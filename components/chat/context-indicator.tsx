@@ -1,24 +1,25 @@
 "use client"
 
-import { useAgentSessions, type AgentSession } from "@/lib/hooks/use-agent-sessions"
+import { useSessionStore } from "@/lib/stores/session-store"
 
 interface ContextIndicatorProps {
   sessionKey?: string
   projectId?: string
 }
 
-export function ContextIndicator({ 
+export function ContextIndicator({
   sessionKey = "main",
-  projectId,
 }: ContextIndicatorProps) {
-  // Get agent sessions from Convex (reactive, no polling)
-  const { sessions: agentSessions, isLoading } = useAgentSessions(projectId ?? "", 100)
+  // Get sessions from the global store (single source of truth)
+  // SessionProvider in root layout handles the polling
+  const sessions = useSessionStore((state) => state.sessions)
+  const isLoading = useSessionStore((state) => state.isLoading)
 
   // Find the session matching our sessionKey
-  const session = agentSessions?.find(
-    (s: AgentSession) => s.id === sessionKey
-  ) || agentSessions?.find(
-    (s: AgentSession) => s.id.endsWith(sessionKey)
+  const session = sessions.find(
+    (s) => s.id === sessionKey
+  ) || sessions.find(
+    (s) => s.id.endsWith(sessionKey)
   )
 
   if (!session) {

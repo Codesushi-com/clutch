@@ -1,6 +1,9 @@
 /**
  * Session Store
  * Zustand store for managing session state with real-time updates
+ *
+ * This is the SINGLE SOURCE OF TRUTH for session data fetched from OpenClaw.
+ * All components should read from this store instead of making independent fetches.
  */
 
 import { create } from 'zustand';
@@ -10,6 +13,7 @@ import {
   SessionStatus,
   SessionType,
 } from '@/lib/types';
+import * as openclawApi from '@/lib/openclaw/api';
 
 export interface SessionFilters {
   status?: SessionStatus;
@@ -20,32 +24,36 @@ export interface SessionFilters {
 interface SessionState {
   // Data
   sessions: Session[];
-  
+
   // Loading states
   isLoading: boolean;
   isInitialized: boolean;
   error: string | null;
-  
+  lastFetchedAt: number | null;
+
   // Filters
   filters: SessionFilters;
   sortBy: 'createdAt' | 'updatedAt' | 'tokens';
   sortOrder: 'asc' | 'desc';
-  
+
   // Actions
   setSessions: (sessions: Session[]) => void;
   addSession: (session: Session) => void;
   updateSession: (id: string, changes: Partial<Session>) => void;
   removeSession: (id: string) => void;
-  
+
   // Loading actions
   setLoading: (loading: boolean) => void;
   setInitialized: (initialized: boolean) => void;
   setError: (error: string | null) => void;
-  
+
   // Filter actions
   setFilters: (filters: SessionFilters) => void;
   setSortBy: (sortBy: SessionState['sortBy']) => void;
   setSortOrder: (order: SessionState['sortOrder']) => void;
+
+  // Fetch action - SINGLE SOURCE OF TRUTH for session fetching
+  fetchAndUpdate: (isInitialLoad?: boolean) => Promise<void>;
 
   // Computed
   getFilteredSessions: () => Session[];
@@ -62,6 +70,7 @@ export const useSessionStore = create<SessionState>()(
       isLoading: false,
       isInitialized: false,
       error: null,
+      lastFetchedAt: null,
       filters: {},
       sortBy: 'updatedAt',
       sortOrder: 'desc',
@@ -90,6 +99,30 @@ export const useSessionStore = create<SessionState>()(
       setLoading: (isLoading) => set({ isLoading }),
       setInitialized: (isInitialized) => set({ isInitialized }),
       setError: (error) => set({ error, isLoading: false }),
+
+      // Fetch action - SINGLE SOURCE OF TRUTH
+      // This is the ONLY place that should call the sessions API
+      fetchAndUpdate: async (isInitialLoad = false) => {
+        if (isInitialLoad) {
+          set({ isLoading: true });
+        }
+
+        try {
+          const response = await openclawApi.listSessionsWithEffectiveModel({ limit: 100 });
+          set({
+            sessions: response.sessions,
+            lastFetchedAt: Date.now(),
+            error: null,
+            ...(isInitialLoad ? { isInitialized: true, isLoading: false } : {}),
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Failed to load sessions';
+          set({
+            error: message,
+            ...(isInitialLoad ? { isLoading: false } : {}),
+          });
+        }
+      },
 
       // Filter actions
       setFilters: (filters) => set({ filters }),
