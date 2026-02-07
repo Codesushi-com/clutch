@@ -6,9 +6,11 @@
  *
  * 1. Orphaned in_progress tasks — tasks stuck in_progress with no active
  *    agent AND stale agent_last_active_at. Reset to ready.
- * 2. Stale agent fields — tasks in done/ready that still have agent_*
+ * 2. Stale in_review tasks — tasks stuck in_review with a branch but no PR
+ *    for >2 hours. Reset to ready so they can be retried.
+ * 3. Stale agent fields — tasks in done/ready that still have agent_*
  *    fields set. Clear them.
- * 3. Orphan worktrees — worktrees for tasks that are done. Remove them.
+ * 4. Orphan worktrees — worktrees for tasks that are done. Remove them.
  *
  * Agent reaping (finished/stale sessions) is handled earlier in
  * runProjectCycle, before this phase runs.
@@ -66,6 +68,7 @@ interface CleanupResult {
 
 const MS_PER_MINUTE = 60 * 1000
 const DEFAULT_STALE_MINUTES = 15
+const STUCK_IN_REVIEW_MINUTES = 120 // 2 hours
 
 // ============================================
 // Main Cleanup Function
@@ -191,6 +194,68 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
       details: {
         agentSessionKey: task.agent_session_key,
         agentModel: task.agent_model,
+      },
+    })
+    actions++
+  }
+
+  // ------------------------------------------------------------------
+  // 1c. Detect tickets stuck in_review without PRs
+  //
+  //    A task is stuck in review if:
+  //    - Status is in_review
+  //    - Has a branch but no PR number
+  //    - Has been in this state for >2 hours
+  //
+  //    This happens when agents create branches but fail to create PRs,
+  //    blocking the work loop. We reset these to ready so they can be
+  //    picked up again.
+  // ------------------------------------------------------------------
+  const stuckInReviewThresholdMs = STUCK_IN_REVIEW_MINUTES * MS_PER_MINUTE
+
+  for (const task of inReviewTasks) {
+    // Skip if no branch or already has a PR
+    if (!task.branch) continue
+    if (task.pr_number) continue
+
+    // Check how long it's been in review
+    const inReviewMs = now - task.updated_at
+    if (inReviewMs < stuckInReviewThresholdMs) continue
+
+    // Move back to ready
+    try {
+      await convex.mutation(api.tasks.move, {
+        id: task.id,
+        status: "ready",
+      })
+    } catch (moveErr) {
+      const msg = moveErr instanceof Error ? moveErr.message : String(moveErr)
+      console.warn(`[cleanup] Failed to reset stuck in_review task ${task.id}: ${msg}`)
+      continue
+    }
+
+    // Add a comment explaining the recovery
+    try {
+      await convex.mutation(api.comments.create, {
+        taskId: task.id,
+        author: "coordinator",
+        authorType: "coordinator",
+        content: `Auto-recovered: Task was stuck in review for ${Math.round(inReviewMs / MS_PER_MINUTE)} minutes with a branch but no PR. Reset to ready for retry.`,
+        type: "status_change",
+      })
+    } catch {
+      // Non-fatal — comment creation failure shouldn't block the recovery
+    }
+
+    await log({
+      projectId: project.id,
+      cycle,
+      phase: "cleanup",
+      action: "reset_stuck_in_review",
+      taskId: task.id,
+      details: {
+        inReviewMinutes: Math.round(inReviewMs / MS_PER_MINUTE),
+        branch: task.branch,
       },
     })
     actions++
