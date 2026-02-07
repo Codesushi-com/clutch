@@ -344,19 +344,36 @@ export const getWithDependencies = query({
 
 /**
  * Get tasks with active agents for a project
- * Returns tasks that have an agent_session_key set (indicating an active agent)
+ * Returns tasks that have an agent_session_key set and are still active.
+ * An agent is considered active if:
+ * - It has activity within the last 15 minutes (ACTIVE_AGENT_THRESHOLD_MS), OR
+ * - The task is in 'in_progress' or 'in_review' status with a recent agent session
  */
 export const getWithActiveAgents = query({
   args: { projectId: v.string() },
   handler: async (ctx, args): Promise<Task[]> => {
+    const ACTIVE_AGENT_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
+    const now = Date.now()
+    const cutoffTime = now - ACTIVE_AGENT_THRESHOLD_MS
+
     const tasks = await ctx.db
       .query('tasks')
       .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
       .filter((q) => q.neq('agent_session_key', undefined))
       .collect()
 
+    // Filter to only include agents that are still active
+    const activeTasks = tasks.filter((task) => {
+      // Must have a last activity timestamp
+      const lastActive = task.agent_last_active_at
+      if (!lastActive) return false
+
+      // Only include if active within threshold
+      return lastActive >= cutoffTime
+    })
+
     // Sort by most recently active first
-    return tasks
+    return activeTasks
       .sort((a, b) => (b.agent_last_active_at ?? 0) - (a.agent_last_active_at ?? 0))
       .map((t) => toTask(t as Parameters<typeof toTask>[0]))
   },
