@@ -132,7 +132,7 @@ export function WorkLoopContent() {
           </div>
 
           {/* Sidebar - 1 column */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 min-w-0">
             <StatsPanel projectId={project.projectId} />
           </div>
         </div>

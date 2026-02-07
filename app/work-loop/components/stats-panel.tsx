@@ -17,7 +17,7 @@ export function StatsPanel({ projectId }: StatsPanelProps) {
 
   if (stateLoading || statsLoading || countLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 min-w-0">
         <StatsCardSkeleton />
         <StatsCardSkeleton />
         <StatsCardSkeleton />
