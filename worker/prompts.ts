@@ -10,7 +10,7 @@
 // ============================================
 
 export interface PromptParams {
-  /** The role of the agent (dev, pm, qa, research, reviewer) */
+  /** The role of the agent (dev, pm, qa, research, reviewer, fixer) */
   role: string
   /** The task ID */
   taskId: string
@@ -30,6 +30,12 @@ export interface PromptParams {
   signalResponses?: Array<{ question: string; response: string }>
   /** Optional image URLs for the PM to analyze */
   imageUrls?: string[]
+  /** Optional PR number (for fixer role) */
+  prNumber?: number | null
+  /** Optional branch name (for fixer role) */
+  branch?: string | null
+  /** Optional review comments (for fixer role) */
+  reviewComments?: string | null
 }
 
 // ============================================
@@ -417,6 +423,107 @@ curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Conte
 \`\`\``
 }
 
+/**
+ * Build Fixer role instructions
+ *
+ * The fixer addresses review feedback on an existing PR.
+ * Unlike dev, fixer works on an existing branch rather than creating a new one.
+ */
+function buildFixerInstructions(params: PromptParams): string {
+  const prNumber = params.prNumber ?? "<pr_number>"
+  const branchName = params.branch ?? `fix/${params.taskId.slice(0, 8)}`
+  const reviewComments = params.reviewComments ?? "<review_comments_not_provided>"
+
+  return `## Task: ${params.taskTitle}
+
+**Read ${params.repoDir}/AGENTS.md first** (use: \`exec(command="cat ${params.repoDir}/AGENTS.md")\`).
+
+## Tool Usage (CRITICAL)
+- **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
+- **Use \`exec\` with \`cat\` to read files:** \`exec(command="cat /path/to/file.ts")\`
+- **Use \`rg\` to search code:** \`exec(command="rg 'pattern' ${params.worktreeDir}/app -t ts")\` (note: \`-t ts\` covers both .ts AND .tsx — do NOT use \`-t tsx\`, it doesn't exist)
+- **Use \`fd\` to find files:** \`exec(command="fd '\\.tsx$' ${params.worktreeDir}/app")\`
+- **Quote paths with brackets:** Next.js uses \`[slug]\` dirs — always quote these in shell: \`cat '${params.worktreeDir}/app/projects/[slug]/page.tsx'\`
+- **All work happens in your worktree:** \`${params.worktreeDir}\` (NOT in ${params.repoDir})
+
+Ticket ID: \`${params.taskId}\`
+Role: \`fixer\`
+
+${params.taskDescription}
+
+---
+
+**PR:** #${prNumber}
+**Branch:** ${branchName}
+**Worktree:** \`${params.worktreeDir}\`
+
+## Review Comments
+
+${reviewComments}
+
+---
+
+## Your Job
+
+You are a Code Fixer. Your job is to address review feedback on an existing PR.
+
+### Instructions
+
+1. **Check out the existing branch** (do NOT create a new branch)
+   \`\`\`bash
+   cd ${params.worktreeDir}
+   git fetch origin
+   git checkout ${branchName}
+   \`\`\`
+
+2. **Read the review comments carefully** — understand what needs to be fixed
+
+3. **Fix each issue** identified by the reviewer:
+   - Make targeted changes to address the feedback
+   - Follow the project's coding standards (see AGENTS.md)
+   - Keep changes minimal and focused
+
+4. **Verify your fixes:**
+   \`\`\`bash
+   cd ${params.worktreeDir}
+   pnpm typecheck
+   pnpm lint
+   \`\`\`
+
+5. **Commit and push to the same branch** (do NOT create a new PR):
+   \`\`\`bash
+   cd ${params.worktreeDir}
+   git add -A
+   git commit -m "fix: address review feedback"
+   git push origin ${branchName}
+   \`\`\`
+
+6. **Post a comment** confirming fixes are complete:
+   \`\`\`bash
+   curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Addressed review feedback. PR #${prNumber} updated."}'
+   \`\`\`
+
+7. **Move the task back to in_review** for re-review:
+   \`\`\`bash
+   curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "in_review"}'
+   \`\`\`
+
+### Important Rules
+
+- **DO NOT create a new branch** — push to the existing \`${branchName}\` branch
+- **DO NOT create a new PR** — the existing PR #${prNumber} will be updated automatically
+- **DO NOT move the task to done** — it needs re-review after your fixes
+- Run typecheck and lint before committing — reviewers will check these
+
+### If You Encounter Blockers
+
+If a review comment is unclear or you can't address it:
+\`\`\`bash
+# Post a comment asking for clarification
+curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Blocker: <description of the issue with the review comment>"}'
+\`\`\``
+}
+
 // ============================================
 // Main Prompt Builder
 // ============================================
@@ -444,6 +551,8 @@ export function buildPrompt(params: PromptParams): string {
         return buildResearchInstructions(params)
       case "reviewer":
         return buildReviewerInstructions(params)
+      case "fixer":
+        return buildFixerInstructions(params)
       case "dev":
       default:
         return buildDevInstructions(params)

@@ -74,6 +74,7 @@ const ROLE_MODEL_MAP: Record<string, string> = {
   reviewer: "sonnet",
   dev: "openrouter/pony-alpha",
   qa: "openrouter/pony-alpha",
+  fixer: "openrouter/pony-alpha",
 }
 
 /**
