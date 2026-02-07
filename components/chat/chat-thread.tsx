@@ -3,19 +3,12 @@
 import { useEffect, useRef, useCallback } from "react"
 import { MessageSquare } from "lucide-react"
 import { MessageBubble } from "./message-bubble"
-import { StreamingMessage } from "./streaming-message"
 import { useChatStore } from "@/lib/stores/chat-store"
 import type { ChatMessage } from "@/lib/types"
 
 interface TypingIndicator {
   author: string
   state: "thinking" | "typing"
-}
-
-interface StreamingMessage {
-  author: string
-  content: string
-  timestamp: number
 }
 
 interface SubAgentDetails {
@@ -33,7 +26,6 @@ interface SubAgentDetails {
 interface ChatThreadProps {
   chatId: string
   messages: ChatMessage[]
-  streamingMessage?: StreamingMessage | null
   loading?: boolean
   currentUser?: string
   onCreateTask?: (message: ChatMessage) => void
@@ -46,7 +38,6 @@ interface ChatThreadProps {
 export function ChatThread({
   chatId,
   messages,
-  streamingMessage = null,
   loading = false,
   currentUser = "dan",
   onCreateTask,
@@ -126,7 +117,7 @@ export function ChatThread({
         isAutoScrollingRef.current = false
       }, 500)
     }
-  }, [messages.length, streamingMessage?.content, typingIndicators.length, isNearBottom, chatId])
+  }, [messages.length, typingIndicators.length, isNearBottom, chatId])
 
   // Set up scroll event listener for saving position
   useEffect(() => {
@@ -200,18 +191,6 @@ export function ChatThread({
           })}
         </div>
       ))}
-      
-      {/* Streaming message */}
-      {streamingMessage && (
-        <div className="space-y-1">
-          <StreamingMessage
-            author={streamingMessage.author}
-            content={streamingMessage.content}
-            timestamp={streamingMessage.timestamp}
-            isOwnMessage={chatLayout === 'imessage' && streamingMessage.author === currentUser}
-          />
-        </div>
-      )}
       
       {/* Typing indicator */}
       {typingIndicators.length > 0 && (

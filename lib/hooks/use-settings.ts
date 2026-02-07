@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface ChatSettings {
-  streamingEnabled: boolean
+  // Settings can be added here in the future
 }
 
 const DEFAULT_SETTINGS: ChatSettings = {
-  streamingEnabled: true,
 }
 
 const SETTINGS_KEY = 'trap-chat-settings'
@@ -52,14 +52,8 @@ export function useSettings() {
     })
   }, [])
 
-  // Convenience method for toggling streaming
-  const toggleStreaming = useCallback(() => {
-    updateSetting('streamingEnabled', !settings.streamingEnabled)
-  }, [settings.streamingEnabled, updateSetting])
-
   return {
     settings,
     updateSetting,
-    toggleStreaming,
   }
 }

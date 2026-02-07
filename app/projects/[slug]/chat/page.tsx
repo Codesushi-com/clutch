@@ -3,14 +3,12 @@
 import { useEffect, useState, use } from "react"
 import { MessageSquare, Menu } from "lucide-react"
 import { useChatStore } from "@/lib/stores/chat-store"
-import { useSettings } from "@/lib/hooks/use-settings"
 import { ChatSidebar } from "@/components/chat/chat-sidebar"
 import { ChatThread } from "@/components/chat/chat-thread"
 import { ChatInput } from "@/components/chat/chat-input"
 import { ChatHeader } from "@/components/chat/chat-header"
 import { ConvexChatSync } from "@/components/chat/convex-sync"
 import { CreateTaskFromMessage } from "@/components/chat/create-task-from-message"
-import { StreamingToggle } from "@/components/chat/streaming-toggle"
 import { SessionInfoDropdown } from "@/components/chat/session-info-dropdown"
 import { Button } from "@/components/ui/button"
 import { sendChatMessage, abortSession } from "@/lib/openclaw"
@@ -56,18 +54,13 @@ export default function ChatPage({ params }: PageProps) {
     chats,
     activeChat,
     messages,
-    streamingMessages,
     loadingMessages,
     typingIndicators,
     fetchChats,
     sendMessage: sendMessageToDb,
     setActiveChat,
     setTyping,
-    clearStreamingMessage,
   } = useChatStore()
-
-  // Settings for streaming toggle
-  const { settings, toggleStreaming } = useSettings()
 
   // Generate session key based on project and active chat
   // Format: trap:{projectSlug}:{chatId} - includes project for context
@@ -78,7 +71,6 @@ export default function ChatPage({ params }: PageProps) {
   // - HTTP POST for sending messages (reliable, works during gateway restarts)
   // - Message persistence handled server-side by trap-channel plugin
   // - Convex reactive queries update the UI automatically
-  // - WebSocket/SSE removed - streaming now handled via Convex
   // ==========================================================================
 
   // ==========================================================================
@@ -397,7 +389,6 @@ export default function ChatPage({ params }: PageProps) {
       console.error("[Chat] Failed to abort chat:", error)
     } finally {
       setTyping(activeChat.id, "ada", false)
-      clearStreamingMessage(activeChat.id)
       await sendMessageToDb(activeChat.id, "_Response cancelled by user_", "system")
     }
   }
@@ -486,10 +477,6 @@ export default function ChatPage({ params }: PageProps) {
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0" />
                     <div className="flex items-center gap-2 md:gap-3">
-                      <StreamingToggle
-                        enabled={settings.streamingEnabled}
-                        onChange={toggleStreaming}
-                      />
                       <SessionInfoDropdown
                         sessionKey={sessionKey}
                         sessionInfo={sessionInfo || undefined}
@@ -506,7 +493,6 @@ export default function ChatPage({ params }: PageProps) {
               <ChatThread
                 chatId={activeChat.id}
                 messages={currentMessages}
-                streamingMessage={activeChat ? streamingMessages[activeChat.id] || null : null}
                 loading={loadingMessages}
                 onCreateTask={handleCreateTask}
                 typingIndicators={typingIndicators[activeChat.id] || []}
