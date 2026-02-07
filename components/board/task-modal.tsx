@@ -403,16 +403,16 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
               </div>
 
               <div className="flex-1 overflow-y-auto p-4">
-                <div className="flex gap-8">
+                <div className="flex gap-8 h-full">
                   {/* Main content */}
-                  <div className="flex-1 min-h-0">
+                  <div className="flex-1 min-h-0 flex flex-col">
                     {/* Description Tab */}
-                    <TabsContent value="description" className="mt-0">
+                    <TabsContent value="description" className="mt-0 flex-1 flex flex-col">
                       <textarea
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder="Add a description..."
-                        className="w-full min-h-[400px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-y"
+                        className="w-full flex-1 min-h-[200px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-blue)] resize-y"
                       />
                     </TabsContent>
 
