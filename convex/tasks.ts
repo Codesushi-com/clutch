@@ -1309,9 +1309,13 @@ export const getUnanalyzed = query({
       }
 
       // Check if task qualifies for analysis
-      // 1. Done tasks - analyze all (removed 25% sampling to populate metrics)
+      // 1. Done tasks - sample ~20% randomly to avoid wasting tokens on successes
       if (task.status === 'done') {
-        unanalyzedTasks.push(toTask(task as Parameters<typeof toTask>[0]))
+        // Use task ID hash for deterministic sampling (same task always gets same decision)
+        const hash = task.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+        if (hash % 5 === 0) {
+          unanalyzedTasks.push(toTask(task as Parameters<typeof toTask>[0]))
+        }
         continue
       }
 
