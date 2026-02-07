@@ -14,7 +14,7 @@ export interface WorkLoopConfig {
   maxAgentsPerProject: number
   /** Max concurrent agents globally — default 5 */
   maxAgentsGlobal: number
-  /** How long before in_progress is considered "stalled" — default 60 minutes */
+  /** How long before in_progress is considered "stalled" — default 15 minutes */
   staleTaskMinutes: number
   /** How long before in_review without PR is stalled — default 30 minutes */
   staleReviewMinutes: number
@@ -28,8 +28,8 @@ const DEFAULT_CONFIG: WorkLoopConfig = {
   cycleIntervalMs: 30000,
   maxAgentsPerProject: 2,
   maxAgentsGlobal: 5,
-  staleTaskMinutes: 5,
-  staleReviewMinutes: 5,
+  staleTaskMinutes: 15,
+  staleReviewMinutes: 30,
 }
 
 /**
