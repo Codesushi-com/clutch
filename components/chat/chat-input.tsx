@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Send, Square, X } from "lucide-react"
+import { Send, Square, X, Command, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ContextIndicator } from "@/components/chat/context-indicator"
+import { parseSlashCommand, executeSlashCommand, SLASH_COMMANDS, type SlashCommandResult } from "@/lib/slash-commands"
 
 // Generate a UUID with fallback for non-secure contexts
 function generateId(): string {
@@ -31,15 +32,17 @@ interface ImagePreview {
 interface ChatInputProps {
   onSend: (content: string, images?: string[]) => Promise<void>
   onStop?: () => Promise<void>
+  onSlashCommand?: (result: SlashCommandResult) => void
   disabled?: boolean
   placeholder?: string
   isAssistantTyping?: boolean
   sessionKey?: string
 }
 
-export function ChatInput({ 
-  onSend, 
+export function ChatInput({
+  onSend,
   onStop,
+  onSlashCommand,
   disabled = false,
   placeholder = "Type a message...",
   isAssistantTyping = false,
@@ -50,6 +53,11 @@ export function ChatInput({
   const [stopping, setStopping] = useState(false)
   const [contextUpdateTrigger, setContextUpdateTrigger] = useState(0)
   const [images, setImages] = useState<ImagePreview[]>([])
+  const [slashCommandMode, setSlashCommandMode] = useState<{
+    active: boolean;
+    command?: string;
+    valid: boolean;
+  }>({ active: false, valid: false })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Auto-resize textarea
@@ -57,6 +65,22 @@ export function ChatInput({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto"
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`
+    }
+  }, [content])
+
+  // Detect slash command mode
+  useEffect(() => {
+    const trimmed = content.trim()
+    if (trimmed.startsWith("/")) {
+      const parsed = parseSlashCommand(trimmed)
+      const knownCommands = Object.keys(SLASH_COMMANDS)
+      setSlashCommandMode({
+        active: true,
+        command: parsed.command,
+        valid: knownCommands.includes(parsed.command || ""),
+      })
+    } else {
+      setSlashCommandMode({ active: false, valid: false })
     }
   }, [content])
 
@@ -120,26 +144,55 @@ export function ChatInput({
 
   const handleSend = async () => {
     if ((!content.trim() && images.length === 0) || sending || disabled || isAssistantTyping) return
-    
+
     const message = content.trim()
     const imagesToUpload = [...images]
-    
+
+    // Check if this is a slash command
+    const parsedCommand = parseSlashCommand(message)
+    if (parsedCommand.isCommand) {
+      // Execute slash command
+      setSending(true)
+      try {
+        const result = await executeSlashCommand(parsedCommand, sessionKey)
+
+        // Notify parent component of the result
+        onSlashCommand?.(result)
+
+        // Clear input if command was processed
+        if (!result.shouldSendMessage) {
+          setContent("")
+        } else {
+          // Unknown command - send as message after showing warning
+          await onSend(message, undefined)
+          setContent("")
+        }
+      } catch (error) {
+        console.error("Slash command failed:", error)
+        // Keep content on error so user can retry
+      } finally {
+        setSending(false)
+        textareaRef.current?.focus()
+      }
+      return
+    }
+
     // Clear inputs immediately for responsiveness
     setContent("")
     setImages([])
     setSending(true)
-    
+
     // Keep focus on input after clearing
     textareaRef.current?.focus()
-    
+
     try {
       // Upload images if any
       let uploadedUrls: string[] = []
-      
+
       if (imagesToUpload.length > 0) {
         // Update image states to show uploading
         setImages(prev => prev.map(img => ({ ...img, uploading: true })))
-        
+
         uploadedUrls = await Promise.all(
           imagesToUpload.map(async (img) => {
             try {
@@ -152,13 +205,13 @@ export function ChatInput({
           })
         )
       }
-      
+
       // Send message with uploaded image URLs
       await onSend(message, uploadedUrls.length > 0 ? uploadedUrls : undefined)
-      
+
       // Clean up object URLs
       imagesToUpload.forEach(img => URL.revokeObjectURL(img.url))
-      
+
       // Trigger context update after successful send
       setContextUpdateTrigger(prev => prev + 1)
     } catch (error) {
@@ -240,6 +293,29 @@ export function ChatInput({
         </div>
       )}
       
+      {/* Slash command indicator */}
+      {slashCommandMode.active && (
+        <div className={`mb-2 flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg ${slashCommandMode.valid ? 'bg-[var(--accent-blue)]/10 text-[var(--accent-blue)]' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
+          {slashCommandMode.valid ? (
+            <>
+              <Command className="h-3.5 w-3.5" />
+              <span>
+                Command: <code className="font-mono bg-black/5 dark:bg-white/10 px-1 rounded">/{slashCommandMode.command}</code>
+                {' '}— Press Enter to execute
+              </span>
+            </>
+          ) : (
+            <>
+              <AlertCircle className="h-3.5 w-3.5" />
+              <span>
+                Unknown command: <code className="font-mono bg-black/5 dark:bg-white/10 px-1 rounded">/{slashCommandMode.command}</code>
+                {' '}— Will send as message
+              </span>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Chat input and send button container - aligned to top */}
       <div className="flex gap-2 md:gap-3 items-start">
         <div className="flex-1">
@@ -296,7 +372,7 @@ export function ChatInput({
       </div>
       
       <p className="text-xs text-[var(--text-muted)] hidden md:block">
-        Press Enter to send, Shift+Enter for newline • Paste images with Cmd+V
+        Press Enter to send, Shift+Enter for newline • Paste images with Cmd+V • Use /help for commands
       </p>
     </div>
   )

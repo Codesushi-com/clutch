@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { sendChatMessage, abortSession } from "@/lib/openclaw"
 import { useOpenClawHttpRpc } from "@/lib/hooks/use-openclaw-http"
 import type { ChatMessage } from "@/lib/types"
+import type { SlashCommandResult } from "@/lib/slash-commands"
 
 type PageProps = {
   params: Promise<{ slug: string }>
@@ -415,6 +416,30 @@ export default function ChatPage({ params }: PageProps) {
     }
   }
 
+  // ==========================================================================
+  // Slash command handler
+  // ==========================================================================
+
+  const handleSlashCommand = async (result: SlashCommandResult) => {
+    if (!activeChat) return
+
+    // Show command response in chat
+    if (result.response) {
+      await sendMessageToDb(activeChat.id, result.response, "system")
+    }
+
+    // Handle post-command actions
+    if (result.action === "clear_chat") {
+      // The session has been reset - clear local messages via store
+      // Note: The Convex sync will handle this automatically on next refresh
+      // but we trigger a re-fetch by updating the chat store
+      clearStreamingMessage(activeChat.id)
+    } else if (result.action === "refresh_session") {
+      // Refresh session info (for /model command)
+      // The session info effect will pick up the change automatically
+    }
+  }
+
   const currentMessages = activeChat ? messages[activeChat.id] || [] : []
 
   // ==========================================================================
@@ -493,6 +518,7 @@ export default function ChatPage({ params }: PageProps) {
               <ChatInput
                 onSend={handleSendMessage}
                 onStop={handleStopChat}
+                onSlashCommand={handleSlashCommand}
                 isAssistantTyping={activeChat ? (typingIndicators[activeChat.id] || []).some(t => t.author === "ada") : false}
                 sessionKey={sessionKey}
               />

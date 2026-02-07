@@ -215,6 +215,10 @@ export function useOpenClawHttpRpc() {
     return openclawApi.cancelSession(sessionKey);
   }, []);
 
+  const patchSession = useCallback(async (sessionKey: string, updates: { model?: string; [key: string]: unknown }): Promise<void> => {
+    return openclawApi.patchSession(sessionKey, updates);
+  }, []);
+
   // Stub implementations for agent methods (not implemented in HTTP API yet)
   const listAgents = useCallback(async (): Promise<AgentListResponse> => {
     return { agents: [], total: 0 };
@@ -282,6 +286,7 @@ export function useOpenClawHttpRpc() {
     createAgent,
     updateAgentConfig,
     getGatewayStatus,
+    patchSession,
   };
 }
 
@@ -303,6 +308,12 @@ async function rpcCall<T>(method: string, params?: Record<string, unknown>): Pro
       return undefined as T;
     case "sessions.cancel":
       await openclawApi.cancelSession((params?.sessionKey as string) || "");
+      return undefined as T;
+    case "sessions.patch":
+      await openclawApi.patchSession(
+        (params?.key as string) || "",
+        { model: params?.model as string | undefined }
+      );
       return undefined as T;
     default:
       throw new Error(`Method ${method} not implemented in HTTP API`);
