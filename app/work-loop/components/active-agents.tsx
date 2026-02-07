@@ -2,10 +2,12 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useActiveAgentTasks } from "@/lib/hooks/use-work-loop"
 import { Cpu, Clock, Terminal, ExternalLink } from "lucide-react"
 import Link from "next/link"
 import { useMemo } from "react"
+import { formatTimestamp } from "@/lib/utils"
 
 interface ActiveAgentsProps {
   projectId: string
@@ -25,7 +27,9 @@ export function ActiveAgents({ projectId, projectSlug }: ActiveAgentsProps) {
       role: task.role ?? "dev",
       model: task.agent_model ?? "unknown",
       duration: formatDuration(task.agent_started_at),
+      durationTimestamp: task.agent_started_at,
       lastActivity: formatLastActivity(task.agent_last_active_at),
+      lastActivityTimestamp: task.agent_last_active_at,
     }))
   }, [tasks])
 
@@ -93,7 +97,9 @@ interface AgentCardProps {
     role: string
     model: string
     duration: string
+    durationTimestamp: number | null
     lastActivity: string
+    lastActivityTimestamp: number | null
   }
   projectSlug: string
 }
@@ -136,14 +142,28 @@ function AgentCard({ agent, projectSlug }: AgentCardProps) {
       </div>
 
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Clock className="h-3 w-3" />
-          {agent.duration}
-        </span>
-        <span className="flex items-center gap-1">
-          <Terminal className="h-3 w-3" />
-          {agent.lastActivity}
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-center gap-1 cursor-help">
+              <Clock className="h-3 w-3" />
+              {agent.duration}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            Started: {agent.durationTimestamp ? formatTimestamp(agent.durationTimestamp) : "Unknown"}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-center gap-1 cursor-help">
+              <Terminal className="h-3 w-3" />
+              {agent.lastActivity}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            Last activity: {agent.lastActivityTimestamp ? formatTimestamp(agent.lastActivityTimestamp) : "Unknown"}
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )

@@ -66,3 +66,40 @@ export function formatDistanceToNow(timestamp: number, options?: FormatDistanceO
 
   return result
 }
+
+/**
+ * Format a timestamp as a concise absolute time
+ * - Today: "10:32 PM"
+ * - This year: "Feb 6 10:32 PM"
+ * - Different year: "Feb 6, 2025 10:32 PM"
+ */
+export function formatTimestamp(timestamp: number): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+  const isThisYear = date.getFullYear() === now.getFullYear()
+
+  const timeOptions: Intl.DateTimeFormatOptions = {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }
+
+  if (isToday) {
+    return date.toLocaleTimeString(undefined, timeOptions)
+  }
+
+  const dateTimeOptions: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }
+
+  if (!isThisYear) {
+    dateTimeOptions.year = "numeric"
+  }
+
+  return date.toLocaleString(undefined, dateTimeOptions)
+}
