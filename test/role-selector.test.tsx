@@ -148,6 +148,8 @@ describe('Role Selector Feature', () => {
                   task={task}
                   index={0}
                   onClick={() => {}}
+                  projectId="test-project"
+                  columnTasks={[task]}
                 />
                 {provided.placeholder}
               </div>

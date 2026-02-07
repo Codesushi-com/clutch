@@ -278,6 +278,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
         onDragEnd={handleDragEnd}
         columnVisibility={columnVisibility}
         onToggleColumn={updateColumnVisibility}
+        projectId={projectId}
       />
     )
   }
@@ -383,6 +384,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
               onAddTask={() => onAddTask(col.status)}
               showAddButton={col.showAdd}
               isMobile={true}
+              projectId={projectId}
             />
           ))}
         </div>
@@ -400,6 +402,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
               onTaskClick={onTaskClick}
               onAddTask={() => onAddTask(col.status)}
               showAddButton={col.showAdd}
+              projectId={projectId}
             />
           ))}
         </div>

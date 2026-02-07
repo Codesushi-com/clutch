@@ -7,12 +7,15 @@ import type { Task } from "@/lib/types"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
 import { formatCompactTime } from "@/lib/utils"
 import { AgentStatus, OrphanedTaskWarning } from "@/components/agents/agent-status"
+import { TaskCardMenu } from "./task-card-menu"
 
 interface TaskCardProps {
   task: Task
   index: number
   onClick: () => void
   isMobile?: boolean
+  projectId: string
+  columnTasks: Task[]
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -64,7 +67,7 @@ function getStatusAgeColor(ageMs: number, status: string): string {
   return '#9ca3af'
 }
 
-export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardProps) {
+export function TaskCard({ task, index, onClick, isMobile = false, projectId, columnTasks }: TaskCardProps) {
   // Track current time for live updates - use lazy initializer to avoid impure function during render
   const [now, setNow] = useState(() => Date.now())
 
@@ -109,7 +112,7 @@ export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardPro
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           onClick={onClick}
-          className={`bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg cursor-pointer transition-all ${
+          className={`group bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg cursor-pointer transition-all ${
             isMobile ? "p-4 touch-manipulation" : "p-3"
           } ${
             snapshot.isDragging
@@ -117,9 +120,9 @@ export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardPro
               : "hover:border-[var(--accent-blue)]"
           }`}
         >
-          {/* Short ID */}
-          <div className="mb-2">
-            <span 
+          {/* Header: Short ID + Menu */}
+          <div className="flex items-center justify-between mb-2">
+            <span
               className="text-xs text-[var(--text-muted)] font-mono cursor-pointer hover:text-[var(--accent-blue)] transition-colors select-all"
               title="Click to copy ID"
               onClick={(e) => {
@@ -129,6 +132,12 @@ export function TaskCard({ task, index, onClick, isMobile = false }: TaskCardPro
             >
               #{task.id.substring(0, 8)}
             </span>
+            <TaskCardMenu
+              task={task}
+              projectId={projectId}
+              columnTasks={columnTasks}
+              onEdit={onClick}
+            />
           </div>
           
           {/* Title */}

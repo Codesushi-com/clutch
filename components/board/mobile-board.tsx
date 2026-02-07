@@ -21,6 +21,7 @@ interface MobileBoardProps {
   onDragEnd: (result: DropResult) => void
   columnVisibility: Record<TaskStatus, boolean>
   onToggleColumn: (status: TaskStatus, visible: boolean) => void
+  projectId: string
 }
 
 export function MobileBoard({
@@ -31,6 +32,7 @@ export function MobileBoard({
   onDragEnd,
   columnVisibility,
   onToggleColumn,
+  projectId,
 }: MobileBoardProps) {
   const [activeColumnIndex, setActiveColumnIndex] = useState(0)
   const activeColumn = columns[activeColumnIndex]
@@ -273,6 +275,7 @@ export function MobileBoard({
             onAddTask={() => onAddTask(activeColumn.status)}
             showAddButton={activeColumn.showAdd}
             isMobile={true}
+            projectId={projectId}
           />
         </div>
       </DragDropContext>

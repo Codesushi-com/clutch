@@ -14,17 +14,19 @@ interface ColumnProps {
   onTaskClick: (task: Task) => void
   showAddButton?: boolean
   isMobile?: boolean
+  projectId: string
 }
 
-export function Column({ 
-  status, 
-  title, 
-  tasks, 
-  color, 
+export function Column({
+  status,
+  title,
+  tasks,
+  color,
   onAddTask,
   onTaskClick,
   showAddButton = false,
   isMobile = false,
+  projectId,
 }: ColumnProps) {
   return (
     <div className={`flex flex-col bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] min-h-[500px] ${
@@ -61,12 +63,14 @@ export function Column({
             }`}
           >
             {tasks.map((task, index) => (
-              <TaskCard 
-                key={task.id} 
+              <TaskCard
+                key={task.id}
                 task={task}
                 index={index}
                 onClick={() => onTaskClick(task)}
                 isMobile={isMobile}
+                projectId={projectId}
+                columnTasks={tasks}
               />
             ))}
             {provided.placeholder}
