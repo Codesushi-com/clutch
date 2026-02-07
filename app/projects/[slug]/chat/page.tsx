@@ -65,7 +65,10 @@ export default function ChatPage({ params }: PageProps) {
 
   // Generate session key based on project and active chat
   // Format: trap:{projectSlug}:{chatId} - includes project for context
-  const sessionKey = activeChat ? `trap:${slug}:${activeChat.id}` : "main"
+  // Use stored session_key if available, otherwise generate dynamically
+  const sessionKey = activeChat
+    ? (activeChat.session_key || `trap:${slug}:${activeChat.id}`)
+    : "main"
 
   // ==========================================================================
   // OpenClaw Integration (HTTP-only)
