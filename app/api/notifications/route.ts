@@ -62,13 +62,23 @@ export async function POST(request: NextRequest) {
       ...(agent && { agent }),
     })
 
-    // TODO: Create comments for escalation/request_input notifications
-    // This was handled in SQLite version but needs a separate Convex mutation
-    // if (taskId && (type === "escalation" || type === "request_input")) {
-    //   await convex.mutation(api.comments.create, { ... })
-    // }
-    
-    return NextResponse.json({ 
+    // Create comments for escalation/request_input notifications
+    if (taskId && (type === 'escalation' || type === 'request_input')) {
+      try {
+        await convex.mutation(api.comments.create, {
+          taskId,
+          author: agent || 'Coordinator',
+          authorType: agent ? 'agent' : 'coordinator',
+          content: message,
+          type: type === 'request_input' ? 'request_input' : 'status_change',
+        })
+      } catch (commentError) {
+        // Log but don't fail the notification creation if comment fails
+        console.error('[Notifications API] Failed to create comment:', commentError)
+      }
+    }
+
+    return NextResponse.json({
       notification,
       success: true,
     }, { status: 201 })
