@@ -64,6 +64,7 @@ export function DesktopProjectSwitcher({ currentProject, projects = [] }: Deskto
           <div className="p-1">
             <Link
               href="/"
+              prefetch={false}
               onClick={handleClose}
               className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] rounded-md transition-colors"
             >
@@ -81,6 +82,7 @@ export function DesktopProjectSwitcher({ currentProject, projects = [] }: Deskto
                   <Link
                     key={project.slug}
                     href={`/projects/${project.slug}/chat`}
+                    prefetch={false}
                     onClick={handleClose}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",

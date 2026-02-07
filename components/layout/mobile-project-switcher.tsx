@@ -68,6 +68,7 @@ export function MobileProjectSwitcher({ currentProject, projects = [] }: MobileP
               <div className="p-2">
                 <Link
                   href="/"
+                  prefetch={false}
                   onClick={handleClose}
                   className="flex items-center gap-3 px-3 py-3 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
                   style={{ minHeight: "44px" }}
@@ -83,6 +84,7 @@ export function MobileProjectSwitcher({ currentProject, projects = [] }: MobileP
                     <Link
                       key={project.slug}
                       href={`/projects/${project.slug}`}
+                      prefetch={false}
                       onClick={handleClose}
                       className={cn(
                         "flex items-center gap-3 px-3 py-3 text-sm font-medium rounded-lg transition-colors",

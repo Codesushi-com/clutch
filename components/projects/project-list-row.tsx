@@ -116,6 +116,7 @@ export function ProjectListRow({ project }: ProjectListRowProps) {
         <div className="min-w-0">
           <Link
             href={`/projects/${project.slug}`}
+            prefetch={false}
             className="font-medium text-[var(--text-primary)] hover:text-[var(--accent-blue)] transition-colors truncate block"
           >
             {project.name}
@@ -173,6 +174,7 @@ export function ProjectListRow({ project }: ProjectListRowProps) {
       <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <Link
           href={`/projects/${project.slug}/board`}
+          prefetch={false}
           className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
           title="Board"
         >
@@ -180,6 +182,7 @@ export function ProjectListRow({ project }: ProjectListRowProps) {
         </Link>
         <Link
           href={`/projects/${project.slug}/settings`}
+          prefetch={false}
           className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
           title="Settings"
         >

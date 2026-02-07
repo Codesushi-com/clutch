@@ -88,7 +88,7 @@ export function MobileNav({ isOpen, onToggle, onClose }: MobileNavProps) {
       >
         {/* Header */}
         <div className="p-6 pt-20 border-b border-[var(--border)]">
-          <Link href="/" className="flex items-center gap-3" onClick={onClose}>
+          <Link href="/" prefetch={false} className="flex items-center gap-3" onClick={onClose}>
             <div className="text-2xl">🦞</div>
             <div>
               <h1 className="text-lg font-bold text-[var(--text-primary)]">
@@ -112,6 +112,7 @@ export function MobileNav({ isOpen, onToggle, onClose }: MobileNavProps) {
                 <li key={item.id}>
                   <Link
                     href={item.href}
+                    prefetch={false}
                     onClick={onClose}
                     className={cn(
                       "flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors",

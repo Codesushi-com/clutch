@@ -37,7 +37,7 @@ export function Sidebar() {
     <div className="hidden lg:block fixed left-0 top-0 z-40 h-screen w-64 bg-[var(--bg-secondary)] border-r border-[var(--border)]">
       {/* Header */}
       <div className="p-6 border-b border-[var(--border)]">
-        <Link href="/" className="flex items-center gap-3">
+        <Link href="/" prefetch={false} className="flex items-center gap-3">
           <div className="text-2xl">🦞</div>
           <div>
             <h1 className="text-lg font-bold text-[var(--text-primary)]">
@@ -61,6 +61,7 @@ export function Sidebar() {
               <li key={item.id}>
                 <Link
                   href={item.href}
+                  prefetch={false}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors",
                     isActive

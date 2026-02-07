@@ -11,6 +11,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
   return (
     <Link 
       href={`/projects/${project.slug}`}
+      prefetch={false}
       className="group block"
     >
       <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg overflow-hidden transition-all duration-150 hover:shadow-lg hover:-translate-y-0.5">
