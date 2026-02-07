@@ -258,6 +258,17 @@ export class AgentManager {
   }
 
   /**
+   * Count active agents by role, optionally filtered by project.
+   */
+  activeCountByRole(role: string, projectId?: string): number {
+    let count = 0
+    for (const agent of this.agents.values()) {
+      if (agent.role === role && (projectId === undefined || agent.projectId === projectId)) count++
+    }
+    return count
+  }
+
+  /**
    * Drain completed agents from the queue.
    * Returns outcomes since the last drain.
    */

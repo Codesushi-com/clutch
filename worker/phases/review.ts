@@ -97,6 +97,19 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
       details: result.details,
     })
 
+    // Check reviewer role limit
+    const reviewerCount = agents.activeCountByRole("reviewer")
+    if (reviewerCount >= config.maxReviewerAgents) {
+      await ctx.log({
+        projectId,
+        cycle,
+        phase: "review",
+        action: "limit_reached",
+        details: { reason: "reviewer_limit", reviewerCount, limit: config.maxReviewerAgents },
+      })
+      break
+    }
+
     // Check global limits after each spawn
     const globalActive = agents.activeCount()
     if (globalActive >= config.maxAgentsGlobal) {
@@ -106,20 +119,6 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
         phase: "review",
         action: "limit_reached",
         details: { reason: "global_max_agents", limit: config.maxAgentsGlobal },
-      })
-      break
-    }
-
-    // Check project limits — reserve at least 1 slot for work phase
-    const projectActive = agents.activeCount(projectId)
-    const reviewLimit = Math.max(1, config.maxAgentsPerProject - 1)
-    if (projectActive >= reviewLimit) {
-      await ctx.log({
-        projectId,
-        cycle,
-        phase: "review",
-        action: "limit_reached",
-        details: { reason: "project_max_agents", limit: config.maxAgentsPerProject },
       })
       break
     }

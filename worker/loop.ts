@@ -480,13 +480,11 @@ async function runLoop(): Promise<void> {
       }
     }
 
-    // Only sleep if we're still running
+    // Always sleep the full interval after a cycle to let things settle
     if (running) {
       const elapsedMs = Date.now() - cycleStart
-      const sleepMs = Math.max(0, config.cycleIntervalMs - elapsedMs)
-
-      console.log(`[WorkLoop] Cycle ${cycle} complete in ${elapsedMs}ms, sleeping ${sleepMs}ms`)
-      await sleep(sleepMs)
+      console.log(`[WorkLoop] Cycle ${cycle} complete in ${elapsedMs}ms, sleeping ${config.cycleIntervalMs}ms`)
+      await sleep(config.cycleIntervalMs)
     }
   }
 

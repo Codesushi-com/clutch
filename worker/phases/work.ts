@@ -177,6 +177,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
   // --- 1. Check capacity ---
   const globalCount = agents.activeCount()
   const projectCount = agents.activeCount(projectId)
+  const devCount = agents.activeCountByRole("dev")
 
   if (globalCount >= config.maxAgentsGlobal) {
     await log({
@@ -196,6 +197,17 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
       phase: "work",
       action: "capacity_check",
       details: { projectCount, maxPerProject: config.maxAgentsPerProject, reason: "project_limit" },
+    })
+    return { claimed: false }
+  }
+
+  if (devCount >= config.maxDevAgents) {
+    await log({
+      projectId,
+      cycle,
+      phase: "work",
+      action: "capacity_check",
+      details: { devCount, maxDev: config.maxDevAgents, reason: "dev_limit" },
     })
     return { claimed: false }
   }
