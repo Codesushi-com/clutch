@@ -20,7 +20,6 @@ export const insertProject = mutation({
     github_repo: v.optional(v.string()),
     chat_layout: v.union(v.literal("slack"), v.literal("imessage")),
     work_loop_enabled: v.boolean(),
-    work_loop_schedule: v.string(),
     created_at: v.number(),
     updated_at: v.number(),
   },

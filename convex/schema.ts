@@ -16,7 +16,6 @@ export default defineSchema({
     chat_layout: v.union(v.literal("slack"), v.literal("imessage")),
     work_loop_enabled: v.boolean(),
     work_loop_max_agents: v.optional(v.number()),
-    work_loop_schedule: v.string(),
     created_at: v.number(),
     updated_at: v.number(),
   })

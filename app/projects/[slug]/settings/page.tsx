@@ -28,7 +28,6 @@ export default function SettingsPage({ params }: PageProps) {
 
   // Work loop configuration state
   const [workLoopEnabled, setWorkLoopEnabled] = useState<boolean>(false)
-  const [workLoopSchedule, setWorkLoopSchedule] = useState<string>('*/5 * * * *')
 
   // Fetch project data
   useEffect(() => {
@@ -42,7 +41,6 @@ export default function SettingsPage({ params }: PageProps) {
           setLocalPath(data.project.local_path || '')
           setGithubRepo(data.project.github_repo || '')
           setWorkLoopEnabled(Boolean(data.project.work_loop_enabled))
-          setWorkLoopSchedule(data.project.work_loop_schedule || '*/5 * * * *')
         }
       } catch (error) {
         console.error('Failed to fetch project:', error)
@@ -158,7 +156,6 @@ export default function SettingsPage({ params }: PageProps) {
           local_path: localPath.trim() || null,
           github_repo: githubRepo.trim() || null,
           work_loop_enabled: workLoopEnabled,
-          work_loop_schedule: workLoopSchedule,
         }),
       })
 
@@ -169,17 +166,6 @@ export default function SettingsPage({ params }: PageProps) {
 
       const data = await response.json()
       setProject(data.project)
-
-      // If work loop settings changed, update cron jobs
-      if (workLoopEnabled !== Boolean(project.work_loop_enabled) || 
-          workLoopSchedule !== project.work_loop_schedule) {
-        try {
-          await fetch('/api/work-loop/setup', { method: 'POST' })
-        } catch (error) {
-          console.error('Failed to update work loop cron jobs:', error)
-          // Don't fail the save operation for this
-        }
-      }
     } catch (error) {
       console.error('Failed to save settings:', error)
       // TODO: Show error toast
@@ -213,8 +199,7 @@ export default function SettingsPage({ params }: PageProps) {
   const hasChanges = chatLayout !== project.chat_layout ||
     localPath !== (project.local_path || '') ||
     githubRepo !== (project.github_repo || '') ||
-    workLoopEnabled !== Boolean(project.work_loop_enabled) ||
-    workLoopSchedule !== project.work_loop_schedule
+    workLoopEnabled !== Boolean(project.work_loop_enabled)
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-8">
@@ -376,35 +361,6 @@ export default function SettingsPage({ params }: PageProps) {
                 </p>
               </div>
             </div>
-
-            {/* Cron Schedule */}
-            {workLoopEnabled && (
-              <div className="space-y-2">
-                <Label htmlFor="work-loop-schedule" className="text-sm font-medium">
-                  Schedule (Cron Expression)
-                </Label>
-                <Input
-                  id="work-loop-schedule"
-                  type="text"
-                  placeholder="*/5 * * * *"
-                  value={workLoopSchedule}
-                  onChange={(e) => setWorkLoopSchedule(e.target.value)}
-                  className="flex-1"
-                />
-                <p className="text-sm text-[var(--text-secondary)]">
-                  How often to check for ready tasks. Default is every 5 minutes. Use{' '}
-                  <a 
-                    href="https://crontab.guru" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    crontab.guru
-                  </a>{' '}
-                  to build cron expressions.
-                </p>
-              </div>
-            )}
 
             {/* Prerequisites warning */}
             {workLoopEnabled && (!localPath.trim() || !githubRepo.trim()) && (

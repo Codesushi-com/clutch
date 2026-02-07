@@ -46,7 +46,6 @@ export interface Project {
   chat_layout: 'slack' | 'imessage'
   work_loop_enabled: number  // SQLite boolean (0/1)
   work_loop_max_agents: number | null
-  work_loop_schedule: string  // cron expression
   created_at: number
   updated_at: number
 }

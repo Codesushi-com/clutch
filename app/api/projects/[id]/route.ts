@@ -67,7 +67,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const { name, slug, description, color, repo_url, context_path, chat_layout, local_path, github_repo, work_loop_enabled, work_loop_max_agents, work_loop_schedule } = body
+    const { name, slug, description, color, repo_url, context_path, chat_layout, local_path, github_repo, work_loop_enabled, work_loop_max_agents } = body
 
     // Validate local_path if provided
     if (local_path !== undefined && local_path !== null && typeof local_path !== 'string') {
@@ -105,16 +105,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Validate work_loop_schedule if provided
-    if (work_loop_schedule !== undefined && work_loop_schedule !== null) {
-      if (typeof work_loop_schedule !== 'string') {
-        return NextResponse.json(
-          { error: "work_loop_schedule must be a string" },
-          { status: 400 }
-        )
-      }
-    }
-
     // Build updates object - only include fields that were explicitly provided
     const updates: Record<string, unknown> = {}
     if (name !== undefined) updates.name = name
@@ -128,7 +118,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (chat_layout !== undefined) updates.chat_layout = chat_layout
     if (work_loop_enabled !== undefined) updates.work_loop_enabled = work_loop_enabled
     if (work_loop_max_agents !== undefined) updates.work_loop_max_agents = work_loop_max_agents
-    if (work_loop_schedule !== undefined) updates.work_loop_schedule = work_loop_schedule
 
     const project = await convex.mutation(api.projects.update, {
       id: existing.id,

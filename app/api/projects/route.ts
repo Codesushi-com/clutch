@@ -21,7 +21,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const body = await request.json()
 
-  const { name, slug, description, color, repo_url, chat_layout, local_path, github_repo, work_loop_enabled, work_loop_max_agents, work_loop_schedule } = body
+  const { name, slug, description, color, repo_url, chat_layout, local_path, github_repo, work_loop_enabled, work_loop_max_agents } = body
 
   if (!name || !slug) {
     return NextResponse.json(
@@ -66,16 +66,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Validate work_loop_schedule if provided
-  if (work_loop_schedule) {
-    if (typeof work_loop_schedule !== 'string') {
-      return NextResponse.json(
-        { error: "work_loop_schedule must be a string" },
-        { status: 400 }
-      )
-    }
-  }
-
   try {
     const convex = getConvexClient()
     const project = await convex.mutation(api.projects.create, {
@@ -89,7 +79,6 @@ export async function POST(request: NextRequest) {
       chat_layout: chat_layout || undefined,
       work_loop_enabled: work_loop_enabled ?? undefined,
       work_loop_max_agents: work_loop_max_agents ?? undefined,
-      work_loop_schedule: work_loop_schedule || undefined,
     })
 
     // TODO: Create default "General" chat for the project - needs Convex chat.create function
