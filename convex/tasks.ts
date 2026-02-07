@@ -410,7 +410,7 @@ export const getWithActiveAgents = query({
     const tasks = await ctx.db
       .query('tasks')
       .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
-      .filter((q) => q.neq('agent_session_key', undefined))
+      .filter((q) => q.neq('agent_session_key', null))
       .collect()
 
     // Filter to only include agents that are still active
@@ -445,7 +445,7 @@ export const activeAgentCount = query({
     const tasks = await ctx.db
       .query('tasks')
       .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
-      .filter((q) => q.neq('agent_session_key', undefined))
+      .filter((q) => q.neq('agent_session_key', null))
       .collect()
 
     // Count only agents that are still active
@@ -534,7 +534,7 @@ export const getAgentSessions = query({
     const tasks = await ctx.db
       .query('tasks')
       .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
-      .filter((q) => q.neq('agent_session_key', undefined))
+      .filter((q) => q.neq('agent_session_key', null))
       .collect()
 
     // Sort by most recently active first
@@ -596,7 +596,7 @@ export const getAllAgentSessions = query({
   handler: async (ctx, args): Promise<AgentSession[]> => {
     const tasks = await ctx.db
       .query('tasks')
-      .filter((q) => q.neq('agent_session_key', undefined))
+      .filter((q) => q.neq('agent_session_key', null))
       .collect()
 
     // Sort by most recently active first
@@ -657,7 +657,7 @@ export const getAgentHistory = query({
     const tasks = await ctx.db
       .query('tasks')
       .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
-      .filter((q) => q.neq('agent_started_at', undefined))
+      .filter((q) => q.neq('agent_started_at', null))
       .collect()
 
     // Sort by most recently started first
