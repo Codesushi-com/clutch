@@ -2,10 +2,11 @@
 
 import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useWorkLoopRuns } from "@/lib/hooks/use-work-loop"
 import { PhaseBadge } from "./status-badge"
 import Link from "next/link"
-import { formatDistanceToNow } from "@/lib/utils"
+import { formatDistanceToNow, formatTimestamp } from "@/lib/utils"
 import { ChevronRight, ChevronDown } from "lucide-react"
 import type { WorkLoopRun } from "@/lib/types/work-loop"
 
@@ -200,9 +201,14 @@ function CycleRow({ cycle, projectSlug, isExpanded, onToggle }: CycleRowProps) {
             Cycle {cycle.cycle}
           </span>
 
-          <span className="text-sm text-muted-foreground whitespace-nowrap">
-            {formatTimeAgo(cycle.firstRunAt)}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-sm text-muted-foreground whitespace-nowrap cursor-help">
+                {formatTimeAgo(cycle.firstRunAt)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{formatTimestamp(cycle.firstRunAt)}</TooltipContent>
+          </Tooltip>
 
           {/* Action count badge */}
           <span
@@ -275,6 +281,11 @@ function RunRow({ run, projectSlug }: RunRowProps) {
         <span className="text-muted-foreground">
           {formatAction(run.action, run.details)}
         </span>
+      </div>
+
+      {/* Timestamp */}
+      <div className="w-24 flex-shrink-0 text-right text-muted-foreground text-xs">
+        {formatTimestamp(run.created_at)}
       </div>
 
       {/* Task link */}
