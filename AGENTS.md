@@ -79,7 +79,7 @@ Branch naming: `fix/<ticket-id-prefix>-<short-desc>` or `feat/<ticket-id-prefix>
 
 ## Ticket Verification
 
-**You do NOT have browser access.** Do not attempt to use the `browser` tool, CDP, or screenshots.
+⚠️ **DO NOT use the `browser` tool.** It will timeout, error, and waste your token budget. Browser QA is handled separately by the main agent. Do not attempt CDP, screenshots, or any browser automation.
 
 **Before marking a ticket as `in_review`:**
 1. TypeScript compiles (`pnpm typecheck`)
