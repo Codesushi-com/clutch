@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Plus, MessageSquare, Trash2, X, ChevronDown, ChevronRight, ListTodo, ExternalLink, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -126,10 +126,10 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
     setTaskModalOpen(true)
   }
 
-  const handleTaskModalClose = useCallback((open: boolean) => {
+  const handleTaskModalClose = (open: boolean) => {
     setTaskModalOpen(open)
     // No need to refresh - Convex reactive subscription updates automatically
-  }, [])
+  }
 
   const handleCreateChat = async () => {
     if (!projectId) return
