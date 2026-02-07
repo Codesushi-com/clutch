@@ -41,7 +41,8 @@ export {
   compactSession,
   abortSession,
   cancelSession,
-  
+  patchSession,
+
   // Chat operations
   sendChatMessage,
 } from './api';

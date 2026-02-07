@@ -13,7 +13,7 @@ import { CreateTaskFromMessage } from "@/components/chat/create-task-from-messag
 import { StreamingToggle } from "@/components/chat/streaming-toggle"
 import { SessionInfoDropdown } from "@/components/chat/session-info-dropdown"
 import { Button } from "@/components/ui/button"
-import { sendChatMessage, abortSession } from "@/lib/openclaw"
+import { sendChatMessage, abortSession, patchSession, resetSession } from "@/lib/openclaw"
 import { useOpenClawHttpRpc } from "@/lib/hooks/use-openclaw-http"
 import type { ChatMessage } from "@/lib/types"
 
@@ -335,11 +335,168 @@ export default function ChatPage({ params }: PageProps) {
   }, [chats, activeChat, setActiveChat])
 
   // ==========================================================================
+  // Slash Command Handling
+  // ==========================================================================
+
+  const KNOWN_SLASH_COMMANDS = ['new', 'status', 'model', 'help'];
+
+  /**
+   * Parse and execute slash commands.
+   * Returns true if the message was handled as a command, false if it should be sent as a regular message.
+   */
+  const handleSlashCommand = async (content: string): Promise<boolean> => {
+    if (!content.startsWith('/')) return false;
+
+    const trimmed = content.trim();
+    const match = trimmed.match(/^\/([a-zA-Z0-9_-]+)(?:\s+(.*))?$/);
+    if (!match) {
+      // Message starts with / but isn't a valid command format
+      return false;
+    }
+
+    const [, command, args] = match;
+    const normalizedCommand = command.toLowerCase();
+
+    // Check if it's a known command
+    if (!KNOWN_SLASH_COMMANDS.includes(normalizedCommand)) {
+      // Unknown command - let it send as message but warn user
+      return false;
+    }
+
+    // Execute the command
+    switch (normalizedCommand) {
+      case 'new': {
+        // Reset the session
+        try {
+          await resetSession(sessionKey);
+          // Clear local chat history
+          if (activeChat) {
+            // Send system message about reset
+            await sendMessageToDb(activeChat.id, "🔄 Session reset. Starting fresh conversation.", "system");
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (activeChat) {
+            await sendMessageToDb(activeChat.id, `❌ Failed to reset session: ${errorMsg}`, "system");
+          }
+        }
+        return true;
+      }
+
+      case 'status': {
+        // Show session status
+        try {
+          const response = await fetch(`/api/sessions/list?activeMinutes=60&limit=200`, {
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const data = await response.json();
+          const sessions: Array<Record<string, unknown>> = data.sessions || [];
+          const session = sessions.find((s) => s.id === sessionKey);
+
+          if (session) {
+            const tokens = session.tokens as { total?: number; input?: number; output?: number } | undefined;
+            const model = session.model as string | undefined;
+            const statusText = [
+              `📊 **Session Status**`,
+              `**Key:** ${sessionKey}`,
+              `**Model:** ${model || 'unknown'}`,
+              `**Tokens:** ${tokens?.total || 0} total (${tokens?.input || 0} in / ${tokens?.output || 0} out)`,
+            ].join('\n');
+            if (activeChat) {
+              await sendMessageToDb(activeChat.id, statusText, "system");
+            }
+          } else {
+            const notFoundText = `📊 **Session Status**\n\nSession "${sessionKey}" not found. This may be a new session.`;
+            if (activeChat) {
+              await sendMessageToDb(activeChat.id, notFoundText, "system");
+            }
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (activeChat) {
+            await sendMessageToDb(activeChat.id, `❌ Failed to get status: ${errorMsg}`, "system");
+          }
+        }
+        return true;
+      }
+
+      case 'model': {
+        // Switch model
+        const modelName = args?.trim();
+        if (!modelName) {
+          if (activeChat) {
+            await sendMessageToDb(activeChat.id, "❌ Model name required. Usage: `/model <name>`\n\nExamples:\n- `/model sonnet`\n- `/model moonshot/kimi-for-coding`\n- `/model anthropic/claude-opus-4-6`", "system");
+          }
+          return true;
+        }
+
+        try {
+          await patchSession(sessionKey, { model: modelName });
+          if (activeChat) {
+            await sendMessageToDb(activeChat.id, `🔄 Model switched to **${modelName}**`, "system");
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (activeChat) {
+            await sendMessageToDb(activeChat.id, `❌ Failed to switch model: ${errorMsg}`, "system");
+          }
+        }
+        return true;
+      }
+
+      case 'help': {
+        const helpText = [
+          '**Available Commands:**',
+          '',
+          '`/new` - Reset the current session (start fresh)',
+          '`/status` - Show session info (model, tokens, etc.)',
+          '`/model <name>` - Switch to a different model',
+          '`/help` - Show this help message',
+          '',
+          'Messages starting with `/` that are not recognized commands will be sent as regular messages.',
+        ].join('\n');
+        if (activeChat) {
+          await sendMessageToDb(activeChat.id, helpText, "system");
+        }
+        return true;
+      }
+
+      default:
+        return false;
+    }
+  };
+
+  // ==========================================================================
   // Message sending
   // ==========================================================================
 
   const handleSendMessage = async (content: string, images?: string[]) => {
     if (!activeChat) return
+
+    // Check for slash commands first (before images, since commands don't support images)
+    if (content.startsWith('/') && (!images || images.length === 0)) {
+      const handled = await handleSlashCommand(content);
+      if (handled) {
+        return; // Command was processed, don't send as regular message
+      }
+
+      // Check if it's an unknown command format (/word but not in known list)
+      const match = content.trim().match(/^\/([a-zA-Z0-9_-]+)(?:\s+.*)?$/);
+      if (match) {
+        const command = match[1].toLowerCase();
+        if (!KNOWN_SLASH_COMMANDS.includes(command)) {
+          // Unknown command - send as message with warning
+          await sendMessageToDb(
+            activeChat.id,
+            `⚠️ Unknown command \`/${command}\`. Sending as regular message. Type \`/help\` for available commands.`,
+            "system"
+          );
+        }
+      }
+    }
 
     const isFirstMessage = !activeChat.session_key
 

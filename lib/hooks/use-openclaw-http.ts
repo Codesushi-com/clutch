@@ -167,10 +167,21 @@ export function useSessionActions(sessionKey: string | null) {
     }
   }, [sessionKey]);
 
+  const patch = useCallback(async (updates: { model?: string; [key: string]: unknown }) => {
+    if (!sessionKey) return;
+    try {
+      await openclawApi.patchSession(sessionKey, updates);
+    } catch (error) {
+      console.error("[SessionActions] Failed to patch session:", error);
+      throw error;
+    }
+  }, [sessionKey]);
+
   return {
     reset,
     compact,
     cancel,
+    patch,
     isResetting,
     isCompacting,
     isCanceling,

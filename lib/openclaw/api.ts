@@ -250,7 +250,7 @@ export async function compactSession(sessionKey: string): Promise<void> {
 
 /**
  * Cancel/abort a running session.
- * 
+ *
  * @param sessionKey - The session key to abort
  */
 export async function abortSession(sessionKey: string): Promise<void> {
@@ -259,6 +259,19 @@ export async function abortSession(sessionKey: string): Promise<void> {
 
 // Alias for backward compatibility
 export { abortSession as cancelSession };
+
+/**
+ * Patch/update a session configuration.
+ *
+ * @param sessionKey - The session key to patch
+ * @param updates - The updates to apply (model, etc.)
+ */
+export async function patchSession(
+  sessionKey: string,
+  updates: { model?: string; [key: string]: unknown }
+): Promise<void> {
+  await openclawRpc<void>('sessions.patch', { key: sessionKey, ...updates });
+}
 
 // ============================================================================
 // Chat Operations
