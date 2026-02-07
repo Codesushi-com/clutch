@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Draggable } from "@hello-pangea/dnd"
-import { Link2, Lock } from "lucide-react"
+import { Link2, Lock, Sparkles, ArrowRight, Pencil } from "lucide-react"
 import type { Task } from "@/lib/types"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
 import { formatCompactTime } from "@/lib/utils"
@@ -16,6 +16,7 @@ interface TaskCardProps {
   isMobile?: boolean
   projectId: string
   columnTasks: Task[]
+  recentChange?: { type: 'created' | 'updated' | 'moved' | 'deleted'; timestamp: number }
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -49,6 +50,20 @@ const STATUS_COLORS: Record<string, string> = {
   done: "#22c55e",
 }
 
+const RECENT_CHANGE_COLORS: Record<string, string> = {
+  created: '#22c55e', // green
+  updated: '#3b82f6', // blue
+  moved: '#a855f7',   // purple
+  deleted: '#ef4444', // red (shouldn't be visible)
+}
+
+const RECENT_CHANGE_ICONS: Record<string, typeof Sparkles> = {
+  created: Sparkles,
+  updated: Pencil,
+  moved: ArrowRight,
+  deleted: Sparkles,
+}
+
 /**
  * Get color for status age based on duration and status
  */
@@ -67,7 +82,7 @@ function getStatusAgeColor(ageMs: number, status: string): string {
   return '#9ca3af'
 }
 
-export function TaskCard({ task, index, onClick, isMobile = false, projectId, columnTasks }: TaskCardProps) {
+export function TaskCard({ task, index, onClick, isMobile = false, projectId, columnTasks, recentChange }: TaskCardProps) {
   // Track current time for live updates - use lazy initializer to avoid impure function during render
   const [now, setNow] = useState(() => Date.now())
 
@@ -89,6 +104,11 @@ export function TaskCard({ task, index, onClick, isMobile = false, projectId, co
   // Calculate status age
   const statusAge = now - task.updated_at
   const statusAgeColor = getStatusAgeColor(statusAge, task.status)
+
+  // Determine highlight styles based on recent change
+  const hasRecentChange = recentChange !== undefined && recentChange.type !== 'deleted'
+  const highlightColor = recentChange ? RECENT_CHANGE_COLORS[recentChange.type] : undefined
+  const RecentChangeIcon = recentChange ? RECENT_CHANGE_ICONS[recentChange.type] : null
 
   const tags = (() => {
     if (!task.tags) return []
@@ -112,15 +132,21 @@ export function TaskCard({ task, index, onClick, isMobile = false, projectId, co
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           onClick={onClick}
-          className={`group bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg cursor-pointer transition-all ${
+          className={`group bg-[var(--bg-primary)] border rounded-lg cursor-pointer transition-all ${
             isMobile ? "p-4 touch-manipulation" : "p-3"
           } ${
             snapshot.isDragging
               ? "shadow-2xl rotate-2 opacity-90 border-[var(--accent-blue)]"
-              : "hover:border-[var(--accent-blue)]"
+              : hasRecentChange
+                ? "border-2 animate-pulse"
+                : "border-[var(--border)] hover:border-[var(--accent-blue)]"
           }`}
+          style={{
+            borderColor: hasRecentChange ? highlightColor : undefined,
+            boxShadow: hasRecentChange ? `0 0 12px ${highlightColor}30` : undefined,
+          }}
         >
-          {/* Header: Short ID + Menu */}
+          {/* Header: Short ID + Recent Change Indicator + Menu */}
           <div className="flex items-center justify-between mb-2">
             <span
               className="text-xs text-[var(--text-muted)] font-mono cursor-pointer hover:text-[var(--accent-blue)] transition-colors select-all"
@@ -132,12 +158,27 @@ export function TaskCard({ task, index, onClick, isMobile = false, projectId, co
             >
               #{task.id.substring(0, 8)}
             </span>
-            <TaskCardMenu
-              task={task}
-              projectId={projectId}
-              columnTasks={columnTasks}
-              onEdit={onClick}
-            />
+            
+            <div className="flex items-center gap-2">
+              {/* Recent change indicator */}
+              {hasRecentChange && RecentChangeIcon && (
+                <div 
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-white"
+                  style={{ backgroundColor: highlightColor }}
+                  title={`Recently ${recentChange.type}`}
+                >
+                  <RecentChangeIcon className="h-3 w-3" />
+                  <span className="hidden sm:inline capitalize">{recentChange.type}</span>
+                </div>
+              )}
+              
+              <TaskCardMenu
+                task={task}
+                projectId={projectId}
+                columnTasks={columnTasks}
+                onEdit={onClick}
+              />
+            </div>
           </div>
           
           {/* Title */}

@@ -25,6 +25,7 @@ interface MobileBoardProps {
   totalCounts?: Record<TaskStatus, number>
   hasMore?: Record<TaskStatus, boolean>
   onLoadMore?: (status: TaskStatus) => void
+  recentChanges?: Map<string, { type: 'created' | 'updated' | 'moved' | 'deleted'; timestamp: number }>
 }
 
 export function MobileBoard({
@@ -39,6 +40,7 @@ export function MobileBoard({
   totalCounts,
   hasMore,
   onLoadMore,
+  recentChanges,
 }: MobileBoardProps) {
   const [activeColumnIndex, setActiveColumnIndex] = useState(0)
   const activeColumn = columns[activeColumnIndex]
@@ -285,6 +287,7 @@ export function MobileBoard({
             totalCount={totalCounts?.[activeColumn.status]}
             hasMore={hasMore?.[activeColumn.status]}
             onLoadMore={onLoadMore ? () => onLoadMore(activeColumn.status) : undefined}
+            recentChanges={recentChanges}
           />
         </div>
       </DragDropContext>

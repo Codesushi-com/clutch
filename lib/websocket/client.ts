@@ -6,7 +6,7 @@ export type BoardMessage =
   | { type: "task_created"; task: unknown }
   | { type: "task_updated"; task: unknown }
   | { type: "task_deleted"; taskId: string }
-  | { type: "task_moved"; taskId: string; status: string; position: number }
+  | { type: "task_moved"; taskId: string; status: string; position: number; task?: unknown }
   | { type: "connected"; timestamp: number }
   | { type: "pong" }
 

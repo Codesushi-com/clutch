@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useMemo, useCallback, useRef } from "react"
+import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
-import { Plus, Settings2 } from "lucide-react"
+import { Plus, Settings2, Wifi, WifiOff } from "lucide-react"
 import { usePaginatedBoardTasks } from "@/lib/hooks/use-convex-tasks"
+import { useBoardWebSocket } from "@/lib/websocket"
 import { Column } from "./column"
 import { MobileBoard } from "./mobile-board"
 import { useMobileDetection } from "./use-mobile-detection"
@@ -41,6 +42,9 @@ const DEFAULT_VISIBILITY: Record<TaskStatus, boolean> = {
   done: true,
 }
 
+// Time to highlight recently changed tasks (milliseconds)
+const HIGHLIGHT_DURATION_MS = 5000
+
 function getInitialVisibility(projectId: string): Record<TaskStatus, boolean> {
   if (typeof window === 'undefined') return DEFAULT_VISIBILITY
   try {
@@ -59,11 +63,104 @@ function getInitialVisibility(projectId: string): Record<TaskStatus, boolean> {
 // Pending optimistic move: taskId → target status
 type PendingMoves = Map<string, TaskStatus>
 
+// Recently changed task tracking
+type RecentChange = {
+  type: 'created' | 'updated' | 'moved' | 'deleted'
+  timestamp: number
+}
+
 export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
   // Use paginated Convex hook for reactive task data with per-column pagination
   const { tasksByStatus, totalCounts, isLoading, hasMore, loadMore } = usePaginatedBoardTasks(projectId)
   
   const isMobile = useMobileDetection(768)
+
+  // WebSocket connection for real-time updates
+  const { isConnected, onMessage } = useBoardWebSocket(projectId)
+
+  // Track recently changed tasks for visual highlighting
+  const [recentChanges, setRecentChanges] = useState<Map<string, RecentChange>>(new Map())
+  const recentChangesRef = useRef<Map<string, RecentChange>>(new Map())
+
+  // Keep ref in sync with state for cleanup timer access
+  useEffect(() => {
+    recentChangesRef.current = recentChanges
+  }, [recentChanges])
+
+  // Handle WebSocket messages for real-time updates
+  useEffect(() => {
+    const unsubscribe = onMessage((message) => {
+      const now = Date.now()
+      
+      switch (message.type) {
+        case 'task_created':
+          if (message.task && typeof message.task === 'object' && 'id' in message.task) {
+            const task = message.task as Task
+            if (task.project_id === projectId) {
+              setRecentChanges(prev => new Map(prev).set(task.id, { type: 'created', timestamp: now }))
+            }
+          }
+          break
+          
+        case 'task_updated':
+          if (message.task && typeof message.task === 'object' && 'id' in message.task) {
+            const task = message.task as Task
+            if (task.project_id === projectId) {
+              setRecentChanges(prev => new Map(prev).set(task.id, { type: 'updated', timestamp: now }))
+            }
+          }
+          break
+          
+        case 'task_moved':
+          if (message.task && typeof message.task === 'object' && 'id' in message.task) {
+            const task = message.task as Task
+            if (task.project_id === projectId) {
+              setRecentChanges(prev => new Map(prev).set(task.id, { type: 'moved', timestamp: now }))
+            }
+          }
+          break
+          
+        case 'task_deleted':
+          // Mark as recently deleted (will be filtered out by Convex soon anyway)
+          if (message.taskId) {
+            setRecentChanges(prev => new Map(prev).set(message.taskId, { type: 'deleted', timestamp: now }))
+          }
+          break
+      }
+    })
+
+    return unsubscribe
+  }, [onMessage, projectId])
+
+  // Cleanup expired highlights periodically
+  useEffect(() => {
+    const cleanup = setInterval(() => {
+      const now = Date.now()
+      const current = recentChangesRef.current
+      let hasExpired = false
+      
+      for (const [, change] of current) {
+        if (now - change.timestamp > HIGHLIGHT_DURATION_MS) {
+          hasExpired = true
+          break
+        }
+      }
+      
+      if (hasExpired) {
+        setRecentChanges(prev => {
+          const next = new Map(prev)
+          for (const [taskId, change] of next) {
+            if (now - change.timestamp > HIGHLIGHT_DURATION_MS) {
+              next.delete(taskId)
+            }
+          }
+          return next
+        })
+      }
+    }, 1000) // Check every second
+
+    return () => clearInterval(cleanup)
+  }, [])
 
   // Optimistic move overrides — applied on top of Convex data so cards
   // don't snap back while the mutation is in flight.
@@ -282,6 +379,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
         totalCounts={totalCounts}
         hasMore={hasMore}
         onLoadMore={loadMore}
+        recentChanges={recentChanges}
       />
     )
   }
@@ -295,6 +393,27 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
           <h2 className="text-xl font-semibold text-[var(--text-primary)]">
             Board
           </h2>
+          {/* Connection status indicator */}
+          <div 
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs ${
+              isConnected 
+                ? 'bg-green-500/10 text-green-500' 
+                : 'bg-amber-500/10 text-amber-500'
+            }`}
+            title={isConnected ? 'Real-time updates connected' : 'Real-time updates disconnected'}
+          >
+            {isConnected ? (
+              <>
+                <Wifi className="h-3 w-3" />
+                <span className="hidden sm:inline">Live</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-3 w-3" />
+                <span className="hidden sm:inline">Offline</span>
+              </>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {/* Column Visibility Dropdown */}
@@ -391,6 +510,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
               totalCount={totalCounts[col.status]}
               hasMore={hasMore[col.status]}
               onLoadMore={() => loadMore(col.status)}
+              recentChanges={recentChanges}
             />
           ))}
         </div>
@@ -412,6 +532,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
               totalCount={totalCounts[col.status]}
               hasMore={hasMore[col.status]}
               onLoadMore={() => loadMore(col.status)}
+              recentChanges={recentChanges}
             />
           ))}
         </div>

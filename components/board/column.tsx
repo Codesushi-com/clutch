@@ -19,6 +19,7 @@ interface ColumnProps {
   totalCount?: number
   hasMore?: boolean
   onLoadMore?: () => void
+  recentChanges?: Map<string, { type: 'created' | 'updated' | 'moved' | 'deleted'; timestamp: number }>
 }
 
 export function Column({
@@ -34,6 +35,7 @@ export function Column({
   totalCount,
   hasMore,
   onLoadMore,
+  recentChanges,
 }: ColumnProps) {
   // Use totalCount if provided, otherwise fall back to tasks.length
   const displayCount = totalCount !== undefined ? totalCount : tasks.length
@@ -81,6 +83,7 @@ export function Column({
                 isMobile={isMobile}
                 projectId={projectId}
                 columnTasks={tasks}
+                recentChange={recentChanges?.get(task.id)}
               />
             ))}
             {provided.placeholder}

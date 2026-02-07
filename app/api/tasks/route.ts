@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getConvexClient } from "@/lib/convex/server"
 import { api } from "@/convex/_generated/api"
+import { broadcastMessage } from "@/lib/websocket/server"
 
 // GET /api/tasks?projectId=xxx&status=xxx&limit=n — List with filters
 export async function GET(request: NextRequest) {
@@ -81,6 +82,9 @@ export async function POST(request: NextRequest) {
       tags: tags ? (typeof tags === "string" ? tags : JSON.stringify(tags)) : undefined,
       role: role || undefined,
     })
+
+    // Broadcast WebSocket event for real-time board updates
+    broadcastMessage({ type: "task_created", task })
 
     return NextResponse.json({ task }, { status: 201 })
   } catch (error) {

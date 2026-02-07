@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getConvexClient } from "@/lib/convex/server"
 import { api } from "@/convex/_generated/api"
+import { broadcastMessage } from "@/lib/websocket/server"
 
 // POST /api/tasks/reorder — Reorder tasks within a column
 export async function POST(request: NextRequest) {
@@ -27,6 +28,15 @@ export async function POST(request: NextRequest) {
     const task = await convex.mutation(api.tasks.reorder, {
       id: task_id,
       newPosition: new_index,
+    })
+
+    // Broadcast WebSocket event for real-time board updates
+    broadcastMessage({
+      type: "task_moved",
+      taskId: task.id,
+      status: task.status,
+      position: task.position,
+      task,
     })
 
     return NextResponse.json({ success: true, task })

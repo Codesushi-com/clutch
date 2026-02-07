@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getConvexClient } from "@/lib/convex/server"
 import { api } from "@/convex/_generated/api"
+import { broadcastMessage } from "@/lib/websocket/server"
+import type { Task } from "@/lib/types"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -71,12 +73,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if (branch !== undefined) otherUpdates.branch = branch || undefined
       if (pr_number !== undefined) otherUpdates.pr_number = pr_number || undefined
 
+      let finalTask: Task = movedTask
       if (Object.keys(otherUpdates).length > 0) {
-        const task = await convex.mutation(api.tasks.update, { id, ...otherUpdates })
-        return NextResponse.json({ task })
+        finalTask = await convex.mutation(api.tasks.update, { id, ...otherUpdates })
       }
 
-      return NextResponse.json({ task: movedTask })
+      // Broadcast WebSocket event for real-time board updates
+      broadcastMessage({
+        type: "task_moved",
+        taskId: finalTask.id,
+        status: finalTask.status,
+        position: finalTask.position,
+        task: finalTask,
+      })
+
+      return NextResponse.json({ task: finalTask })
     }
 
     // No status change — just update fields
@@ -105,6 +116,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // Broadcast WebSocket event for real-time board updates
+    broadcastMessage({ type: "task_updated", task })
+
     return NextResponse.json({ task })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -132,6 +146,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const convex = getConvexClient()
     await convex.mutation(api.tasks.deleteTask, { id })
+
+    // Broadcast WebSocket event for real-time board updates
+    broadcastMessage({ type: "task_deleted", taskId: id })
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[Tasks API] Error deleting task:", error)
