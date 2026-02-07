@@ -17,8 +17,10 @@ cd "$(dirname "$0")"
 PORT="${PORT:-3002}"
 SERVER_LOG="/tmp/trap-prod.log"
 LOOP_LOG="/tmp/trap-loop.log"
+BRIDGE_LOG="/tmp/trap-bridge.log"
 SERVER_PID="/tmp/trap-server.pid"
 LOOP_PID="/tmp/trap-loop.pid"
+BRIDGE_PID="/tmp/trap-bridge.pid"
 
 build() {
   echo "[trap] Building..."
@@ -49,11 +51,19 @@ stop_server() {
   fuser -k "$PORT/tcp" 2>/dev/null || true
 }
 
+load_env() {
+  if [[ -f .env.local ]]; then
+    set -a
+    source <(grep -v '^#' .env.local)
+    set +a
+  fi
+}
+
 start_loop() {
   stop_loop 2>/dev/null || true
-  # Check if enabled
   if grep -q "WORK_LOOP_ENABLED=true" .env.local 2>/dev/null; then
     echo "[trap] Starting work loop (separate process)"
+    load_env
     nohup volta run npx tsx worker/loop.ts > "$LOOP_LOG" 2>&1 &
     echo $! > "$LOOP_PID"
     echo "[trap] Loop PID $(cat "$LOOP_PID"), log: $LOOP_LOG"
@@ -76,6 +86,29 @@ stop_loop() {
   fi
 }
 
+start_bridge() {
+  stop_bridge 2>/dev/null || true
+  echo "[trap] Starting chat bridge (separate process)"
+  load_env
+  nohup volta run npx tsx worker/chat-bridge.ts > "$BRIDGE_LOG" 2>&1 &
+  echo $! > "$BRIDGE_PID"
+  echo "[trap] Bridge PID $(cat "$BRIDGE_PID"), log: $BRIDGE_LOG"
+}
+
+stop_bridge() {
+  if [[ -f "$BRIDGE_PID" ]]; then
+    local pid
+    pid=$(cat "$BRIDGE_PID")
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null
+      sleep 1
+      kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+      echo "[trap] Stopped bridge PID $pid"
+    fi
+    rm -f "$BRIDGE_PID"
+  fi
+}
+
 status() {
   echo "=== Trap Status ==="
   if [[ -f "$SERVER_PID" ]] && kill -0 "$(cat "$SERVER_PID")" 2>/dev/null; then
@@ -88,6 +121,11 @@ status() {
   else
     echo "Loop:   STOPPED"
   fi
+  if [[ -f "$BRIDGE_PID" ]] && kill -0 "$(cat "$BRIDGE_PID")" 2>/dev/null; then
+    echo "Bridge: RUNNING (PID $(cat "$BRIDGE_PID"))"
+  else
+    echo "Bridge: STOPPED"
+  fi
   echo ""
   grep "WORK_LOOP" .env.local 2>/dev/null || echo "(no work loop config)"
 }
@@ -95,6 +133,7 @@ status() {
 watch_and_rebuild() {
   build
   start_server
+  start_bridge
   start_loop
 
   echo "[trap] Watching for git changes on main..."
@@ -115,6 +154,8 @@ watch_and_rebuild() {
         if build; then
           stop_server
           start_server
+          stop_bridge
+          start_bridge
           stop_loop
           start_loop
           echo "[trap] Restarted at $(date '+%H:%M:%S')"
@@ -132,22 +173,26 @@ case "${1:-status}" in
   start)
     build
     start_server
+    start_bridge
     start_loop
     ;;
   stop)
     stop_loop
+    stop_bridge
     stop_server
     ;;
   restart)
     stop_loop
+    stop_bridge
     stop_server
     sleep 1
     build
     start_server
+    start_bridge
     start_loop
     ;;
   watch)
-    trap 'stop_loop; stop_server; exit 0' INT TERM
+    trap 'stop_loop; stop_bridge; stop_server; exit 0' INT TERM
     watch_and_rebuild
     ;;
   status)
