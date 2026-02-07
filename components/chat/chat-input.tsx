@@ -200,7 +200,8 @@ export function ChatInput({
         // Keep content on error so user can retry
       } finally {
         setSending(false)
-        textareaRef.current?.focus()
+        // Defer focus to ensure it happens after React re-renders and re-enables the textarea
+        setTimeout(() => textareaRef.current?.focus(), 0)
       }
       return
     }
@@ -211,7 +212,8 @@ export function ChatInput({
     setSending(true)
 
     // Keep focus on input after clearing
-    textareaRef.current?.focus()
+    // Use setTimeout to ensure focus happens after React re-renders and disables the textarea
+    setTimeout(() => textareaRef.current?.focus(), 0)
 
     try {
       // Upload images if any
@@ -249,7 +251,8 @@ export function ChatInput({
       console.error("Failed to send message:", error)
     } finally {
       setSending(false)
-      textareaRef.current?.focus()
+      // Defer focus to ensure it happens after React re-renders and re-enables the textarea
+      setTimeout(() => textareaRef.current?.focus(), 0)
     }
   }
 
