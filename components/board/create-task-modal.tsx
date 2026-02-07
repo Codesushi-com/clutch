@@ -36,6 +36,7 @@ const ROLES = [
   { value: "qa", label: "QA" },
   { value: "research", label: "Research" },
   { value: "security", label: "Security" },
+  { value: "fixer", label: "Fixer" },
 ] as const
 
 export function CreateTaskModal({

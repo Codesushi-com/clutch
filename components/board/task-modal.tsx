@@ -45,6 +45,7 @@ const ROLES: { value: TaskRole; label: string }[] = [
   { value: "qa", label: "QA" },
   { value: "research", label: "Research" },
   { value: "security", label: "Security" },
+  { value: "fixer", label: "Fixer" },
 ]
 
 const AGENT_OPTIONS = [
