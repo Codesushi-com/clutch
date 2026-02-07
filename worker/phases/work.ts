@@ -72,8 +72,8 @@ const ROLE_MODEL_MAP: Record<string, string> = {
   pm: "sonnet",
   research: "sonnet",
   reviewer: "sonnet",
-  dev: "moonshot/kimi-for-coding",
-  qa: "moonshot/kimi-for-coding",
+  dev: "openrouter/pony-alpha",
+  qa: "openrouter/pony-alpha",
 }
 
 /**

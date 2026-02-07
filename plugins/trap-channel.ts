@@ -120,6 +120,17 @@ export default function register(api: OpenClawPluginApi) {
     
     if (!event.success) {
       api.logger.warn(`Trap: agent_end failed for chat ${chatId}: ${event.error}`);
+      // Still clear typing indicator even on failure/abort
+      const trapUrl = getTrapUrl(api);
+      try {
+        await fetch(`${trapUrl}/api/chats/${chatId}/typing`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ typing: false, author: "ada" }),
+        });
+      } catch (error) {
+        api.logger.warn(`Trap: failed to clear typing after abort for chat ${chatId}: ${error}`);
+      }
       return;
     }
     
