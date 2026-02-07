@@ -78,6 +78,7 @@ export interface Task {
   agent_last_active_at: number | null
   agent_tokens_in: number | null
   agent_tokens_out: number | null
+  agent_output_preview: string | null
   branch: string | null
   pr_number: number | null
   position: number

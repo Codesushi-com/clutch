@@ -35,6 +35,7 @@ function toTask(doc: {
   agent_last_active_at?: number
   agent_tokens_in?: number
   agent_tokens_out?: number
+  agent_output_preview?: string
   branch?: string
   pr_number?: number
   position: number
@@ -64,6 +65,7 @@ function toTask(doc: {
     agent_last_active_at: doc.agent_last_active_at ?? null,
     agent_tokens_in: doc.agent_tokens_in ?? null,
     agent_tokens_out: doc.agent_tokens_out ?? null,
+    agent_output_preview: doc.agent_output_preview ?? null,
     branch: doc.branch ?? null,
     pr_number: doc.pr_number ?? null,
     position: doc.position,
@@ -579,6 +581,7 @@ export const move = mutation({
       agent_last_active_at: undefined,
       agent_tokens_in: undefined,
       agent_tokens_out: undefined,
+      agent_output_preview: undefined,
     })
 
     const updated = await ctx.db.get(existing._id)
@@ -680,6 +683,7 @@ export const updateAgentActivity = mutation({
         agent_last_active_at: v.number(),
         agent_tokens_in: v.optional(v.number()),
         agent_tokens_out: v.optional(v.number()),
+        agent_output_preview: v.optional(v.string()),
       })
     ),
   },
@@ -698,6 +702,7 @@ export const updateAgentActivity = mutation({
         agent_last_active_at: update.agent_last_active_at,
         agent_tokens_in: update.agent_tokens_in,
         agent_tokens_out: update.agent_tokens_out,
+        agent_output_preview: update.agent_output_preview,
         updated_at: Date.now(),
       })
       updated++
@@ -724,6 +729,7 @@ export const clearAgentActivity = mutation({
       agent_last_active_at: undefined,
       agent_tokens_in: undefined,
       agent_tokens_out: undefined,
+      agent_output_preview: undefined,
       updated_at: Date.now(),
     })
   },
