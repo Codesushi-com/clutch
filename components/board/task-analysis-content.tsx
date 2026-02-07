@@ -3,7 +3,8 @@
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, AlertCircle, CheckCircle2, MinusCircle, XCircle, FileText } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Loader2, AlertCircle, CheckCircle2, MinusCircle, XCircle, FileText, ExternalLink } from "lucide-react"
 import Link from "next/link"
 
 type Outcome = "success" | "failure" | "partial" | "abandoned"
@@ -280,11 +281,31 @@ export function TaskAnalysisContent({ taskId, projectSlug }: TaskAnalysisProps) 
       )}
       
       {/* Footer info */}
-      <div className="flex items-center justify-between pt-4 border-t border-[var(--border)] text-xs text-[var(--text-muted)]">
-        <span>Session: {analysis.session_key || "N/A"}</span>
+      <div className="flex items-center justify-between pt-4 border-t border-[var(--border)]">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-[var(--text-muted)]">
+            Session: {analysis.session_key || "N/A"}
+          </span>
+          {analysis.session_key && (
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="h-7 text-xs"
+            >
+              <Link
+                href={`/projects/${projectSlug}/sessions/${encodeURIComponent(analysis.session_key)}?task=${taskId}`}
+                className="flex items-center gap-1"
+              >
+                <ExternalLink className="h-3 w-3" />
+                View Log
+              </Link>
+            </Button>
+          )}
+        </div>
         <Link
           href={`/projects/${projectSlug}/prompt-lab?version=${analysis.prompt_version_id}`}
-          className="text-[var(--accent-blue)] hover:underline"
+          className="text-xs text-[var(--accent-blue)] hover:underline"
         >
           Prompt Version: {analysis.prompt_version_id.substring(0, 8)}
         </Link>
