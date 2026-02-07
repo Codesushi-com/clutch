@@ -77,6 +77,21 @@ export function DependencyPicker({
     }
   }, [open])
 
+  // Handle Escape key to close picker
+  useEffect(() => {
+    if (!open) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onOpenChange(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [open, onOpenChange])
+
   // Filter tasks: same project, exclude self, exclude existing deps, match search
   const filteredTasks = useMemo(() => {
     if (!task) return []

@@ -91,11 +91,18 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   const dependsOn = dependencies.depends_on
   const blocks = dependencies.blocks
 
-  // Keyboard shortcut for dependency picker
+  // Keyboard shortcut for dependency picker and Escape to close modal
   useEffect(() => {
     if (!open || !task) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape key to close modal (unless dependency picker is open)
+      if (e.key === 'Escape' && !pickerOpen) {
+        e.preventDefault()
+        onOpenChange(false)
+        return
+      }
+
       // 'd' key to open dependency picker (when not typing in an input)
       if (e.key === 'd' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const target = e.target as HTMLElement
@@ -109,7 +116,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [open, task, pickerOpen])
+  }, [open, task, pickerOpen, onOpenChange])
 
   // Load task data when modal opens
   useEffect(() => {
