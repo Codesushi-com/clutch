@@ -471,15 +471,13 @@ export default function ChatPage({ params }: PageProps) {
       <ConvexChatSync chatId={activeChat?.id ?? null} projectId={projectId} />
 
       <div className="flex h-[calc(100vh-140px)] bg-[var(--bg-primary)] rounded-lg border border-[var(--border)] overflow-hidden min-w-0 max-w-full">
-        {projectId && (
-          <ChatSidebar
-            projectId={projectId}
-            projectSlug={slug}
-            isOpen={isMobile ? sidebarOpen : true}
-            onClose={() => setSidebarOpen(false)}
-            isMobile={isMobile}
-          />
-        )}
+        <ChatSidebar
+          projectId={projectId}
+          projectSlug={slug}
+          isOpen={isMobile ? sidebarOpen : true}
+          onClose={() => setSidebarOpen(false)}
+          isMobile={isMobile}
+        />
 
         <div className="flex-1 flex flex-col min-w-0 max-w-full overflow-hidden">
           {activeChat ? (
