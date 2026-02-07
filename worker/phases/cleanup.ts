@@ -37,13 +37,21 @@ interface LogRunParams {
   durationMs?: number
 }
 
+interface ProjectInfo {
+  id: string
+  slug: string
+  name: string
+  work_loop_enabled: boolean
+  work_loop_max_agents?: number | null
+  local_path?: string | null
+  github_repo?: string | null
+}
+
 interface CleanupContext {
   convex: ConvexHttpClient
   agents: AgentManager
   cycle: number
-  projectId: string
-  repoPath: string
-  worktreesPath: string
+  project: ProjectInfo
   staleTaskMinutes: number
   log: (params: LogRunParams) => Promise<void>
 }
@@ -68,9 +76,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
     convex,
     agents,
     cycle,
-    projectId,
-    repoPath,
-    worktreesPath,
+    project,
     staleTaskMinutes,
     log,
   } = ctx
@@ -80,17 +86,21 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   const now = Date.now()
   const staleMs = (staleTaskMinutes || DEFAULT_STALE_MINUTES) * MS_PER_MINUTE
 
+  // Derive paths from project configuration
+  const repoPath = project.local_path!
+  const worktreesPath = `${repoPath.replace(/\/[^/]+$/, "-worktrees")}/fix`
+
   // Fetch task lists from Convex
   const inProgressTasks = await convex.query(api.tasks.getByProject, {
-    projectId,
+    projectId: project.id,
     status: "in_progress",
   })
   const doneTasks = await convex.query(api.tasks.getByProject, {
-    projectId,
+    projectId: project.id,
     status: "done",
   })
   const readyTasks = await convex.query(api.tasks.getByProject, {
-    projectId,
+    projectId: project.id,
     status: "ready",
   })
 
@@ -134,7 +144,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
       }
 
       await log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "cleanup",
         action: "reset_orphaned_in_progress",
@@ -155,7 +165,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   //     agent is running. This causes the UI to show ghost agents.
   // ------------------------------------------------------------------
   const inReviewTasks = await convex.query(api.tasks.getByProject, {
-    projectId,
+    projectId: project.id,
     status: "in_review",
   })
 
@@ -173,7 +183,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
     }
 
     await log({
-      projectId,
+      projectId: project.id,
       cycle,
       phase: "cleanup",
       action: "clear_ghost_agent_in_review",
@@ -208,7 +218,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
     }
 
     await log({
-      projectId,
+      projectId: project.id,
       cycle,
       phase: "cleanup",
       action: "clear_stale_agent_fields",
@@ -234,7 +244,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
     doneTasks,
     inProgressTasks,
     inReviewTasks,
-    projectId,
+    projectId: project.id,
     cycle,
     log,
   })
@@ -249,7 +259,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   //    aren't the about:blank or extension pages.
   // ------------------------------------------------------------------
   const tabActions = await cleanStaleBrowserTabs({
-    projectId,
+    projectId: project.id,
     cycle,
     log,
   })

@@ -23,12 +23,22 @@ export interface WorkPhaseResult {
   role?: string
 }
 
+interface ProjectInfo {
+  id: string
+  slug: string
+  name: string
+  work_loop_enabled: boolean
+  work_loop_max_agents?: number | null
+  local_path?: string | null
+  github_repo?: string | null
+}
+
 interface WorkContext {
   convex: ConvexHttpClient
   agents: AgentManager
   config: WorkLoopConfig
   cycle: number
-  projectId: string
+  project: ProjectInfo
   log: (params: LogRunParams) => Promise<void>
 }
 
@@ -215,16 +225,16 @@ function extractImageUrls(description: string | null): string[] {
  * 6. Log claim and spawn to Convex
  */
 export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
-  const { convex, agents, config, cycle, projectId, log } = ctx
+  const { convex, agents, config, cycle, project, log } = ctx
 
   // --- 1. Check capacity ---
   const globalCount = agents.activeCount()
-  const projectCount = agents.activeCount(projectId)
+  const projectCount = agents.activeCount(project.id)
   const devCount = agents.activeCountByRole("dev")
 
   if (globalCount >= config.maxAgentsGlobal) {
     await log({
-      projectId,
+      projectId: project.id,
       cycle,
       phase: "work",
       action: "capacity_check",
@@ -235,7 +245,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
 
   if (projectCount >= config.maxAgentsPerProject) {
     await log({
-      projectId,
+      projectId: project.id,
       cycle,
       phase: "work",
       action: "capacity_check",
@@ -246,7 +256,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
 
   if (devCount >= config.maxDevAgents) {
     await log({
-      projectId,
+      projectId: project.id,
       cycle,
       phase: "work",
       action: "capacity_check",
@@ -259,13 +269,13 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
   let readyTasks: Task[]
   try {
     readyTasks = await convex.query(api.tasks.getByProject, {
-      projectId,
+      projectId: project.id,
       status: "ready",
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     await log({
-      projectId,
+      projectId: project.id,
       cycle,
       phase: "work",
       action: "fetch_failed",
@@ -276,7 +286,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
 
   if (readyTasks.length === 0) {
     await log({
-      projectId,
+      projectId: project.id,
       cycle,
       phase: "work",
       action: "no_ready_tasks",
@@ -288,7 +298,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
   const sortedTasks = sortTasks(readyTasks)
 
   await log({
-    projectId,
+    projectId: project.id,
     cycle,
     phase: "work",
     action: "ready_tasks_found",
@@ -302,7 +312,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     // Check tombstone before claiming — avoid claim→revert thrash loop
     if (agents.isRecentlyReaped(task.id, role)) {
       await log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "work",
         action: "tombstone_blocked",
@@ -316,7 +326,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     const depsMet = await areDependenciesMet(convex, task.id)
     if (!depsMet) {
       await log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "work",
         action: "dependency_blocked",
@@ -331,7 +341,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     if (!claimed) {
       // Another process claimed it or deps changed
       await log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "work",
         action: "claim_failed",
@@ -343,7 +353,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
 
     // Successfully claimed!
     await log({
-      projectId,
+      projectId: project.id,
       cycle,
       phase: "work",
       action: "task_claimed",
@@ -353,9 +363,9 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
 
     // --- 4. Load SOUL and build prompt ---
     const soulTemplate = await loadSoulTemplate(role)
-    const project = await convex.query(api.projects.getById, { id: projectId })
-    const repoDir = project?.local_path ?? "/home/dan/src/trap"
-    const worktreeDir = `/home/dan/src/trap-worktrees/fix/${task.id.slice(0, 8)}`
+    const repoDir = project.local_path!
+    const worktreesBase = repoDir.replace(/\/[^/]+$/, "-worktrees")
+    const worktreeDir = `${worktreesBase}/fix/${task.id.slice(0, 8)}`
 
     // For PM tasks, fetch any signal Q&A history to include in the prompt
     let signalResponses: Array<{ question: string; response: string }> | undefined
@@ -383,7 +393,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
       taskTitle: task.title,
       taskDescription: task.description ?? "",
       soulTemplate,
-      projectId,
+      projectId: project.id,
       repoDir,
       worktreeDir,
       signalResponses,
@@ -397,7 +407,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     try {
       const handle = await agents.spawn({
         taskId: task.id,
-        projectId,
+        projectId: project.id,
         role,
         message: prompt,
         model,
@@ -406,7 +416,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
       })
 
       await log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "work",
         action: "agent_spawned",
@@ -439,7 +449,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     } catch (spawnError) {
       const message = spawnError instanceof Error ? spawnError.message : String(spawnError)
       await log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "work",
         action: "spawn_failed",
@@ -463,7 +473,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
 
   // No claimable tasks found
   await log({
-    projectId,
+    projectId: project.id,
     cycle,
     phase: "work",
     action: "no_claimable_tasks",

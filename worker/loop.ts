@@ -37,6 +37,7 @@ interface ProjectInfo {
   work_loop_enabled: boolean
   work_loop_max_agents?: number | null
   local_path?: string | null
+  github_repo?: string | null
 }
 
 // ============================================
@@ -143,6 +144,15 @@ async function runProjectCycle(
   convex: ConvexHttpClient,
   project: ProjectInfo
 ): Promise<void> {
+  // Validate project configuration before running any phases
+  if (!project.local_path) {
+    console.error(`[WorkLoop] Project ${project.slug} has no local_path — skipping cycle`)
+    return
+  }
+  if (!project.github_repo) {
+    console.warn(`[WorkLoop] Project ${project.slug} has no github_repo — review phase will be skipped`)
+  }
+
   const cycleStart = Date.now()
 
   // Reap finished agents before doing anything else.
@@ -289,8 +299,6 @@ async function runProjectCycle(
   })
 
   // Phase 1: Cleanup
-  const repoPath = project.local_path ?? "/home/dan/src/trap"
-  const worktreesPath = `${repoPath.replace(/\/trap$/, "/trap-worktrees")}/fix`
   const cleanupResult = await runPhase(
     convex,
     project.id,
@@ -300,9 +308,7 @@ async function runProjectCycle(
         convex,
         agents: agentManager,
         cycle,
-        projectId: project.id,
-        repoPath,
-        worktreesPath,
+        project,
         staleTaskMinutes: config.staleTaskMinutes,
         log: (params) => logRun(convex, params),
       })
@@ -357,7 +363,7 @@ async function runProjectCycle(
         agents: agentManager,
         config: loadConfig(),
         cycle,
-        projectId: project.id,
+        project,
         log: (params) => logRun(convex, params),
       })
       return { success: true, actions: result.spawnedCount }
@@ -383,7 +389,7 @@ async function runProjectCycle(
       const result = await runSignals({
         convex,
         cycle,
-        projectId: project.id,
+        project,
         log: (params) => logRun(convex, params),
       })
       return {
@@ -414,7 +420,7 @@ async function runProjectCycle(
         agents: agentManager,
         config,
         cycle,
-        projectId: project.id,
+        project,
         log: async (params) => {
           await logRun(convex, params)
         },
@@ -447,7 +453,7 @@ async function runProjectCycle(
         agents: agentManager,
         config,
         cycle,
-        projectId: project.id,
+        project,
         log: async (params) => {
           await logRun(convex, params)
         },
@@ -514,6 +520,7 @@ async function getEnabledProjects(convex: ConvexHttpClient): Promise<ProjectInfo
         work_loop_enabled: Boolean(p.work_loop_enabled),
         work_loop_max_agents: p.work_loop_max_agents,
         local_path: p.local_path,
+        github_repo: p.github_repo,
       }))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

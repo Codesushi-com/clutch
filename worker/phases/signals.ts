@@ -14,10 +14,20 @@ import type { Signal } from "../../lib/types"
 // Types
 // ============================================
 
+interface ProjectInfo {
+  id: string
+  slug: string
+  name: string
+  work_loop_enabled: boolean
+  work_loop_max_agents?: number | null
+  local_path?: string | null
+  github_repo?: string | null
+}
+
 interface SignalsContext {
   convex: ConvexHttpClient
   cycle: number
-  projectId: string
+  project: ProjectInfo
   log: (params: LogRunParams) => Promise<void>
 }
 
@@ -44,15 +54,15 @@ interface SignalsResult {
  * again with the full Q&A context included in the prompt.
  */
 export async function runSignals(ctx: SignalsContext): Promise<SignalsResult> {
-  const { convex, cycle, projectId, log } = ctx
+  const { convex, cycle, project, log } = ctx
 
   // Find tasks with responded signals
   const tasksWithSignals = await convex.query(api.signals.getTasksWithRespondedSignals, {
-    projectId,
+    projectId: project.id,
   })
 
   await log({
-    projectId,
+    projectId: project.id,
     cycle,
     phase: "work",
     action: "signals_check",
@@ -77,7 +87,7 @@ export async function runSignals(ctx: SignalsContext): Promise<SignalsResult> {
 
       if (signals.length === 0) {
         await log({
-          projectId,
+          projectId: project.id,
           cycle,
           phase: "work",
           action: "signals_skip",
@@ -113,7 +123,7 @@ export async function runSignals(ctx: SignalsContext): Promise<SignalsResult> {
       })
 
       await log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "work",
         action: "signals_requeued",
@@ -123,7 +133,7 @@ export async function runSignals(ctx: SignalsContext): Promise<SignalsResult> {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       await log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "work",
         action: "signals_error",

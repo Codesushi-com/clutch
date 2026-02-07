@@ -12,12 +12,22 @@ import type { WorkLoopConfig } from "../config"
 import type { LogRunParams } from "../logger"
 import type { Task } from "../../lib/types"
 
+interface ProjectInfo {
+  id: string
+  slug: string
+  name: string
+  work_loop_enabled: boolean
+  work_loop_max_agents?: number | null
+  local_path?: string | null
+  github_repo?: string | null
+}
+
 interface AnalyzeContext {
   convex: ConvexHttpClient
   agents: AgentManager
   config: WorkLoopConfig
   cycle: number
-  projectId: string
+  project: ProjectInfo
   log: (params: LogRunParams) => Promise<void>
 }
 
@@ -42,16 +52,16 @@ interface AnalyzeResult {
  * a structured analysis.
  */
 export async function runAnalyze(ctx: AnalyzeContext): Promise<AnalyzeResult> {
-  const { convex, agents, config, cycle, projectId, log } = ctx
+  const { convex, agents, config, cycle, project, log } = ctx
 
   let spawnedCount = 0
   let skippedCount = 0
 
   // Get unanalyzed tasks for this project
-  const tasks = await getUnanalyzedTasks(convex, projectId)
+  const tasks = await getUnanalyzedTasks(convex, project.id)
 
   await log({
-    projectId,
+    projectId: project.id,
     cycle,
     phase: "analyze",
     action: "tasks_found",
@@ -63,7 +73,7 @@ export async function runAnalyze(ctx: AnalyzeContext): Promise<AnalyzeResult> {
     const globalActive = agents.activeCount()
     if (globalActive >= config.maxAgentsGlobal) {
       await log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "analyze",
         action: "limit_reached",
@@ -72,10 +82,10 @@ export async function runAnalyze(ctx: AnalyzeContext): Promise<AnalyzeResult> {
       break
     }
 
-    const projectActive = agents.activeCount(projectId)
+    const projectActive = agents.activeCount(project.id)
     if (projectActive >= config.maxAgentsPerProject) {
       await log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "analyze",
         action: "limit_reached",
@@ -93,7 +103,7 @@ export async function runAnalyze(ctx: AnalyzeContext): Promise<AnalyzeResult> {
     }
 
     await log({
-      projectId,
+      projectId: project.id,
       cycle,
       phase: "analyze",
       action: result.spawned ? "analyzer_spawned" : "analyzer_skipped",
@@ -115,7 +125,7 @@ interface TaskProcessResult {
 }
 
 async function processTask(ctx: AnalyzeContext, task: Task): Promise<TaskProcessResult> {
-  const { agents, projectId } = ctx
+  const { agents, project } = ctx
 
   // Check if analyzer already running for this task
   if (agents.has(task.id)) {
@@ -171,7 +181,7 @@ async function processTask(ctx: AnalyzeContext, task: Task): Promise<TaskProcess
   try {
     const handle = await agents.spawn({
       taskId: task.id,
-      projectId,
+      projectId: project.id,
       role: "analyzer",
       message: prompt,
       model: "sonnet",

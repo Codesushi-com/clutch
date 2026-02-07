@@ -22,12 +22,22 @@ interface LogRunParams {
   durationMs?: number
 }
 
+interface ProjectInfo {
+  id: string
+  slug: string
+  name: string
+  work_loop_enabled: boolean
+  work_loop_max_agents?: number | null
+  local_path?: string | null
+  github_repo?: string | null
+}
+
 interface ReviewContext {
   convex: ConvexHttpClient
   agents: AgentManager
   config: WorkLoopConfig
   cycle: number
-  projectId: string
+  project: ProjectInfo
   log: (params: LogRunParams) => Promise<void>
 }
 
@@ -62,16 +72,16 @@ interface PRInfo {
  * 4. Spawn via ChildManager with role="reviewer", model="sonnet"
  */
 export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
-  const { convex, agents, config, cycle, projectId } = ctx
+  const { convex, agents, config, cycle, project } = ctx
 
   let spawnedCount = 0
   let skippedCount = 0
 
   // Get tasks in review status for this project
-  const tasks = await getInReviewTasks(convex, projectId)
+  const tasks = await getInReviewTasks(convex, project.id)
 
   await ctx.log({
-    projectId,
+    projectId: project.id,
     cycle,
     phase: "review",
     action: "tasks_found",
@@ -89,7 +99,7 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
 
     // Log individual task result
     await ctx.log({
-      projectId,
+      projectId: project.id,
       cycle,
       phase: "review",
       action: result.spawned ? "reviewer_spawned" : "reviewer_skipped",
@@ -101,7 +111,7 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
     const reviewerCount = agents.activeCountByRole("reviewer")
     if (reviewerCount >= config.maxReviewerAgents) {
       await ctx.log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "review",
         action: "limit_reached",
@@ -114,7 +124,7 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
     const globalActive = agents.activeCount()
     if (globalActive >= config.maxAgentsGlobal) {
       await ctx.log({
-        projectId,
+        projectId: project.id,
         cycle,
         phase: "review",
         action: "limit_reached",
@@ -137,7 +147,7 @@ interface TaskProcessResult {
 }
 
 async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessResult> {
-  const { convex, agents, projectId } = ctx
+  const { convex, agents, project } = ctx
 
   // Use recorded branch name if available, otherwise derive from task ID
   const branchName = task.branch ?? `fix/${task.id.slice(0, 8)}`
@@ -169,14 +179,14 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
 
   // Check for open PR - use PR number if recorded, otherwise search by branch
   const pr = task.pr_number
-    ? await getPRByNumber(task.pr_number)
-    : findOpenPR(branchName)
+    ? await getPRByNumber(task.pr_number, project)
+    : findOpenPR(branchName, project)
 
   if (!pr) {
     // If the task has a recorded PR number, check if it was already merged.
     // Reviewers sometimes merge the PR but fail to update the task status.
     if (task.pr_number) {
-      const merged = isPRMerged(task.pr_number)
+      const merged = isPRMerged(task.pr_number, project)
       if (merged) {
         try {
           await convex.mutation(api.tasks.move, {
@@ -211,13 +221,14 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
 
   // Spawn reviewer via gateway RPC
   // Use actual branch name for worktree path (handles descriptive suffixes)
-  const worktreePath = `/home/dan/src/trap-worktrees/${branchName}`
-  const prompt = buildReviewerPrompt(task, pr, branchName, worktreePath)
+  const worktreesBase = project.local_path!.replace(/\/[^/]+$/, "-worktrees")
+  const worktreePath = `${worktreesBase}/${branchName}`
+  const prompt = buildReviewerPrompt(task, pr, branchName, worktreePath, project)
 
   try {
     const handle = await agents.spawn({
       taskId: task.id,
-      projectId,
+      projectId: project.id,
       role: "reviewer",
       message: prompt,
       model: "sonnet",
@@ -288,7 +299,7 @@ async function getInReviewTasks(convex: ConvexHttpClient, projectId: string): Pr
 // GitHub PR Lookup
 // ============================================
 
-function findOpenPR(branchName: string): PRInfo | null {
+function findOpenPR(branchName: string, project: ProjectInfo): PRInfo | null {
   try {
     // Use --json with all open PRs and filter by prefix, since dev agents
     // may append descriptive suffixes to branch names (e.g. fix/058806db-chat-sidebar-agent-status)
@@ -298,7 +309,7 @@ function findOpenPR(branchName: string): PRInfo | null {
       {
         encoding: "utf-8",
         timeout: 10_000,
-        cwd: "/home/dan/src/trap", // Run from main repo
+        cwd: project.local_path!, // Run from main repo
       }
     )
 
@@ -323,7 +334,7 @@ function findOpenPR(branchName: string): PRInfo | null {
  * Check if a PR has been merged (not just closed).
  * Used to auto-close tasks whose PR was merged but task status wasn't updated.
  */
-function isPRMerged(prNumber: number): boolean {
+function isPRMerged(prNumber: number, project: ProjectInfo): boolean {
   try {
     const result = execFileSync(
       "gh",
@@ -331,7 +342,7 @@ function isPRMerged(prNumber: number): boolean {
       {
         encoding: "utf-8",
         timeout: 10_000,
-        cwd: "/home/dan/src/trap",
+        cwd: project.local_path!,
       }
     )
 
@@ -345,7 +356,7 @@ function isPRMerged(prNumber: number): boolean {
 /**
  * Get PR info by PR number (direct lookup)
  */
-function getPRByNumber(prNumber: number): PRInfo | null {
+function getPRByNumber(prNumber: number, project: ProjectInfo): PRInfo | null {
   try {
     const result = execFileSync(
       "gh",
@@ -353,7 +364,7 @@ function getPRByNumber(prNumber: number): PRInfo | null {
       {
         encoding: "utf-8",
         timeout: 10_000,
-        cwd: "/home/dan/src/trap",
+        cwd: project.local_path!,
       }
     )
 
@@ -380,7 +391,8 @@ function buildReviewerPrompt(
   task: Task,
   pr: PRInfo,
   branchName: string,
-  worktreePath: string
+  worktreePath: string,
+  project: ProjectInfo
 ): string {
   return `# Code Reviewer
 
@@ -422,7 +434,7 @@ ${task.description ? `**Description:**\n${task.description}\n` : ""}
 ### If PR is clean (all checks pass):
 1. **Approve and merge:**\n   \`\`\`bash\n   gh pr merge ${pr.number} --squash --delete-branch\n   \`\`\`
 2. **Update ticket status to done:**\n   \`\`\`bash\n   curl -X PATCH http://localhost:3002/api/tasks/${task.id} -H 'Content-Type: application/json' -d '{"status": "done"}'\n   \`\`\`
-3. **Clean up worktree:**\n   \`\`\`bash\n   cd /home/dan/src/trap && git worktree remove ${worktreePath}\n   \`\`\`
+3. **Clean up worktree:**\n   \`\`\`bash\n   cd ${project.local_path} && git worktree remove ${worktreePath}\n   \`\`\`
 
 ### If PR needs changes:
 1. **Leave specific, actionable feedback:**\n   \`\`\`bash\n   gh pr comment ${pr.number} --body "Your detailed feedback here..."\n   \`\`\`
@@ -435,6 +447,6 @@ ${task.description ? `**Description:**\n${task.description}\n` : ""}
 - If you find architectural concerns or security issues, escalate rather than merging
 - If the PR has UI changes that need visual verification, note "needs browser QA" in your review
 
-Start by reading \`/home/dan/src/trap/AGENTS.md\` to understand project conventions, then proceed with the review.
+Start by reading \`\${project.local_path}/AGENTS.md\` to understand project conventions, then proceed with the review.
 `
 }
