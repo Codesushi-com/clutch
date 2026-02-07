@@ -10,7 +10,9 @@ import { TaskModal } from "@/components/board/task-modal"
 import { NewIssueDialog } from "@/components/chat/new-issue-dialog"
 import { useConvexTasks } from "@/lib/hooks/use-convex-tasks"
 import { AgentStatus, formatDuration } from "@/components/agents/agent-status"
-import type { Task } from "@/lib/types"
+import { AgentCard } from "@/components/agents/agent-card"
+import { useSessionStore } from "@/lib/stores/session-store"
+import type { Task, Session } from "@/lib/types"
 
 interface ChatSidebarProps {
   projectId: string | null
@@ -49,6 +51,49 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   // Reactive Convex subscription for all project tasks - updates in real-time
   // when tasks are created, updated, moved, or deleted
   const { tasks: allTasks, isLoading: loadingTasks } = useConvexTasks(projectId ?? "")
+
+  // Get sessions from global session store (includes sub-agents and cron sessions)
+  const sessions = useSessionStore((state) => state.sessions)
+  const fetchSessions = useSessionStore((state) => state.fetchAndUpdate)
+
+  // Derive active agent sessions (subagents and cron sessions that are running or idle)
+  const activeAgentSessions = useMemo(() => {
+    return sessions.filter((s: Session) => {
+      // Include running or idle sessions that are subagents or have task associations
+      const isActiveStatus = s.status === "running" || s.status === "idle"
+      const isSubagent = s.type === "subagent"
+      const hasTask = s.task || s.name?.startsWith("trap-")
+      return isActiveStatus && (isSubagent || hasTask)
+    })
+  }, [sessions])
+
+  // Build a map of session key -> task for quick lookup
+  const sessionTaskMap = useMemo(() => {
+    const map = new Map<string, Task>()
+    if (!allTasks) return map
+
+    for (const task of allTasks) {
+      if (task.agent_session_key) {
+        map.set(task.agent_session_key, task)
+      }
+    }
+    return map
+  }, [allTasks])
+
+  // Poll for session updates periodically (every 10s)
+  useEffect(() => {
+    if (!projectId) return
+
+    // Initial fetch
+    fetchSessions(true)
+
+    // Set up polling interval
+    const interval = setInterval(() => {
+      fetchSessions(false)
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [projectId, fetchSessions])
   
   // Section expansion state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -393,6 +438,39 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
           New Issue
         </Button>
       </div>
+
+      {/* Active Agents Section */}
+      {activeAgentSessions.length > 0 && (
+        <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/20">
+          <div className="flex items-center gap-2 mb-2">
+            <svg className="h-4 w-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <line x1="3" y1="9" x2="21" y2="9"/>
+              <line x1="9" y1="21" x2="9" y2="9"/>
+            </svg>
+            <h2 className="font-medium text-[var(--text-primary)] text-sm">Active Agents</h2>
+            <span className="text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">
+              {activeAgentSessions.length}
+            </span>
+          </div>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {activeAgentSessions.map((session: Session) => {
+              // Try to find associated task
+              const task = sessionTaskMap.get(session.id) ||
+                (session.task?.id ? allTasks?.find((t: Task) => t.id === session.task!.id) : undefined)
+
+              return (
+                <AgentCard
+                  key={session.id}
+                  session={session}
+                  task={task}
+                  projectSlug={projectSlug}
+                />
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Divider with Work Queue header */}
       <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/30">
