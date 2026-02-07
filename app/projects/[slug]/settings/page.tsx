@@ -16,7 +16,7 @@ export default function SettingsPage({ params }: PageProps) {
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [chatLayout, setChatLayout] = useState<'slack' | 'imessage'>('slack')
+  const [chatLayout, setChatLayout] = useState<'slack' | 'imessage' | null>(null)
   
   // Codebase configuration state
   const [localPath, setLocalPath] = useState<string>('')
@@ -37,7 +37,7 @@ export default function SettingsPage({ params }: PageProps) {
         if (response.ok) {
           const data = await response.json()
           setProject(data.project)
-          setChatLayout(data.project.chat_layout || 'slack')
+          setChatLayout(data.project.chat_layout)
           setLocalPath(data.project.local_path || '')
           setGithubRepo(data.project.github_repo || '')
           setWorkLoopEnabled(Boolean(data.project.work_loop_enabled))
@@ -196,7 +196,7 @@ export default function SettingsPage({ params }: PageProps) {
     )
   }
 
-  const hasChanges = chatLayout !== project.chat_layout ||
+  const hasChanges = (chatLayout !== null && chatLayout !== project.chat_layout) ||
     localPath !== (project.local_path || '') ||
     githubRepo !== (project.github_repo || '') ||
     workLoopEnabled !== Boolean(project.work_loop_enabled)
