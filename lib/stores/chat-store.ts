@@ -22,6 +22,7 @@ interface ChatState {
   currentProjectId: string | null
   typingIndicators: Record<string, { author: string; state: "thinking" | "typing" }[]> // chatId -> typing info
   hasMoreMessages: Record<string, boolean> // chatId -> whether more messages exist
+  lastActiveChatIds: Record<string, string> // projectId -> last active chatId
 
   // Actions
   fetchChats: (projectId: string) => Promise<void>
@@ -48,6 +49,9 @@ interface ChatState {
   // Scroll position tracking
   setScrollPosition: (chatId: string, position: number) => void
   getScrollPosition: (chatId: string) => number
+
+  // Per-project last active chat
+  getLastActiveChatForProject: (projectId: string) => string | null
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -61,6 +65,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentProjectId: null,
   typingIndicators: {},
   hasMoreMessages: {},
+  lastActiveChatIds: {},
 
   fetchChats: async (projectId) => {
     set({ loading: true, error: null, currentProjectId: projectId })
@@ -125,7 +130,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setActiveChat: (chat) => {
-    set({ activeChat: chat })
+    const currentProjectId = get().currentProjectId
+    set((state) => ({
+      activeChat: chat,
+      // Save the last active chat ID for the current project
+      ...(chat && currentProjectId
+        ? { lastActiveChatIds: { ...state.lastActiveChatIds, [currentProjectId]: chat.id } }
+        : {}),
+    }))
     if (chat) {
       get().fetchMessages(chat.id)
     }
@@ -406,5 +418,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         [chatId]: hasMore,
       },
     }))
+  },
+
+  // Get the last active chat ID for a project
+  getLastActiveChatForProject: (projectId) => {
+    return get().lastActiveChatIds[projectId] || null
   },
 }))
