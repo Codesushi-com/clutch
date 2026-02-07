@@ -6,6 +6,7 @@
     "dev": "volta run node ./node_modules/next/dist/bin/next dev -p 3002",
     "build": "next build",
     "start": "next start",
+    "start:ws": "tsx server.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
