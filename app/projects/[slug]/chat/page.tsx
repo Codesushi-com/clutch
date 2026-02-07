@@ -61,6 +61,7 @@ export default function ChatPage({ params }: PageProps) {
     sendMessage: sendMessageToDb,
     setActiveChat,
     setTyping,
+    getLastActiveChatForProject,
   } = useChatStore()
 
   // Generate session key based on project and active chat
@@ -195,11 +196,22 @@ export default function ChatPage({ params }: PageProps) {
     init()
   }, [slug, fetchChats])
 
+  // Auto-select chat when project loads: prefer last active chat for this project,
+  // fall back to first chat if no previous selection or chat no longer exists
   useEffect(() => {
-    if (chats.length > 0 && !activeChat) {
-      setActiveChat(chats[0])
+    if (chats.length > 0 && !activeChat && projectId) {
+      const lastActiveChatId = getLastActiveChatForProject(projectId)
+      const lastActiveChat = lastActiveChatId
+        ? chats.find((c) => c.id === lastActiveChatId)
+        : null
+
+      if (lastActiveChat) {
+        setActiveChat(lastActiveChat)
+      } else {
+        setActiveChat(chats[0])
+      }
     }
-  }, [chats, activeChat, setActiveChat])
+  }, [chats, activeChat, setActiveChat, projectId, getLastActiveChatForProject])
 
   // ==========================================================================
   // Message sending
