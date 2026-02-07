@@ -1,9 +1,11 @@
 "use client"
 
 import { useEffect, useRef } from "react"
+import { useMutation } from "convex/react"
 import { useConvexMessages, useConvexChats, useConvexTyping } from "@/lib/hooks/use-convex-messages"
 import { useChatStore } from "@/lib/stores/chat-store"
 import type { ChatWithLastMessage } from "@/lib/stores/chat-store"
+import { api } from "@/convex/_generated/api"
 
 /**
  * Bridge between Convex reactive queries and the zustand chat store.
@@ -28,6 +30,9 @@ export function ConvexChatSync({
   const syncChats = useChatStore((s) => s.syncChats)
   const syncTyping = useChatStore((s) => s.syncTyping)
   const syncHasMoreMessages = useChatStore((s) => s.syncHasMoreMessages)
+
+  // Mutation for clearing stale typing states
+  const clearStaleTyping = useMutation(api.chats.clearStaleTyping)
 
   // Track previous values to avoid unnecessary syncs
   const prevMessagesRef = useRef<typeof messages>(null)
@@ -67,6 +72,15 @@ export function ConvexChatSync({
     prevHasMoreRef.current = hasMore
     syncHasMoreMessages(chatId, hasMore)
   }, [chatId, hasMore, syncHasMoreMessages])
+
+  // Periodic cleanup of stale typing states (every 30 seconds)
+  // This is a safety net in case the plugin fails to clear typing
+  useEffect(() => {
+    const interval = setInterval(() => {
+      clearStaleTyping()
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [clearStaleTyping])
 
   return null
 }

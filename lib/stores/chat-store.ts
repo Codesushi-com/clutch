@@ -38,7 +38,7 @@ interface ChatState {
 
   // Convex reactivity handlers
   receiveMessage: (chatId: string, message: ChatMessage) => void
-  setTyping: (chatId: string, author: string, state: "thinking" | "typing" | false) => void
+  setTyping: (chatId: string, author: string, state: "thinking" | "typing" | false) => Promise<void>
 
   // Convex sync
   syncMessages: (chatId: string, messages: ChatMessage[]) => void
@@ -267,15 +267,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Receive a message from Convex (avoid duplicates)
+  // Note: Typing state is managed by Convex. The plugin clears typing
+  // via clearTyping mutation after saving responses.
   receiveMessage: (chatId, message) => {
     set((state) => {
       const existing = state.messages[chatId] || []
-      
+
       // Check if message already exists (by id)
       if (existing.some((m) => m.id === message.id)) {
         return state
       }
-      
+
       return {
         messages: {
           ...state.messages,
@@ -295,23 +297,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
               }
             : c
         ),
-        // Clear typing indicator for this author
-        typingIndicators: {
-          ...state.typingIndicators,
-          [chatId]: (state.typingIndicators[chatId] || []).filter((t) => t.author !== message.author),
-        },
+        // Typing state is managed by Convex (single source of truth)
       }
     })
   },
 
-  // Handle typing indicator from Convex
-  setTyping: (chatId, author, state) => {
+  // Set typing indicator - writes to Convex (reactive sync via syncTyping)
+  // Note: This is an optimistic update that immediately reflects in local state
+  // and also persists to Convex. The Convex subscription will confirm the state.
+  setTyping: async (chatId, author, state) => {
+    // Optimistic local update first
     set((store) => {
       const current = store.typingIndicators[chatId] || []
       const existing = current.find((t) => t.author === author)
-      
+
       if (state && !existing) {
-        // Add new typing indicator
         return {
           typingIndicators: {
             ...store.typingIndicators,
@@ -319,7 +319,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
           },
         }
       } else if (state && existing && existing.state !== state) {
-        // Update state (thinking -> typing)
         return {
           typingIndicators: {
             ...store.typingIndicators,
@@ -327,7 +326,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
           },
         }
       } else if (!state && existing) {
-        // Remove typing indicator
         return {
           typingIndicators: {
             ...store.typingIndicators,
@@ -335,38 +333,39 @@ export const useChatStore = create<ChatState>((set, get) => ({
           },
         }
       }
-      
+
       return store
     })
+
+    // Persist to Convex via API
+    try {
+      await fetch(`/api/chats/${chatId}/typing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          typing: !!state,
+          author,
+          state: state || "thinking",
+        }),
+      })
+    } catch (error) {
+      console.error("[ChatStore] Failed to persist typing state:", error)
+      // Note: We keep the optimistic update even if the API fails
+      // The UI will show the indicator, and Convex subscription will eventually sync
+    }
   },
 
   // Sync messages from Convex reactive query (replaces fetch-based loading)
+  // Note: Typing state is managed by Convex (single source of truth).
+  // The plugin clears typing via clearTyping mutation after saving responses.
   syncMessages: (chatId, messages) => {
-    set((state) => {
-      const prevMessages = state.messages[chatId] || []
-      const currentTyping = state.typingIndicators[chatId] || []
-
-      // Clear typing indicators for authors who have new messages
-      // (e.g., Ada's thinking indicator clears when her response arrives)
-      let updatedTyping = currentTyping
-      if (currentTyping.length > 0 && messages.length > prevMessages.length) {
-        const newMessages = messages.slice(prevMessages.length)
-        const authorsWithNewMessages = new Set(newMessages.map((m) => m.author))
-        updatedTyping = currentTyping.filter((t) => !authorsWithNewMessages.has(t.author))
-      }
-
-      return {
-        messages: {
-          ...state.messages,
-          [chatId]: messages,
-        },
-        loadingMessages: false,
-        typingIndicators: {
-          ...state.typingIndicators,
-          [chatId]: updatedTyping,
-        },
-      }
-    })
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [chatId]: messages,
+      },
+      loadingMessages: false,
+    }))
   },
 
   // Sync chat list from Convex reactive query
