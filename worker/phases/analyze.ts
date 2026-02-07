@@ -142,13 +142,8 @@ async function processTask(ctx: AnalyzeContext, task: Task): Promise<TaskProcess
     }
   }
 
-  const promptVersionId = taskDetails.task.prompt_version_id
-  if (!promptVersionId) {
-    return {
-      spawned: false,
-      details: { reason: "no_prompt_version_id", taskId: task.id },
-    }
-  }
+  // Use prompt_version_id if available, otherwise "legacy" for older tasks
+  const promptVersionId = taskDetails.task.prompt_version_id ?? "legacy"
 
   // Build analyzer prompt
   const prompt = buildAnalyzerPrompt({

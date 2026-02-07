@@ -941,10 +941,9 @@ export const getBySessionId = query({
  *
  * Returns tasks that:
  * - Are in 'done' status OR were bounced (ready after in_progress) OR abandoned (backlog after in_progress)
- * - Have a prompt_version_id (tracking enabled)
  * - Don't have a taskAnalyses record yet
  *
- * For successful tasks (done), only ~25% are sampled randomly.
+ * For successful tasks (done), analyzes all tasks (not sampled) to populate metrics quickly.
  * For failed tasks (bounced/abandoned), all are returned.
  */
 export const getUnanalyzed = query({
@@ -953,18 +952,20 @@ export const getUnanalyzed = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Task[]> => {
-    // Get all tasks for this project that have prompt_version_id
+    // Get all completed/failed tasks for this project (not just those with prompt_version_id)
     const allTasks = await ctx.db
       .query('tasks')
       .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
       .collect()
 
-    const tasksWithTracking = allTasks.filter((t) => t.prompt_version_id !== undefined && t.prompt_version_id !== null)
+    // Filter to terminal states that should be analyzed
+    const terminalTasks = allTasks.filter((t) => {
+      return t.status === 'done' || t.status === 'ready' || t.status === 'backlog'
+    })
 
-    // Get all existing analyses for these tasks
     const unanalyzedTasks: Task[] = []
 
-    for (const task of tasksWithTracking) {
+    for (const task of terminalTasks) {
       // Check if task already has an analysis
       const existingAnalysis = await ctx.db
         .query('taskAnalyses')
@@ -976,13 +977,9 @@ export const getUnanalyzed = query({
       }
 
       // Check if task qualifies for analysis
-      // 1. Done tasks - sample ~25%
+      // 1. Done tasks - analyze all (removed 25% sampling to populate metrics)
       if (task.status === 'done') {
-        // Simple random sampling - use task ID hash for determinism
-        const hash = task.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-        if (hash % 4 === 0) { // 25% sample
-          unanalyzedTasks.push(toTask(task as Parameters<typeof toTask>[0]))
-        }
+        unanalyzedTasks.push(toTask(task as Parameters<typeof toTask>[0]))
         continue
       }
 
