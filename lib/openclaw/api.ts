@@ -1,17 +1,19 @@
 /**
  * OpenClaw HTTP API Client
- * 
+ *
  * High-level typed API for OpenClaw gateway operations.
  * Uses the HTTP RPC transport - no WebSocket dependency.
- * 
+ *
  * All functions work in both client and server contexts.
+ *
+ * NOTE: Session listing via HTTP has been removed. Sessions are now fetched
+ * reactively from Convex via useAgentSessions hook. This file now only
+ * contains session action operations (reset, compact, cancel, preview).
  */
 
 import { openclawRpc } from './rpc';
 import type {
   Session,
-  SessionListResponse,
-  SessionListParams,
   SessionPreview,
 } from '@/lib/types';
 
@@ -24,51 +26,21 @@ export type { GatewayStatus } from './rpc';
 // ============================================================================
 
 /**
- * Fetch sessions from the /api/sessions/list endpoint (uses OpenClaw CLI).
- * Works from both client and server contexts.
+ * @deprecated Sessions are now fetched reactively from Convex.
+ * Use useAgentSessions hook from @/lib/hooks/use-agent-sessions instead.
  */
-async function fetchSessionsFromApi(params?: SessionListParams): Promise<SessionListResponse> {
-  const limit = params?.limit ?? 50;
-  const activeMinutes = 60;
-  const url = `/api/sessions/list?activeMinutes=${activeMinutes}&limit=${limit}`;
-
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch sessions: HTTP ${response.status}`);
-  }
-
-  return response.json() as Promise<SessionListResponse>;
+export async function listSessions(): Promise<{ sessions: Session[]; total: number }> {
+  console.warn('[openclaw/api] listSessions is deprecated. Use useAgentSessions from @/lib/hooks/use-agent-sessions');
+  return { sessions: [], total: 0 };
 }
 
 /**
- * List all sessions from OpenClaw.
- *
- * Uses the /api/sessions/list endpoint which calls the OpenClaw CLI
- * (`openclaw sessions --json`), avoiding the non-existent HTTP RPC method.
- *
- * @param params - Filter/limit params (optional)
- * @returns List of sessions with metadata
+ * @deprecated Sessions are now fetched reactively from Convex.
+ * Use useAgentSessions hook from @/lib/hooks/use-agent-sessions instead.
  */
-export async function listSessions(
-  params?: SessionListParams
-): Promise<SessionListResponse> {
-  return fetchSessionsFromApi(params);
-}
-
-/**
- * List sessions with effective model.
- *
- * The CLI-backed endpoint already returns the model from session metadata.
- * For now this is identical to listSessions — preview-based model extraction
- * can be layered back in if needed.
- */
-export async function listSessionsWithEffectiveModel(
-  params?: SessionListParams
-): Promise<SessionListResponse> {
-  return fetchSessionsFromApi(params);
+export async function listSessionsWithEffectiveModel(): Promise<{ sessions: Session[]; total: number }> {
+  console.warn('[openclaw/api] listSessionsWithEffectiveModel is deprecated. Use useAgentSessions from @/lib/hooks/use-agent-sessions');
+  return { sessions: [], total: 0 };
 }
 
 /**
@@ -150,17 +122,9 @@ export async function getSessionPreview(
     }>;
   };
 
-  // Always fetch session list from CLI-backed API (works without WebSocket)
-  const sessionsListResponse = await fetchSessionsFromApi({ limit: 100 });
-  const sessionData = sessionsListResponse.sessions?.find((s) => s.id === sessionKey);
-
-  if (!sessionData) {
-    throw new Error(`Session "${sessionKey}" not found`);
-  }
-
-  // Try to fetch message history via RPC, but gracefully fallback if unavailable
+  // Try to fetch message history via RPC
   let messages: SessionPreview['messages'] = [];
-  let effectiveModel = sessionData.model || 'unknown';
+  let effectiveModel = 'unknown';
 
   try {
     const previewResponse = await openclawRpc<PreviewResponse>('sessions.preview', {
@@ -197,42 +161,32 @@ export async function getSessionPreview(
     console.warn(`[getSessionPreview] RPC unavailable, returning session without messages: ${sessionKey}`);
   }
 
-  // Get token counts from the CLI-backed session data
-  const tokensTotal = sessionData.tokens?.total || 0;
-  const tokensInput = sessionData.tokens?.input || 0;
-  const tokensOutput = sessionData.tokens?.output || 0;
-
-  // Calculate context percentage
-  const contextPercentage =
-    effectiveModel !== 'unknown'
-      ? calculateContextPercentage(tokensTotal, effectiveModel)
-      : 0;
-
+  // Build a minimal session object (full session data comes from Convex)
   const session: Session = {
     id: sessionKey,
     name: sessionKey.split(':').pop() || sessionKey,
-    type: sessionData.type || 'main',
+    type: 'main',
     model: effectiveModel,
-    status: sessionData.status || 'idle',
-    createdAt: sessionData.createdAt || new Date().toISOString(),
-    updatedAt: sessionData.updatedAt || new Date().toISOString(),
+    status: 'idle',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     tokens: {
-      input: tokensInput,
-      output: tokensOutput,
-      total: tokensTotal,
+      input: 0,
+      output: 0,
+      total: 0,
     },
   };
 
   return {
     session,
     messages,
-    contextPercentage,
+    contextPercentage: 0,
   };
 }
 
 /**
  * Reset a session (clear all conversation history).
- * 
+ *
  * @param sessionKey - The session key to reset
  */
 export async function resetSession(sessionKey: string): Promise<void> {
@@ -241,7 +195,7 @@ export async function resetSession(sessionKey: string): Promise<void> {
 
 /**
  * Compact a session (summarize context to reduce token usage).
- * 
+ *
  * @param sessionKey - The session key to compact
  */
 export async function compactSession(sessionKey: string): Promise<void> {
@@ -287,7 +241,7 @@ export interface ChatSendResult {
 
 /**
  * Send a chat message to a session.
- * 
+ *
  * @param sessionKey - The target session key (e.g., 'agent:main', 'trap:myproject:chat123')
  * @param message - The message content
  * @returns Promise with runId and status

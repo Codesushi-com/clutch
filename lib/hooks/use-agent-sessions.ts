@@ -14,16 +14,26 @@ export type { AgentSession }
  *
  * This replaces the openclaw sessions CLI dependency for the Sessions tab.
  *
- * Falls back gracefully if Convex provider is not available.
+ * @param projectId - Optional project ID to filter by. If not provided, returns sessions from all projects.
+ * @param limit - Maximum number of sessions to return
  */
-export function useAgentSessions(projectId: string, limit?: number): {
+export function useAgentSessions(projectId?: string | null, limit?: number): {
   sessions: AgentSession[] | null
   isLoading: boolean
 } {
-  const result = useQuery(
+  // Use project-specific query if projectId is provided, otherwise use global query
+  const projectResult = useQuery(
     api.tasks.getAgentSessions,
     projectId ? { projectId, limit } : "skip"
   )
+
+  const globalResult = useQuery(
+    api.tasks.getAllAgentSessions,
+    projectId ? "skip" : { limit }
+  )
+
+  // Return the appropriate result based on which query is active
+  const result = projectId ? projectResult : globalResult
 
   return {
     sessions: result ?? null,

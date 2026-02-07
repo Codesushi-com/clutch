@@ -585,6 +585,68 @@ export const getAgentSessions = query({
 })
 
 /**
+ * Get agent sessions from ALL projects
+ * Returns sessions derived from tasks that have agent_session_key set across all projects
+ * Used for global session monitoring (e.g., Sessions page sidebar)
+ */
+export const getAllAgentSessions = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<AgentSession[]> => {
+    const tasks = await ctx.db
+      .query('tasks')
+      .filter((q) => q.neq('agent_session_key', undefined))
+      .collect()
+
+    // Sort by most recently active first
+    const sortedTasks = tasks.sort(
+      (a, b) => (b.agent_last_active_at ?? 0) - (a.agent_last_active_at ?? 0)
+    )
+
+    // Apply limit if provided
+    const limitedTasks = args.limit && args.limit > 0
+      ? sortedTasks.slice(0, args.limit)
+      : sortedTasks
+
+    // Filter out tasks with empty/falsy agent_session_key
+    const validTasks = limitedTasks.filter((t) => t.agent_session_key)
+
+    // Map tasks to session-like objects
+    return validTasks.map((task) => {
+      const sessionKey = task.agent_session_key!
+      const startedAt = task.agent_started_at ?? Date.now()
+      const lastActiveAt = task.agent_last_active_at ?? startedAt
+      const status = deriveSessionStatus(lastActiveAt)
+
+      const tokensIn = task.agent_tokens_in ?? 0
+      const tokensOut = task.agent_tokens_out ?? 0
+
+      return {
+        id: sessionKey,
+        name: extractSessionName(sessionKey, task.title),
+        type: mapSessionType(sessionKey),
+        model: task.agent_model ?? 'unknown',
+        status,
+        createdAt: new Date(startedAt).toISOString(),
+        updatedAt: new Date(lastActiveAt).toISOString(),
+        completedAt: status === 'completed' ? new Date(lastActiveAt).toISOString() : undefined,
+        tokens: {
+          input: tokensIn,
+          output: tokensOut,
+          total: tokensIn + tokensOut,
+        },
+        task: {
+          id: task.id,
+          title: task.title,
+          status: task.status as TaskStatus,
+        },
+      }
+    })
+  },
+})
+
+/**
  * Get agent activity history for a project
  * Returns all tasks that have been worked on by agents (have agent_started_at)
  * Used by the Agents page to show agent analytics grouped by role

@@ -11,7 +11,7 @@ import { NewIssueDialog } from "@/components/chat/new-issue-dialog"
 import { useConvexTasks } from "@/lib/hooks/use-convex-tasks"
 import { AgentStatus, formatDuration } from "@/components/agents/agent-status"
 import { AgentCard } from "@/components/agents/agent-card"
-import { useSessionStore } from "@/lib/stores/session-store"
+import { useAgentSessions } from "@/lib/hooks/use-agent-sessions"
 import type { Task, Session } from "@/lib/types"
 
 interface ChatSidebarProps {
@@ -52,20 +52,20 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   // when tasks are created, updated, moved, or deleted
   const { tasks: allTasks, isLoading: loadingTasks } = useConvexTasks(projectId ?? "")
 
-  // Get sessions from global session store (includes sub-agents and cron sessions)
-  const sessions = useSessionStore((state) => state.sessions)
-  const fetchSessions = useSessionStore((state) => state.fetchAndUpdate)
+  // Reactive Convex subscription for agent sessions - no polling needed
+  const { sessions: agentSessions } = useAgentSessions(projectId, 50)
 
   // Derive active agent sessions (subagents and cron sessions that are running or idle)
   const activeAgentSessions = useMemo(() => {
-    return sessions.filter((s: Session) => {
+    if (!agentSessions) return []
+    return agentSessions.filter((s) => {
       // Include running or idle sessions that are subagents or have task associations
       const isActiveStatus = s.status === "running" || s.status === "idle"
       const isSubagent = s.type === "subagent"
       const hasTask = s.task || s.name?.startsWith("trap-")
       return isActiveStatus && (isSubagent || hasTask)
     })
-  }, [sessions])
+  }, [agentSessions])
 
   // Build a map of session key -> task for quick lookup
   const sessionTaskMap = useMemo(() => {
@@ -79,21 +79,6 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
     }
     return map
   }, [allTasks])
-
-  // Poll for session updates periodically (every 10s)
-  useEffect(() => {
-    if (!projectId) return
-
-    // Initial fetch
-    fetchSessions(true)
-
-    // Set up polling interval
-    const interval = setInterval(() => {
-      fetchSessions(false)
-    }, 10000)
-
-    return () => clearInterval(interval)
-  }, [projectId, fetchSessions])
   
   // Section expansion state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({

@@ -2,84 +2,38 @@
 
 /**
  * OpenClaw HTTP API Hook
- * 
- * React hook for session management using HTTP API instead of WebSocket.
- * Provides the same interface as useOpenClawRpc but with HTTP calls.
+ *
+ * React hook for session actions using HTTP API.
+ *
+ * NOTE: Session listing has been removed. Use useAgentSessions hook from
+ * @/lib/hooks/use-agent-sessions for reactive session data from Convex.
  */
 
-import { useCallback, useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect } from "react";
 import {
-  SessionListResponse,
-  SessionListParams,
   SessionPreview,
-  AgentListResponse,
-  AgentListParams,
   AgentDetail,
-  Session,
 } from "@/lib/types";
 import * as openclawApi from "@/lib/openclaw/api";
-import { useSessionStore } from "@/lib/stores/session-store";
 
 // Re-export API functions for direct use
 export { openclawApi };
 
 /**
- * Hook for session list with auto-refresh
- *
- * SINGLE SOURCE OF TRUTH: This hook uses the global session store (useSessionStore)
- * to ensure all components share the same session data and polling is consolidated.
- *
- * Only ONE instance of this hook should mount the poller (controlled via shouldPoll param).
- * The SessionProvider component handles this at the app level.
+ * @deprecated Session list with polling has been removed.
+ * Use useAgentSessions from @/lib/hooks/use-agent-sessions for reactive session data.
  */
-export function useSessionList(refreshIntervalMs = 30000, shouldPoll = false) {
-  // Read from the global store (single source of truth)
-  const sessions = useSessionStore((state) => state.sessions);
-  const isLoading = useSessionStore((state) => state.isLoading);
-  const error = useSessionStore((state) => state.error);
-  const isInitialized = useSessionStore((state) => state.isInitialized);
-  const fetchAndUpdate = useSessionStore((state) => state.fetchAndUpdate);
-
-  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Initial load - only on mount
-  useEffect(() => {
-    if (!isInitialized) {
-      fetchAndUpdate(true);
-    }
-  }, [fetchAndUpdate, isInitialized]);
-
-  // Auto-refresh - only when shouldPoll is true (controlled by SessionProvider)
-  useEffect(() => {
-    if (!shouldPoll || refreshIntervalMs <= 0) return;
-
-    // Clear any existing interval first
-    if (refreshIntervalRef.current) {
-      clearInterval(refreshIntervalRef.current);
-    }
-
-    refreshIntervalRef.current = setInterval(() => {
-      fetchAndUpdate(false);
-    }, refreshIntervalMs);
-
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-    };
-  }, [refreshIntervalMs, shouldPoll, fetchAndUpdate]);
-
-  const refresh = useCallback(async () => {
-    await fetchAndUpdate(false);
-  }, [fetchAndUpdate]);
+export function useSessionList(_refreshIntervalMs = 30000, _shouldPoll = false) {
+  console.warn('[use-openclaw-http] useSessionList is deprecated. Use useAgentSessions from @/lib/hooks/use-agent-sessions');
 
   return {
-    sessions,
-    isLoading,
-    error,
-    isInitialized,
-    refresh,
+    sessions: [],
+    isLoading: false,
+    error: null,
+    isInitialized: true,
+    refresh: async () => {
+      // No-op: Use useAgentSessions for reactive data
+    },
   };
 }
 
@@ -176,13 +130,21 @@ export function useOpenClawHttpRpc() {
   const [connected] = useState(true); // HTTP is always "connected"
   const [connecting] = useState(false);
 
-  const listSessions = useCallback(async (params?: SessionListParams): Promise<SessionListResponse> => {
-    return openclawApi.listSessions(params);
+  /**
+   * @deprecated Use useAgentSessions from @/lib/hooks/use-agent-sessions
+   */
+  const listSessions = useCallback(async (): Promise<{ sessions: []; total: number }> => {
+    console.warn('[useOpenClawHttpRpc] listSessions is deprecated. Use useAgentSessions hook');
+    return { sessions: [], total: 0 };
   }, []);
 
+  /**
+   * @deprecated Use useAgentSessions from @/lib/hooks/use-agent-sessions
+   */
   const listSessionsWithEffectiveModel = useCallback(
-    async (params?: SessionListParams): Promise<SessionListResponse> => {
-      return openclawApi.listSessionsWithEffectiveModel(params);
+    async (): Promise<{ sessions: []; total: number }> => {
+      console.warn('[useOpenClawHttpRpc] listSessionsWithEffectiveModel is deprecated. Use useAgentSessions hook');
+      return { sessions: [], total: 0 };
     },
     []
   );
@@ -211,7 +173,7 @@ export function useOpenClawHttpRpc() {
   }, []);
 
   // Stub implementations for agent methods (not implemented in HTTP API yet)
-  const listAgents = useCallback(async (): Promise<AgentListResponse> => {
+  const listAgents = useCallback(async (): Promise<{ agents: []; total: number }> => {
     return { agents: [], total: 0 };
   }, []);
 
@@ -285,7 +247,8 @@ export function useOpenClawHttpRpc() {
 async function rpcCall<T>(method: string, params?: Record<string, unknown>): Promise<T> {
   switch (method) {
     case "sessions.list":
-      return (await openclawApi.listSessions(params as SessionListParams)) as unknown as T;
+      console.warn('[rpcCall] sessions.list is deprecated. Use useAgentSessions hook');
+      return { sessions: [], total: 0 } as unknown as T;
     case "sessions.preview":
       return (await openclawApi.getSessionPreview(
         (params?.keys as string[])?.[0] || "",

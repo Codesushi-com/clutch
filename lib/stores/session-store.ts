@@ -1,9 +1,12 @@
 /**
  * Session Store
- * Zustand store for managing session state with real-time updates
+ * Zustand store for managing session state
  *
- * This is the SINGLE SOURCE OF TRUTH for session data fetched from OpenClaw.
- * All components should read from this store instead of making independent fetches.
+ * This store is now populated by ConvexSessionSync, which subscribes to
+ * Convex reactive queries. No HTTP polling is performed by this store.
+ *
+ * Components can read from this store (for zustand-based access) or use
+ * useAgentSessions hook for direct Convex subscription.
  */
 
 import { create } from 'zustand';
@@ -13,7 +16,6 @@ import {
   SessionStatus,
   SessionType,
 } from '@/lib/types';
-import * as openclawApi from '@/lib/openclaw/api';
 
 export interface SessionFilters {
   status?: SessionStatus;
@@ -52,7 +54,10 @@ interface SessionState {
   setSortBy: (sortBy: SessionState['sortBy']) => void;
   setSortOrder: (order: SessionState['sortOrder']) => void;
 
-  // Fetch action - SINGLE SOURCE OF TRUTH for session fetching
+  /**
+   * @deprecated No longer fetches from HTTP. Use ConvexSessionSync component
+   * or useAgentSessions hook for reactive session data.
+   */
   fetchAndUpdate: (isInitialLoad?: boolean) => Promise<void>;
 
   // Computed
@@ -64,8 +69,6 @@ export const useSessionStore = create<SessionState>()(
   devtools(
     (set, get) => ({
       // Initial state
-      // NOTE: isLoading starts as false to prevent stuck skeleton on initial mount.
-      // The component will set isLoading to true when it starts fetching.
       sessions: [],
       isLoading: false,
       isInitialized: false,
@@ -77,19 +80,19 @@ export const useSessionStore = create<SessionState>()(
 
       // Data actions
       setSessions: (sessions) => set({ sessions, isLoading: false }),
-      
+
       addSession: (session) =>
         set((state) => ({
           sessions: [session, ...state.sessions],
         })),
-      
+
       updateSession: (id, changes) =>
         set((state) => ({
           sessions: state.sessions.map((s) =>
             s.id === id ? { ...s, ...changes, updatedAt: new Date().toISOString() } : s
           ),
         })),
-      
+
       removeSession: (id) =>
         set((state) => ({
           sessions: state.sessions.filter((s) => s.id !== id),
@@ -100,28 +103,13 @@ export const useSessionStore = create<SessionState>()(
       setInitialized: (isInitialized) => set({ isInitialized }),
       setError: (error) => set({ error, isLoading: false }),
 
-      // Fetch action - SINGLE SOURCE OF TRUTH
-      // This is the ONLY place that should call the sessions API
-      fetchAndUpdate: async (isInitialLoad = false) => {
-        if (isInitialLoad) {
-          set({ isLoading: true });
-        }
-
-        try {
-          const response = await openclawApi.listSessionsWithEffectiveModel({ limit: 100 });
-          set({
-            sessions: response.sessions,
-            lastFetchedAt: Date.now(),
-            error: null,
-            ...(isInitialLoad ? { isInitialized: true, isLoading: false } : {}),
-          });
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Failed to load sessions';
-          set({
-            error: message,
-            ...(isInitialLoad ? { isLoading: false } : {}),
-          });
-        }
+      /**
+       * @deprecated No longer fetches from HTTP. This is now a no-op.
+       * ConvexSessionSync component populates the store reactively.
+       */
+      fetchAndUpdate: async (_isInitialLoad = false) => {
+        // No-op: Data comes from Convex via ConvexSessionSync
+        console.warn('[session-store] fetchAndUpdate is deprecated. Data comes from Convex reactively.');
       },
 
       // Filter actions
@@ -132,19 +120,19 @@ export const useSessionStore = create<SessionState>()(
       // Computed
       getFilteredSessions: () => {
         const { sessions, filters, sortBy, sortOrder } = get();
-        
+
         let filtered = sessions;
-        
+
         if (filters.status) {
           filtered = filtered.filter((s) => s.status === filters.status);
         }
-        
+
         if (filters.type) {
           filtered = filtered.filter((s) => s.type === filters.type);
         }
-        
+
         if (filters.model) {
-          filtered = filtered.filter((s) => 
+          filtered = filtered.filter((s) =>
             s.model.toLowerCase().includes(filters.model!.toLowerCase())
           );
         }
@@ -152,7 +140,7 @@ export const useSessionStore = create<SessionState>()(
         // Sort
         filtered = [...filtered].sort((a, b) => {
           let comparison = 0;
-          
+
           switch (sortBy) {
             case 'createdAt':
               comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -164,7 +152,7 @@ export const useSessionStore = create<SessionState>()(
               comparison = a.tokens.total - b.tokens.total;
               break;
           }
-          
+
           return sortOrder === 'asc' ? comparison : -comparison;
         });
 

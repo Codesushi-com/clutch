@@ -5,7 +5,7 @@
  *
  * Wraps the app with all global context providers:
  * - ConvexProviderWrapper: Provides Convex React context (useQuery/useMutation)
- * - SessionProvider: Mounts the single OpenClaw sessions poller
+ * - SessionProvider: Mounts the Convex session sync for reactive session data
  * - Toaster: Global toast UI
  */
 
@@ -20,8 +20,8 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    <SessionProvider refreshIntervalMs={30000}>
-      <ConvexProviderWrapper>
+    <ConvexProviderWrapper>
+      <SessionProvider>
         {children}
         <Toaster
           position="bottom-right"
@@ -33,7 +33,7 @@ export function Providers({ children }: ProvidersProps) {
             },
           }}
         />
-      </ConvexProviderWrapper>
-    </SessionProvider>
+      </SessionProvider>
+    </ConvexProviderWrapper>
   );
 }

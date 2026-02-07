@@ -5,8 +5,7 @@
  * OpenClaw gateway commands instead of sending as chat messages.
  */
 
-import { resetSession, listSessions, patchSession } from "@/lib/openclaw/api";
-import type { SessionListResponse } from "@/lib/types";
+import { resetSession, patchSession } from "@/lib/openclaw/api";
 
 /** Available slash commands */
 export const SLASH_COMMANDS = {
@@ -152,76 +151,17 @@ async function handleNewCommand(sessionKey: string): Promise<SlashCommandResult>
 
 /**
  * Handle /status - Show session status
+ *
+ * NOTE: Session status is now displayed in the chat header dropdown in real-time
+ * via Convex reactive queries. This command directs users to the UI.
  */
 async function handleStatusCommand(sessionKey: string): Promise<SlashCommandResult> {
-  // Fetch session info
-  let sessions: SessionListResponse;
-  try {
-    sessions = await listSessions({ limit: 100 });
-  } catch {
-    return {
-      isCommand: true,
-      shouldSendMessage: false,
-      command: "status",
-      args: [],
-      response: "❌ Failed to fetch session status. Gateway may be unavailable.",
-      isError: true,
-      action: null,
-    };
-  }
-
-  const session = sessions.sessions.find(
-    (s) => s.id === sessionKey || s.id?.endsWith(sessionKey)
-  );
-
-  if (!session) {
-    return {
-      isCommand: true,
-      shouldSendMessage: false,
-      command: "status",
-      args: [],
-      response: `📭 Session "${sessionKey}" not found or inactive.`,
-      isError: false,
-      action: null,
-    };
-  }
-
-  const tokens = session.tokens || { input: 0, output: 0, total: 0 };
-  const model = session.model || "unknown";
-  const status = session.status || "unknown";
-
-  // Estimate context window based on model
-  const contextWindow = getModelContextWindow(model);
-  const contextPercent = contextWindow > 0
-    ? Math.round((tokens.total / contextWindow) * 100)
-    : 0;
-
-  // Format context bar
-  const barLength = 20;
-  const filledBars = Math.round((contextPercent / 100) * barLength);
-  const bar = "█".repeat(filledBars) + "░".repeat(barLength - filledBars);
-
-  const response = [
-    `📊 **Session Status**`,
-    ``,
-    `**Key:** \`${sessionKey}\``,
-    `**Model:** ${model}`,
-    `**Status:** ${status}`,
-    ``,
-    `**Tokens:**`,
-    `- Input: ${tokens.input.toLocaleString()}`,
-    `- Output: ${tokens.output.toLocaleString()}`,
-    `- Total: ${tokens.total.toLocaleString()}`,
-    ``,
-    `**Context Usage:** [${bar}] ${contextPercent}%`,
-  ].join("\n");
-
   return {
     isCommand: true,
     shouldSendMessage: false,
     command: "status",
     args: [],
-    response,
+    response: `ℹ️ **Session status is now shown in the header.**\\n\\nClick the model name in the top-right (e.g., "kimi • 5%") to see:\\n• Current model and token usage\\n• Context window percentage\\n• Session actions (reset, compact)\\n\\nSession data updates in real-time via Convex.`,
     isError: false,
     action: null,
   };
