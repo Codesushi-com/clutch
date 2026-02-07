@@ -432,9 +432,16 @@ ${task.description ? `**Description:**\n${task.description}\n` : ""}
 ## After Review
 
 ### If PR is clean (all checks pass):
-1. **Approve and merge:**\n   \`\`\`bash\n   gh pr merge ${pr.number} --squash --delete-branch\n   \`\`\`
-2. **Update ticket status to done:**\n   \`\`\`bash\n   curl -X PATCH http://localhost:3002/api/tasks/${task.id} -H 'Content-Type: application/json' -d '{"status": "done"}'\n   \`\`\`
-3. **Clean up worktree:**\n   \`\`\`bash\n   cd ${project.local_path} && git worktree remove ${worktreePath}\n   \`\`\`
+
+1. **Check if PR touches Convex files (before merging):**\n   \`\`\`bash\n   gh pr diff ${pr.number} --name-only | grep '^convex/' > /tmp/convex_files_${pr.number}.txt\n   if [ -s /tmp/convex_files_${pr.number}.txt ]; then\n     echo "Convex files will be changed:"\n     cat /tmp/convex_files_${pr.number}.txt\n   fi\n   \`\`\`
+
+2. **Approve and merge:**\n   \`\`\`bash\n   gh pr merge ${pr.number} --squash --delete-branch\n   \`\`\`
+
+3. **Deploy Convex if needed:**\n   Check if the project has a convex/ directory and the PR touched Convex files.\n   \`\`\`bash\n   if [ -d "${project.local_path}/convex" ] && [ -s /tmp/convex_files_${pr.number}.txt ]; then\n     echo "Deploying Convex changes..."\n     cd ${project.local_path} && npx convex deploy --yes 2>&1 | tee /tmp/convex_deploy_${pr.number}.log\n     DEPLOY_EXIT=${'$'}{PIPESTATUS[0]}\n     if [ $DEPLOY_EXIT -ne 0 ]; then\n       echo "ERROR: Convex deploy failed with exit code $DEPLOY_EXIT"\n       # Create high-priority alert ticket for deploy failure\n       curl -X POST http://localhost:3002/api/tasks \\\n         -H 'Content-Type: application/json' \\\n         -d "{\\"project_id\\": \\"${project.id}\\", \\"title\\": \\"URGENT: Convex deploy failed after merging PR #${pr.number}\\", \\"description\\": \\"Convex deployment failed after merging PR #${pr.number} for task ${task.id}.\\n\\nDeploy output:\\n\\"$(cat /tmp/convex_deploy_${pr.number}.log | sed 's/"/\\\\"/g')\\"\\", \\"priority\\": \\"urgent\\", \\"status\\": \\"backlog\\"}"\n       # Still mark original task as done since PR was merged\n     else\n       echo "Convex deploy successful"\n     fi\n   fi\n   \`\`\`
+
+4. **Update ticket status to done:**\n   \`\`\`bash\n   curl -X PATCH http://localhost:3002/api/tasks/${task.id} -H 'Content-Type: application/json' -d '{"status": "done"}'\n   \`\`\`
+
+5. **Clean up worktree:**\n   \`\`\`bash\n   cd ${project.local_path} && git worktree remove ${worktreePath}\n   \`\`\`
 
 ### If PR needs changes:
 1. **Leave specific, actionable feedback:**\n   \`\`\`bash\n   gh pr comment ${pr.number} --body "Your detailed feedback here..."\n   \`\`\`
