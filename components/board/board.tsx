@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useRef } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
 import { Plus, Settings2 } from "lucide-react"
-import { useConvexBoardTasks } from "@/lib/hooks/use-convex-tasks"
+import { usePaginatedBoardTasks } from "@/lib/hooks/use-convex-tasks"
 import { Column } from "./column"
 import { MobileBoard } from "./mobile-board"
 import { useMobileDetection } from "./use-mobile-detection"
@@ -60,8 +60,8 @@ function getInitialVisibility(projectId: string): Record<TaskStatus, boolean> {
 type PendingMoves = Map<string, TaskStatus>
 
 export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
-  // Use Convex for reactive task data (real-time updates)
-  const { tasksByStatus, isLoading } = useConvexBoardTasks(projectId)
+  // Use paginated Convex hook for reactive task data with per-column pagination
+  const { tasksByStatus, totalCounts, isLoading, hasMore, loadMore } = usePaginatedBoardTasks(projectId)
   
   const isMobile = useMobileDetection(768)
 
@@ -279,6 +279,9 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
         columnVisibility={columnVisibility}
         onToggleColumn={updateColumnVisibility}
         projectId={projectId}
+        totalCounts={totalCounts}
+        hasMore={hasMore}
+        onLoadMore={loadMore}
       />
     )
   }
@@ -385,6 +388,9 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
               showAddButton={col.showAdd}
               isMobile={true}
               projectId={projectId}
+              totalCount={totalCounts[col.status]}
+              hasMore={hasMore[col.status]}
+              onLoadMore={() => loadMore(col.status)}
             />
           ))}
         </div>
@@ -403,6 +409,9 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
               onAddTask={() => onAddTask(col.status)}
               showAddButton={col.showAdd}
               projectId={projectId}
+              totalCount={totalCounts[col.status]}
+              hasMore={hasMore[col.status]}
+              onLoadMore={() => loadMore(col.status)}
             />
           ))}
         </div>

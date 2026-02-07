@@ -223,6 +223,55 @@ export const getByProject = query({
 })
 
 /**
+ * Get tasks by project and status with pagination support.
+ * Returns a page of tasks plus the total count for the column header.
+ */
+export const getByProjectAndStatusPaginated = query({
+  args: {
+    projectId: v.string(),
+    status: v.union(
+      v.literal('backlog'),
+      v.literal('ready'),
+      v.literal('in_progress'),
+      v.literal('in_review'),
+      v.literal('done')
+    ),
+    limit: v.optional(v.number()),
+    offset: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{ tasks: Task[]; totalCount: number }> => {
+    const limit = args.limit ?? 25
+    const offset = args.offset ?? 0
+
+    // Get all tasks for this project and status to calculate total count
+    const allTasks = await ctx.db
+      .query('tasks')
+      .withIndex('by_project_status', (q) =>
+        q.eq('project_id', args.projectId).eq('status', args.status)
+      )
+      .collect()
+
+    const totalCount = allTasks.length
+
+    // Sort tasks: done by completed_at desc, others by position asc
+    const sortedTasks = allTasks.sort((a, b) => {
+      if (args.status === 'done') {
+        return (b.completed_at ?? b.updated_at) - (a.completed_at ?? a.updated_at)
+      }
+      return a.position - b.position
+    })
+
+    // Apply pagination
+    const paginatedTasks = sortedTasks.slice(offset, offset + limit)
+
+    return {
+      tasks: paginatedTasks.map((t) => toTask(t as Parameters<typeof toTask>[0])),
+      totalCount,
+    }
+  },
+})
+
+/**
  * Get a single task by UUID with its comments
  */
 export const getById = query({

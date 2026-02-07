@@ -22,6 +22,9 @@ interface MobileBoardProps {
   columnVisibility: Record<TaskStatus, boolean>
   onToggleColumn: (status: TaskStatus, visible: boolean) => void
   projectId: string
+  totalCounts?: Record<TaskStatus, number>
+  hasMore?: Record<TaskStatus, boolean>
+  onLoadMore?: (status: TaskStatus) => void
 }
 
 export function MobileBoard({
@@ -33,6 +36,9 @@ export function MobileBoard({
   columnVisibility,
   onToggleColumn,
   projectId,
+  totalCounts,
+  hasMore,
+  onLoadMore,
 }: MobileBoardProps) {
   const [activeColumnIndex, setActiveColumnIndex] = useState(0)
   const activeColumn = columns[activeColumnIndex]
@@ -247,7 +253,7 @@ export function MobileBoard({
               />
               <span>{column.title}</span>
               <span className="text-xs opacity-75">
-                {getTasksByStatus(column.status).length}
+                {totalCounts?.[column.status] ?? getTasksByStatus(column.status).length}
               </span>
             </button>
           ))}
@@ -276,6 +282,9 @@ export function MobileBoard({
             showAddButton={activeColumn.showAdd}
             isMobile={true}
             projectId={projectId}
+            totalCount={totalCounts?.[activeColumn.status]}
+            hasMore={hasMore?.[activeColumn.status]}
+            onLoadMore={onLoadMore ? () => onLoadMore(activeColumn.status) : undefined}
           />
         </div>
       </DragDropContext>

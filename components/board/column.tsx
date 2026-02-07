@@ -4,6 +4,7 @@ import { Droppable } from "@hello-pangea/dnd"
 import type { Task, TaskStatus } from "@/lib/types"
 import { TaskCard } from "./task-card"
 import { Plus } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface ColumnProps {
   status: TaskStatus
@@ -15,6 +16,9 @@ interface ColumnProps {
   showAddButton?: boolean
   isMobile?: boolean
   projectId: string
+  totalCount?: number
+  hasMore?: boolean
+  onLoadMore?: () => void
 }
 
 export function Column({
@@ -27,17 +31,23 @@ export function Column({
   showAddButton = false,
   isMobile = false,
   projectId,
+  totalCount,
+  hasMore,
+  onLoadMore,
 }: ColumnProps) {
+  // Use totalCount if provided, otherwise fall back to tasks.length
+  const displayCount = totalCount !== undefined ? totalCount : tasks.length
+
   return (
     <div className={`flex flex-col bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] min-h-[500px] ${
-      isMobile 
-        ? "w-full" 
+      isMobile
+        ? "w-full"
         : "w-[280px] flex-shrink-0 lg:w-full lg:min-w-[280px]"
     }`}>
       {/* Header */}
       <div className="p-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
-          <div 
+          <div
             className="w-2 h-2 rounded-full"
             style={{ backgroundColor: color }}
           />
@@ -45,7 +55,7 @@ export function Column({
             {title}
           </span>
           <span className="text-xs text-[var(--text-muted)] ml-auto">
-            {tasks.length}
+            {displayCount}
           </span>
         </div>
       </div>
@@ -74,16 +84,30 @@ export function Column({
               />
             ))}
             {provided.placeholder}
-            
+
             {tasks.length === 0 && !snapshot.isDraggingOver && (
               <div className="text-center py-8 text-sm text-[var(--text-muted)]">
                 No tasks
               </div>
             )}
+
+            {/* Load more button */}
+            {hasMore && onLoadMore && (
+              <div className="pt-2 pb-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onLoadMore}
+                  className="w-full text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >
+                  Load more ({tasks.length} of {displayCount})
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Droppable>
-      
+
       {/* Add button */}
       {showAddButton && onAddTask && (
         <div className="p-2 border-t border-[var(--border)]">
