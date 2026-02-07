@@ -8,6 +8,7 @@ import { useChatStore, type ChatWithLastMessage } from "@/lib/stores/chat-store"
 import { TaskModal } from "@/components/board/task-modal"
 import { NewIssueDialog } from "@/components/chat/new-issue-dialog"
 import { useConvexTasks } from "@/lib/hooks/use-convex-tasks"
+import { AgentStatus, formatDuration } from "@/components/agents/agent-status"
 import type { Task } from "@/lib/types"
 
 interface ChatSidebarProps {
@@ -204,56 +205,6 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
     if (diffDays === 1) return "yesterday"
     if (diffDays < 7) return `${diffDays}d ago`
     return new Date(timestamp).toLocaleDateString([], { month: "short", day: "numeric" })
-  }
-
-  const formatDuration = (timestamp: number | null) => {
-    if (!timestamp) return ""
-
-    const now = Date.now()
-    const diffMs = now - timestamp
-    const diffMinutes = Math.floor(diffMs / (1000 * 60))
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-
-    if (diffMinutes < 1) return "just started"
-    if (diffMinutes < 60) return `${diffMinutes}m`
-    if (diffHours < 24) {
-      const remainingMinutes = diffMinutes % 60
-      return remainingMinutes > 0 ? `${diffHours}h ${remainingMinutes}m` : `${diffHours}h`
-    }
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-    return `${diffDays}d`
-  }
-
-  // Format model name to short form (e.g., "moonshot/kimi-for-coding" -> "kimi")
-  const formatModelShort = (model: string | null): string => {
-    if (!model) return "agent"
-    // Extract the part after the last slash and remove suffixes like "-for-coding"
-    const parts = model.split("/")
-    const name = parts[parts.length - 1] || model
-    // Remove common suffixes
-    return name
-      .replace(/-for-coding$/, "")
-      .replace(/-thinking$/, "")
-      .replace(/-preview$/, "")
-      .replace(/-\d{4}-\d{2}$/, "") // Remove version dates like -2025-03
-  }
-
-  // Check if agent is stale (>5min no activity)
-  const isAgentStale = (lastActiveAt: number | null): boolean => {
-    if (!lastActiveAt) return true
-    const fiveMinutes = 5 * 60 * 1000
-    return Date.now() - lastActiveAt > fiveMinutes
-  }
-
-  // Format staleness for display
-  const formatStaleness = (lastActiveAt: number | null): string => {
-    if (!lastActiveAt) return "stale (no activity)"
-    const diffMs = Date.now() - lastActiveAt
-    const diffMinutes = Math.floor(diffMs / (1000 * 60))
-    if (diffMinutes < 1) return "just now"
-    if (diffMinutes < 60) return `${diffMinutes}m ago`
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-    return `${diffHours}h ago`
   }
 
   // Mobile backdrop
@@ -482,7 +433,6 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
                     {section.tasks.map((task) => {
                       const showId = section.status === "in_review"
                       const hasAgent = !!task.agent_session_key
-                      const agentStale = hasAgent && isAgentStale(task.agent_last_active_at)
 
                       return (
                         <button
@@ -506,38 +456,8 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
                               {truncateTitle(task.title)}
                             </p>
                             {/* Agent status line for in_progress and in_review */}
-                            {(section.status === "in_progress" || section.status === "in_review") && hasAgent && (
-                              <div className="flex items-center gap-1 mt-0.5">
-                                {agentStale ? (
-                                  <span className="text-xs">⚠</span>
-                                ) : (
-                                  <span className="text-xs">🤖</span>
-                                )}
-                                <span className={`text-xs ${agentStale ? "text-amber-500" : "text-[var(--text-muted)]"}`}>
-                                  {task.role || "agent"}
-                                  {task.agent_model && (
-                                    <>
-                                      {" · "}
-                                      <span className={agentStale ? "text-amber-500" : "text-green-500"}>
-                                        {formatModelShort(task.agent_model)}
-                                      </span>
-                                    </>
-                                  )}
-                                  {task.agent_started_at && (
-                                    <>
-                                      {" · "}
-                                      {formatDuration(task.agent_started_at)}
-                                    </>
-                                  )}
-                                  <>
-                                    {" · "}
-                                    {agentStale
-                                      ? `stale (no activity ${formatStaleness(task.agent_last_active_at).replace(" ago", "")})`
-                                      : `↻ ${formatStaleness(task.agent_last_active_at)}`
-                                    }
-                                  </>
-                                </span>
-                              </div>
+                            {(section.status === "in_progress" || section.status === "in_review") && (
+                              <AgentStatus task={task} variant="compact" />
                             )}
                             {/* Show duration only for in_progress without agent */}
                             {section.status === "in_progress" && !hasAgent && (
