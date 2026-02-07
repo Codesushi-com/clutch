@@ -9,22 +9,18 @@ interface ConvexProviderWrapperProps {
 }
 
 export function ConvexProviderWrapper({ children }: ConvexProviderWrapperProps) {
-  // Use state to track if we're mounted on the client
-  // This ensures SSR and initial client render match, avoiding hydration errors
-  const [mounted, setMounted] = React.useState(false)
-  const [client, setClient] = React.useState<ConvexReactClient | null>(null)
+  // Create client synchronously on the first render.
+  // This avoids a useEffect race where dynamic(ssr:false) components can mount
+  // and call useQuery before the provider is ready.
+  const client = React.useMemo(
+    () => (typeof window !== "undefined" ? createConvexClient() : null),
+    [],
+  )
 
-  React.useEffect(() => {
-    // Only create client after mount to ensure SSR/hydration match
-    const newClient = createConvexClient()
-    setClient(newClient)
-    setMounted(true)
-  }, [])
-
-  // During SSR and initial client render (before useEffect runs),
-  // render children without provider to match SSR output
-  if (!mounted || !client) {
-    return <>{children}</>
+  if (!client) {
+    // Keep the app rendering even if Convex is temporarily unavailable.
+    // Client-only pages/components will show their own loading state.
+    return <>{children}</>;
   }
 
   return <ConvexProvider client={client}>{children}</ConvexProvider>
