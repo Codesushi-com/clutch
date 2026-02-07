@@ -398,7 +398,7 @@ async function cleanOrphanWorktrees(ctx: WorktreeCleanupContext): Promise<number
 
   for (const dir of worktreeDirs) {
     // Extract the task ID prefix from the directory name
-    // Format: /home/dan/src/trap-worktrees/fix/<task-id-prefix>
+    // Format: {repoPath}-worktrees/fix/<task-id-prefix>
     const dirName = dir.split("/").pop()
     if (!dirName) continue
 

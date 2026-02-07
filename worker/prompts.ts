@@ -46,7 +46,7 @@ function buildPmInstructions(params: PromptParams): string {
 
   return `## Task: ${params.taskTitle}
 
-**Read /home/dan/src/trap/AGENTS.md first.**
+**Read ${params.repoDir}/AGENTS.md first.**
 
 Ticket ID: \`${params.taskId}\`
 Role: \`pm\`
@@ -129,7 +129,7 @@ ${signals.map((s, i) => `**Q${i + 1}:** ${s.question}\n**A${i + 1}:** ${s.respon
 
   return `## Task: ${params.taskTitle}
 
-**Read /home/dan/src/trap/AGENTS.md first.**
+**Read ${params.repoDir}/AGENTS.md first.**
 
 Ticket ID: \`${params.taskId}\`
 Role: \`pm\`
@@ -183,7 +183,7 @@ curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type:
 function buildQaInstructions(params: PromptParams): string {
   return `## Task: ${params.taskTitle}
 
-**Read /home/dan/src/trap/AGENTS.md first.**
+**Read ${params.repoDir}/AGENTS.md first.**
 
 Ticket ID: \`${params.taskId}\`
 Role: \`qa\`
@@ -214,7 +214,7 @@ curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type:
 function buildResearchInstructions(params: PromptParams): string {
   return `## Task: ${params.taskTitle}
 
-**Read /home/dan/src/trap/AGENTS.md first.**
+**Read ${params.repoDir}/AGENTS.md first.**
 
 Ticket ID: \`${params.taskId}\`
 Role: \`research\`
@@ -244,7 +244,7 @@ curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type:
 function buildReviewerInstructions(params: PromptParams): string {
   return `## Task: ${params.taskTitle}
 
-**Read /home/dan/src/trap/AGENTS.md first** (use: \`exec(command="cat /home/dan/src/trap/AGENTS.md")\`).
+**Read ${params.repoDir}/AGENTS.md first** (use: \`exec(command="cat ${params.repoDir}/AGENTS.md")\`).
 
 ## Tool Usage (CRITICAL)
 - **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
@@ -272,7 +272,7 @@ ${params.taskDescription}
 \`\`\`bash
 gh pr merge <number> --squash --delete-branch
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "done"}'
-cd /home/dan/src/trap && git worktree remove ${params.worktreeDir} --force 2>/dev/null || true
+cd ${params.repoDir} && git worktree remove ${params.worktreeDir} --force 2>/dev/null || true
 \`\`\`
 
 **If issues found:** Leave a PR comment, move ticket back to ready:
@@ -290,7 +290,7 @@ function buildDevInstructions(params: PromptParams): string {
 
   return `## Task: ${params.taskTitle}
 
-**Read /home/dan/src/trap/AGENTS.md first** (use: \`exec(command="cat /home/dan/src/trap/AGENTS.md")\`).
+**Read ${params.repoDir}/AGENTS.md first** (use: \`exec(command="cat ${params.repoDir}/AGENTS.md")\`).
 
 ## Tool Usage (CRITICAL)
 - **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
@@ -298,7 +298,7 @@ function buildDevInstructions(params: PromptParams): string {
 - **Use \`rg\` to search code:** \`exec(command="rg 'pattern' ${params.worktreeDir}/app -t ts")\` (note: \`-t ts\` covers both .ts AND .tsx — do NOT use \`-t tsx\`, it doesn't exist)
 - **Use \`fd\` to find files:** \`exec(command="fd '\\.tsx$' ${params.worktreeDir}/app")\`
 - **Quote paths with brackets:** Next.js uses \`[slug]\` dirs — always quote these in shell: \`cat '${params.worktreeDir}/app/projects/[slug]/page.tsx'\`
-- **All work happens in your worktree:** \`${params.worktreeDir}\` (NOT in /home/dan/src/trap)
+- **All work happens in your worktree:** \`${params.worktreeDir}\` (NOT in ${params.repoDir})
 
 Ticket ID: \`${params.taskId}\`
 Role: \`dev\`
@@ -309,7 +309,7 @@ ${params.taskDescription}
 
 **Setup worktree and record branch:**
 \`\`\`bash
-cd /home/dan/src/trap
+cd ${params.repoDir}
 git fetch origin main
 git worktree add ${params.worktreeDir} origin/main -b ${branchName}
 cd ${params.worktreeDir}

@@ -221,7 +221,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
 
   // Spawn reviewer via gateway RPC
   // Use actual branch name for worktree path (handles descriptive suffixes)
-  const worktreesBase = project.local_path!.replace(/\/[^/]+$/, "-worktrees")
+  const worktreesBase = `${project.local_path}-worktrees`
   const worktreePath = `${worktreesBase}/${branchName}`
   const prompt = buildReviewerPrompt(task, pr, branchName, worktreePath, project)
 

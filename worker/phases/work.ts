@@ -364,7 +364,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     // --- 4. Load SOUL and build prompt ---
     const soulTemplate = await loadSoulTemplate(role)
     const repoDir = project.local_path!
-    const worktreesBase = repoDir.replace(/\/[^/]+$/, "-worktrees")
+    const worktreesBase = `${repoDir}-worktrees`
     const worktreeDir = `${worktreesBase}/fix/${task.id.slice(0, 8)}`
 
     // For PM tasks, fetch any signal Q&A history to include in the prompt
