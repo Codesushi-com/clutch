@@ -395,7 +395,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
           ))}
         </div>
         {/* Desktop: grid layout */}
-        <div className="hidden lg:grid w-full gap-4 pb-4" style={{
+        <div className="hidden lg:grid w-full gap-4 pb-4 overflow-x-hidden" style={{
           gridTemplateColumns: `repeat(${visibleColumns.length}, minmax(280px, 1fr))`
         }}>
           {visibleColumns.map((col) => (

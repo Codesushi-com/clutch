@@ -191,8 +191,8 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
       </header>
       
       {/* Content */}
-      <main className={`px-4 py-6 ${
-        activeTab === "board" 
+      <main className={`px-4 py-6 overflow-x-hidden ${
+        activeTab === "board"
           ? "w-full lg:px-6" // Full width on desktop with larger padding
           : "container mx-auto max-w-7xl" // Keep constraint for other pages
       }`}>
