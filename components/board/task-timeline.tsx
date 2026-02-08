@@ -171,10 +171,10 @@ export function TaskTimeline({ events, isLoading, projectSlug }: TaskTimelinePro
     )
   }
 
-  // Sort events based on user preference
+  // Sort events based on user preference (API returns newest first)
   const sortedEvents = showOldestFirst 
     ? [...events].sort((a, b) => a.created_at - b.created_at)
-    : events // Already sorted newest first from API
+    : events
 
   return (
     <div className="space-y-4">

@@ -138,8 +138,8 @@ export const getByTaskId = query({
       .withIndex('by_task_timestamp', (q) => q.eq('task_id', args.taskId))
       .collect()
 
-    // Sort by timestamp ascending (oldest first for timeline view)
-    events = events.sort((a, b) => a.timestamp - b.timestamp)
+    // Sort by timestamp descending (newest first for timeline view)
+    events = events.sort((a, b) => b.timestamp - a.timestamp)
 
     if (args.limit) {
       events = events.slice(0, args.limit)
