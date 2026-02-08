@@ -70,8 +70,19 @@ export function ContextIndicator({
   // Subscribe directly to Convex sessions table
   const { session, isLoading } = useSession(sessionKey)
 
+  // Show placeholder when no session exists yet (e.g., new chat)
   if (!session && !isLoading) {
-    return null
+    return (
+      <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]/50">
+        <span className="font-medium">0</span>
+        <div className="w-12 h-1 bg-[var(--border)] rounded-full overflow-hidden flex-shrink-0">
+          <div className="h-full rounded-full bg-green-500" style={{ width: '0%' }} />
+        </div>
+        <span>0% · In 0 · Out 0</span>
+        <span className="text-[var(--text-muted)]/30">·</span>
+        <span className="text-[var(--text-muted)]/40 font-mono">no model</span>
+      </div>
+    )
   }
 
   const tokens = session?.tokens_total ?? 0
