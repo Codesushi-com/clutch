@@ -2,8 +2,12 @@
  * Prompt Builder
  *
  * Builds role-specific prompts for sub-agents working on tasks.
- * Replicates the logic from the gate script with proper typing.
+ * Fetches the SOUL template from Convex promptVersions (single source of truth)
+ * and injects task-specific context.
  */
+
+import type { ConvexHttpClient } from "convex/browser"
+import { fetchActivePrompt, PromptNotFoundError } from "./prompt-fetcher"
 
 // ============================================
 // Types
@@ -16,7 +20,7 @@ export interface TaskComment {
 }
 
 export interface PromptParams {
-  /** The role of the agent (dev, pm, qa, research, reviewer, fixer) */
+  /** The role of the agent (dev, pm, research, reviewer, conflict_resolver) */
   role: string
   /** The task ID */
   taskId: string
@@ -24,8 +28,6 @@ export interface PromptParams {
   taskTitle: string
   /** The task description */
   taskDescription: string
-  /** The SOUL template content for the role */
-  soulTemplate: string
   /** The project ID */
   projectId: string
   /** The repository directory */
@@ -36,14 +38,28 @@ export interface PromptParams {
   signalResponses?: Array<{ question: string; response: string }>
   /** Optional image URLs for the PM to analyze */
   imageUrls?: string[]
-  /** Optional PR number (for fixer role) */
+  /** Optional PR number (for conflict_resolver role) */
   prNumber?: number | null
-  /** Optional branch name (for fixer role) */
+  /** Optional branch name (for conflict_resolver role) */
   branch?: string | null
-  /** Optional review comments (for fixer role) */
+  /** Optional review comments (deprecated - kept for compatibility) */
   reviewComments?: string | null
   /** Optional task comments for context (from previous work / triage) */
   comments?: TaskComment[]
+  /**
+   * The SOUL template content for the role.
+   * @deprecated Only used by legacy buildPrompt(). Use buildPromptAsync() instead.
+   */
+  soulTemplate?: string
+}
+
+export interface BuildPromptOptions {
+  /** Convex client for fetching prompts from DB */
+  convex: ConvexHttpClient
+  /** Optional fallback behavior if Convex prompt not found */
+  allowFallback?: boolean
+  /** Optional logger for errors */
+  logError?: (message: string) => void
 }
 
 // ============================================
@@ -71,115 +87,19 @@ ${formattedComments}
 }
 
 // ============================================
-// Role-Specific Instructions
+// Task Context Builders
 // ============================================
 
 /**
- * Build PM role instructions for triage mode
+ * Build task context section for PM role
  */
-function buildPmInstructions(params: PromptParams): string {
+function buildPmTaskContext(params: PromptParams): string {
   const imageSection = params.imageUrls && params.imageUrls.length > 0
     ? `\n## Attached Images\n\nThe following images are attached to this task:\n${params.imageUrls.map((url, i) => `- Image ${i + 1}: ${url}`).join('\n')}\n\n**Important:** Analyze these images carefully. They may contain screenshots, diagrams, or visual context crucial for understanding the issue.`
     : ''
 
-  const commentsSection = formatCommentsSection(params.comments)
-
-  return `## Task: ${params.taskTitle}
-
-**Read ${params.repoDir}/AGENTS.md first.**
-
-Ticket ID: \`${params.taskId}\`
-Role: \`pm\`
-Mode: **TRIAGE**
-
-${params.taskDescription}${imageSection}${commentsSection}
-
----
-
-**Your job:** Triage this issue and either:
-1. **Flesh it out** and change role to \`dev\` if it's clear enough
-2. **Create clarifying questions** as blocking signals if it needs more info
-
-## Completion Contract (REQUIRED)
-
-Before you finish, you MUST update the task status. Choose ONE:
-
-### Task completed successfully:
-- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
-- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
-
-### CANNOT complete the task:
-Post a comment explaining why, then move to blocked:
-1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
-2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
-
-NEVER finish without updating the task status. If unsure, move to blocked with an explanation.
-
-### Triage Decision Guide
-
-**FLESH OUT when the issue has:**
-- Clear goal or user story
-- Some context about what needs to change
-- Enough to identify which files/components are involved
-
-**ASK QUESTIONS when:**
-- The goal is vague ("fix the thing")
-- No files or components are mentioned
-- Acceptance criteria are missing and unclear
-- The scope could be interpreted multiple ways
-- Images show issues but don't explain expected behavior
-
-### If Fleshing Out
-
-Update the task with a complete description:
-\`\`\`bash
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{
-  "description": "## Summary\\n\\nWhat this does...\\n\\n## Implementation\\n\\nHow to implement...\\n\\n## Files\\n\\n- \\"/path/to/file.ts\\"\\n\\n## Acceptance Criteria\\n\\n- [ ] Criterion 1\\n- [ ] Criterion 2\\n- [ ] Criterion 3",
-  "role": "dev"
-}'
-\`\`\`
-
-### If Asking Questions
-
-Create a blocking signal (get your session key from the task first):
-\`\`\`bash
-# Get your session key from the task
-SESSION_KEY=$(curl -s http://localhost:3002/api/tasks/${params.taskId} | grep -o '"session_id":"[^"]*"' | cut -d'"' -f4)
-
-# Create the blocking question signal
-curl -X POST http://localhost:3002/api/signal -H 'Content-Type: application/json' -d "{
-  \"taskId\": \"${params.taskId}\",
-  \"sessionKey\": \"$SESSION_KEY\",
-  \"agentId\": \"pm\",
-  \"kind\": \"question\",
-  \"message\": \"Your specific question here referencing the ambiguity\"
-}"
-\`\`\`
-
-Then mark yourself done (the signal remains as the blocker):
-\`\`\`bash
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "done"}'
-\`\`\``
-}
-
-/**
- * Build PM role instructions with signal Q&A context
- * Used when the PM task has been re-queued after receiving user responses to signals
- */
-function buildPmInstructionsWithSignals(
-  params: PromptParams,
-  signals: Array<{ question: string; response: string }>
-): string {
-  const signalContext = signals.length > 0
-    ? `
-## Previous Clarifying Questions & Answers
-
-The following questions were asked and answered during triage:
-
-${signals.map((s, i) => `**Q${i + 1}:** ${s.question}\n**A${i + 1}:** ${s.response}`).join('\n\n')}
-
----
-`
+  const signalContext = params.signalResponses && params.signalResponses.length > 0
+    ? `\n## Previous Clarifying Questions & Answers\n\nThe following questions were asked and answered during triage:\n\n${params.signalResponses.map((s, i) => `**Q${i + 1}:** ${s.question}\n**A${i + 1}:** ${s.response}`).join('\n\n')}\n`
     : ''
 
   const commentsSection = formatCommentsSection(params.comments)
@@ -191,62 +111,20 @@ ${signals.map((s, i) => `**Q${i + 1}:** ${s.question}\n**A${i + 1}:** ${s.respon
 Ticket ID: \`${params.taskId}\`
 Role: \`pm\`
 
-${params.taskDescription}
+${params.taskDescription}${imageSection}${signalContext}${commentsSection}
 
-${signalContext}${commentsSection}---
+---
 
-**Your job:** Analyze this ticket and break it down into actionable sub-tickets.
-
-**You have received answers to your clarifying questions (see above).** Use this information to finalize the ticket breakdown.
-
-**IMPORTANT:** Every sub-ticket MUST have:
-- \`role\` set (usually \`dev\`, or \`qa\`/\`research\` if appropriate)
-- Clear description with ## Summary, ## Implementation, ## Files, ## Acceptance Criteria
-- Proper priority (urgent/high/medium/low)
-
-**Create tickets:**
-\`\`\`bash
-curl -X POST http://localhost:3002/api/tasks -H 'Content-Type: application/json' -d '{
-  "project_id": "${params.projectId}",
-  "title": "<title>",
-  "description": "<markdown description>",
-  "status": "ready",
-  "priority": "<urgent|high|medium|low>",
-  "role": "dev",
-  "tags": "[\\"tag1\\", \"tag2\"]"
-}'
-\`\`\`
-
-**Create dependencies between tickets** (task cannot start until dependency is done):
-\`\`\`bash
-curl -X POST http://localhost:3002/api/tasks/<TASK_ID>/dependencies -H 'Content-Type: application/json' -d '{
-  "depends_on_id": "<DEPENDENCY_TASK_ID>"
-}'
-\`\`\`
-
-Use the task IDs from the POST responses to wire up the dependency chain. If ticket B depends on ticket A, create the dependency after both exist.
-
-## Completion Contract (REQUIRED)
-
-Before you finish, you MUST update the task status. Choose ONE:
-
-### Task completed successfully:
-- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
-- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
-
-### CANNOT complete the task:
-Post a comment explaining why, then move to blocked:
-1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
-2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
-
-NEVER finish without updating the task status. If unsure, move to blocked with an explanation.
-
-**DO NOT:** Create branches, write code, or create PRs. You are a PM.`
+**Your job:** ${params.signalResponses && params.signalResponses.length > 0
+    ? "Analyze this ticket and break it down into actionable sub-tickets using the answers to your clarifying questions."
+    : "Triage this issue and either flesh it out and change role to `dev`, or create clarifying questions as blocking signals."
+  }`
 }
+
 /**
- * Build Research role instructions
+ * Build task context section for Research role
  */
-function buildResearchInstructions(params: PromptParams): string {
+function buildResearchTaskContext(params: PromptParams): string {
   const commentsSection = formatCommentsSection(params.comments)
 
   return `## Task: ${params.taskTitle}
@@ -260,47 +138,18 @@ ${params.taskDescription}${commentsSection}
 
 ---
 
-**Your job:** Research this topic and post findings.
-
-Write findings as a comment on the ticket:
-\`\`\`bash
-curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "<findings>", "author": "agent", "author_type": "agent"}'
-\`\`\`
-
-## Completion Contract (REQUIRED)
-
-Before you finish, you MUST update the task status. Choose ONE:
-
-### Task completed successfully:
-- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
-- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
-
-### CANNOT complete the task:
-Post a comment explaining why, then move to blocked:
-1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
-2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
-
-NEVER finish without updating the task status. If unsure, move to blocked with an explanation.
-
-**DO NOT:** Create branches or write code unless the ticket explicitly asks for a prototype.`
+**Your job:** Research this topic and post findings as a comment on the ticket.`
 }
 
 /**
- * Build Reviewer role instructions
+ * Build task context section for Reviewer role
  */
-function buildReviewerInstructions(params: PromptParams): string {
+function buildReviewerTaskContext(params: PromptParams): string {
   const commentsSection = formatCommentsSection(params.comments)
 
   return `## Task: ${params.taskTitle}
 
-**Read ${params.repoDir}/AGENTS.md first** (use: \`exec(command="cat ${params.repoDir}/AGENTS.md")\`).
-
-## Tool Usage (CRITICAL)
-- **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
-- **Use \`exec\` with \`cat\` to read files:** \`exec(command="cat /path/to/file.ts")\`
-- **Use \`rg\` to search code:** \`exec(command="rg 'pattern' /path -t ts")\` (note: \`-t ts\` covers both .ts AND .tsx — do NOT use \`-t tsx\`, it doesn't exist)
-- **Use \`fd\` to find files:** \`exec(command="fd '\\.tsx$' /path")\`
-- **Quote paths with brackets:** Next.js uses \`[slug]\` dirs — always quote these in shell: \`cat '/path/app/projects/[slug]/page.tsx'\`
+**Read ${params.repoDir}/AGENTS.md first.**
 
 Ticket ID: \`${params.taskId}\`
 Role: \`reviewer\`
@@ -311,69 +160,26 @@ ${params.taskDescription}${commentsSection}
 
 **Your job:** Review the PR for this ticket.
 
+**Worktree Path:** ${params.worktreeDir}
+
 **Review steps:**
 1. Check the diff: \`gh pr diff <number>\`
 2. Verify types: \`cd ${params.worktreeDir} && pnpm typecheck\`
 3. Verify lint: \`cd ${params.worktreeDir} && pnpm lint\`
 4. **You do NOT have browser access.** If UI changes need visual verification, note it in your review comment
 
-**Pre-commit Rules:** If you need to make any commits (e.g., fixing issues before merge), **NEVER use \`--no-verify\`.** Fix all pre-commit errors properly.
-
-**If approved (MERGE REQUIRED):**
-\`\`\`bash
-# YOU MUST MERGE THE PR AFTER APPROVING - this is a required step
-gh pr merge <number> --squash --delete-branch
-
-# Update task status
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "done"}'
-
-# Clean up worktree
-cd ${params.repoDir} && git worktree remove ${params.worktreeDir} --force 2>/dev/null || true
-\`\`\`
-
-**CRITICAL:** Approving a PR without merging it will cause the task to be blocked. You MUST run \`gh pr merge\` after your review passes.
-
-**If lint/typecheck fails:** Check whether the failures are **from this PR's changes** or **pre-existing**.
-- If caused by this PR → reject, move to blocked with specific feedback.
-- If pre-existing (errors in files not touched by this PR) → **merge anyway**. Pre-existing issues are not this PR's problem. They'll get cleaned up over time.
-
-**If issues found:** Leave a PR comment, move ticket to blocked:
-\`\`\`bash
-gh pr comment <number> --body '<specific feedback>'
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "blocked"}'
-\`\`\`
-
-## Completion Contract (REQUIRED)
-
-Before you finish, you MUST update the task status. Choose ONE:
-
-### Task completed successfully:
-- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
-- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
-
-### CANNOT complete the task:
-Post a comment explaining why, then move to blocked:
-1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
-2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
-
-NEVER finish without updating the task status. If unsure, move to blocked with an explanation.`
+**CRITICAL:** Approving a PR without merging it will cause the task to be blocked. You MUST run \`gh pr merge\` after your review passes.`
 }
 
 /**
- * Build Conflict Resolver role instructions
+ * Build task context section for Conflict Resolver role
  */
-function buildConflictResolverInstructions(params: PromptParams): string {
+function buildConflictResolverTaskContext(params: PromptParams): string {
   const commentsSection = formatCommentsSection(params.comments)
 
   return `## Task: ${params.taskTitle}
 
-**Read ${params.repoDir}/AGENTS.md first** (use: \`exec(command="cat ${params.repoDir}/AGENTS.md")\`).
-
-## Tool Usage (CRITICAL)
-- **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
-- **Use \`exec\` with \`cat\` to read files:** \`exec(command="cat /path/to/file.ts")\`
-- **Use \`rg\` to search code:** \`exec(command="rg 'pattern' ${params.worktreeDir} -t ts")\` (note: \`-t ts\` covers both .ts AND .tsx — do NOT use \`-t tsx\`, it doesn't exist)
-- **Quote paths with brackets:** Next.js uses \`[slug]\` dirs — always quote these in shell: \`cat '${params.worktreeDir}/app/projects/[slug]/page.tsx'\`
+**Read ${params.repoDir}/AGENTS.md first.**
 
 Ticket ID: \`${params.taskId}\`
 Role: \`conflict_resolver\`
@@ -388,7 +194,7 @@ ${params.taskDescription}${commentsSection}
 **Branch:** ${params.branch}
 **Worktree Path:** ${params.worktreeDir}
 
-## Conflict Resolution Steps
+## Conflict Resolution Steps (Headless-Safe)
 
 1. **Navigate to the worktree (should already exist):**
    \`\`\`bash
@@ -457,42 +263,19 @@ If the conflicts are too complex or you're unsure about the correct resolution:
    \`\`\`bash
    curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Cannot resolve conflicts automatically. Conflicting files: <list files here>. Reason: <specific explanation>", "author": "agent", "author_type": "agent"}'
    curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "blocked"}'
-   \`\`\`
-
-## Completion Contract (REQUIRED)
-
-Before you finish, you MUST update the task status. Choose ONE:
-
-### Task completed successfully:
-- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
-- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
-
-### CANNOT complete the task:
-Post a comment explaining why, then move to blocked:
-1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
-2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
-
-NEVER finish without updating the task status. If unsure, move to blocked with an explanation.`
+   \`\`\``
 }
 
 /**
- * Build Dev role instructions (default)
+ * Build task context section for Dev role
  */
-function buildDevInstructions(params: PromptParams): string {
+function buildDevTaskContext(params: PromptParams): string {
   const branchName = `fix/${params.taskId.slice(0, 8)}`
   const commentsSection = formatCommentsSection(params.comments)
 
   return `## Task: ${params.taskTitle}
 
-**Read ${params.repoDir}/AGENTS.md first** (use: \`exec(command="cat ${params.repoDir}/AGENTS.md")\`).
-
-## Tool Usage (CRITICAL)
-- **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
-- **Use \`exec\` with \`cat\` to read files:** \`exec(command="cat /path/to/file.ts")\`
-- **Use \`rg\` to search code:** \`exec(command="rg 'pattern' ${params.worktreeDir}/app -t ts")\` (note: \`-t ts\` covers both .ts AND .tsx — do NOT use \`-t tsx\`, it doesn't exist)
-- **Use \`fd\` to find files:** \`exec(command="fd '\\.tsx$' ${params.worktreeDir}/app")\`
-- **Quote paths with brackets:** Next.js uses \`[slug]\` dirs — always quote these in shell: \`cat '${params.worktreeDir}/app/projects/[slug]/page.tsx'\`
-- **All work happens in your worktree:** \`${params.worktreeDir}\` (NOT in ${params.repoDir})
+**Read ${params.repoDir}/AGENTS.md first.**
 
 Ticket ID: \`${params.taskId}\`
 Role: \`dev\`
@@ -512,7 +295,7 @@ cd ${params.worktreeDir}
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"branch": "${branchName}"}'
 
 # Post progress comment
- curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Started work. Branch: \`${branchName}\`, worktree: \`${params.worktreeDir}\`", "author": "agent", "author_type": "agent"}'
+curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Started work. Branch: \`${branchName}\`, worktree: \`${params.worktreeDir}\`", "author": "agent", "author_type": "agent"}'
 \`\`\`
 
 ## Pre-commit Rules (MANDATORY)
@@ -547,49 +330,103 @@ curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Conte
 Then update ticket to in_review:
 \`\`\`bash
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "in_review"}'
-\`\`\`
-
-## Completion Contract (REQUIRED)
-
-Before you finish, you MUST update the task status. Choose ONE:
-
-### Task completed successfully:
-- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
-- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
-
-### CANNOT complete the task:
-Post a comment explaining why, then move to blocked:
-1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
-2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
-
-NEVER finish without updating the task status. If unsure, move to blocked with an explanation.`
+\`\`\``
 }
-export function buildPrompt(params: PromptParams): string {
-  const roleInstructions = (() => {
-    switch (params.role) {
-      case "pm": {
-        // If there are signal responses, use the enhanced prompt
-        if (params.signalResponses && params.signalResponses.length > 0) {
-          return buildPmInstructionsWithSignals(params, params.signalResponses)
-        }
-        return buildPmInstructions(params)
+
+/**
+ * Build the task context section based on role
+ */
+function buildTaskContext(params: PromptParams): string {
+  switch (params.role) {
+    case "pm":
+      return buildPmTaskContext(params)
+    case "research":
+    case "researcher":  // Backwards compatibility
+      return buildResearchTaskContext(params)
+    case "reviewer":
+      return buildReviewerTaskContext(params)
+    case "conflict_resolver":
+      return buildConflictResolverTaskContext(params)
+    case "dev":
+    default:
+      return buildDevTaskContext(params)
+  }
+}
+
+// ============================================
+// Main Prompt Builder
+// ============================================
+
+/**
+ * Build a complete prompt by fetching the role SOUL template from Convex
+ * and injecting task-specific context.
+ *
+ * This is the primary way to build prompts for sub-agents. It ensures:
+ * - The SOUL template comes from Convex promptVersions (single source of truth)
+ * - Task-specific instructions are injected as context
+ * - Errors loudly if no active prompt version exists for the role
+ *
+ * @param params - Task and role parameters
+ * @param options - Convex client and options
+ * @returns The complete prompt string
+ * @throws PromptNotFoundError if no active prompt exists for the role (and allowFallback is false)
+ */
+export async function buildPromptAsync(
+  params: PromptParams,
+  options: BuildPromptOptions
+): Promise<string> {
+  const { convex, allowFallback = false, logError } = options
+
+  // Fetch the SOUL template from Convex (single source of truth)
+  let soulTemplate: string
+  try {
+    const promptVersion = await fetchActivePrompt(convex, params.role)
+    soulTemplate = promptVersion.content
+  } catch (error) {
+    if (error instanceof PromptNotFoundError) {
+      const message = `No active prompt version found for role: ${params.role}. Run POST /api/prompts/seed to initialize prompts.`
+      logError?.(`[PromptBuilder] ${message}`)
+
+      if (!allowFallback) {
+        throw new Error(message)
       }
-      case "research":
-      case "researcher":
-        return buildResearchInstructions(params)
-      case "reviewer":
-        return buildReviewerInstructions(params)
-      case "conflict_resolver":
-        return buildConflictResolverInstructions(params)
-      case "dev":
-      default:
-        return buildDevInstructions(params)
+
+      // Fallback: use a minimal default SOUL template
+      logError?.(`[PromptBuilder] Using fallback SOUL template for role: ${params.role}`)
+      soulTemplate = `# ${params.role.charAt(0).toUpperCase() + params.role.slice(1)}\n\nYou are a ${params.role} agent. Follow the task instructions below.`
+    } else {
+      throw error
     }
-  })()
+  }
 
-  return `${params.soulTemplate}
+  // Build task-specific context
+  const taskContext = buildTaskContext(params)
 
----
-
-${roleInstructions}`
+  // Combine SOUL template with task context
+  return `${soulTemplate}\n\n---\n\n${taskContext}`
 }
+
+/**
+ * Legacy synchronous prompt builder.
+ *
+ * ⚠️ DEPRECATED: This function uses hardcoded SOUL templates instead of
+ * fetching from Convex promptVersions. Use buildPromptAsync instead.
+ *
+ * Kept for backwards compatibility during migration.
+ *
+ * @param params - Task and role parameters including soulTemplate
+ * @returns The complete prompt string
+ * @deprecated Use buildPromptAsync instead
+ */
+export function buildPrompt(params: PromptParams): string {
+  // Use the provided soulTemplate (loaded from disk by caller)
+  const taskContext = buildTaskContext(params)
+  return `${params.soulTemplate}\n\n---\n\n${taskContext}`
+}
+
+// ============================================
+// Backwards Compatibility Exports
+// ============================================
+
+// Re-export for convenience
+export { PromptNotFoundError } from "./prompt-fetcher"

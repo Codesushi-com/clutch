@@ -5,7 +5,8 @@ import * as fs from "fs"
 import * as path from "path"
 
 const ROLES_DIR = "/home/dan/clawd/roles"
-const ROLES = ["dev", "pm", "qa", "researcher", "reviewer", "pe"]
+// v2 Work Loop roles - aligns with TaskRole type in lib/types/index.ts
+const ROLES = ["pm", "dev", "research", "reviewer", "conflict_resolver"]
 
 /**
  * POST /api/prompts/seed
