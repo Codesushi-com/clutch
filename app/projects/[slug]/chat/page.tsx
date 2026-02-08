@@ -138,18 +138,18 @@ export default function ChatPage({ params }: PageProps) {
 
     if (!session) return null
 
-    const totalTokens = session.tokens.total
+    const totalTokens = session.tokens_total ?? 0
     const contextWindow = 200000
     const contextPercent = contextWindow > 0 ? Math.round((totalTokens / contextWindow) * 100) : 0
 
     return {
-      model: session.model,
+      model: session.model ?? undefined,
       contextPercent,
-      tokensIn: session.tokens.input,
-      tokensOut: session.tokens.output,
+      tokensIn: session.tokens_input ?? undefined,
+      tokensOut: session.tokens_output ?? undefined,
       tokensTotal: totalTokens,
-      createdAt: session.createdAt ? new Date(session.createdAt).getTime() : undefined,
-      updatedAt: session.updatedAt ? new Date(session.updatedAt).getTime() : undefined,
+      createdAt: session.created_at ?? undefined,
+      updatedAt: session.updated_at ?? undefined,
     }
   })()
 

@@ -3,10 +3,12 @@
 /**
  * Convex Session Sync
  *
- * Syncs agent sessions from Convex to the global session store (zustand).
+ * Syncs sessions from Convex to the global session store (zustand).
  * Replaces HTTP polling with reactive Convex subscriptions.
  *
  * This component is client-only to avoid SSR issues with Convex hooks.
+ *
+ * Now uses the sessions table instead of deriving sessions from tasks.
  */
 
 import dynamic from "next/dynamic"
@@ -18,10 +20,12 @@ const ConvexSessionSyncInner = dynamic(
 )
 
 interface ConvexSessionSyncProps {
-  /** Optional project ID to filter sessions. If not provided, syncs all sessions. */
-  projectId?: string | null
+  /** Optional project slug to filter sessions. If not provided, syncs all sessions. */
+  projectSlug?: string | null
+  /** Optional session type filter */
+  sessionType?: "main" | "chat" | "agent" | "cron"
 }
 
-export function ConvexSessionSync({ projectId }: ConvexSessionSyncProps) {
-  return <ConvexSessionSyncInner projectId={projectId} />
+export function ConvexSessionSync({ projectSlug, sessionType }: ConvexSessionSyncProps) {
+  return <ConvexSessionSyncInner projectSlug={projectSlug} sessionType={sessionType} />
 }

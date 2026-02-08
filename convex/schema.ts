@@ -638,6 +638,7 @@ export default defineSchema({
     file_path: v.optional(v.string()), // path to session JSON file
     created_at: v.optional(v.number()),
     updated_at: v.number(),
+    completed_at: v.optional(v.number()),
   })
     .index("by_uuid", ["id"])
     .index("by_session_key", ["session_key"])

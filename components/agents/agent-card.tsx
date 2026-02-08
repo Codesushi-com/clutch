@@ -4,25 +4,24 @@ import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { AlertTriangle, ExternalLink, Clock, Activity } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import type { Session } from "@/lib/types"
+import { useSessionsByTask } from "@/lib/hooks/use-sessions"
 import type { Task } from "@/lib/types"
 
 interface AgentCardProps {
-  session: Session
-  task?: Task
+  task: Task
   projectSlug?: string
 }
 
 // Format relative time (e.g., "2m ago", "1h 12m")
-function formatRelativeTime(timestamp: string | number | undefined): string {
+function formatRelativeTime(timestamp: string | number | undefined | null): string {
   if (!timestamp) return "unknown"
-  
+
   const date = typeof timestamp === "string" ? new Date(timestamp) : new Date(timestamp)
   const now = Date.now()
   const diffMs = now - date.getTime()
   const diffMinutes = Math.floor(diffMs / (1000 * 60))
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  
+
   if (diffMinutes < 1) return "just now"
   if (diffMinutes < 60) return `${diffMinutes}m`
   if (diffHours < 24) {
@@ -34,15 +33,15 @@ function formatRelativeTime(timestamp: string | number | undefined): string {
 }
 
 // Format duration from start time (for runtime display)
-function formatDuration(startedAt: string | number | undefined): string {
+function formatDuration(startedAt: string | number | undefined | null): string {
   if (!startedAt) return "unknown"
-  
+
   const date = typeof startedAt === "string" ? new Date(startedAt) : new Date(startedAt)
   const elapsed = Date.now() - date.getTime()
   const minutes = Math.floor(elapsed / 60000)
   const hours = Math.floor(minutes / 60)
   const days = Math.floor(hours / 24)
-  
+
   if (days > 0) return `${days}d ${hours % 24}h`
   if (hours > 0) return `${hours}h ${minutes % 60}m`
   if (minutes > 0) return `${minutes}m`
@@ -50,19 +49,28 @@ function formatDuration(startedAt: string | number | undefined): string {
 }
 
 // Format token count (e.g., 42000 -> "42k")
-function formatTokenCount(count: number): string {
+function formatTokenCount(count: number | null | undefined): string {
+  if (!count) return "0"
   if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`
   if (count >= 1000) return `${(count / 1000).toFixed(1)}k`
   return count.toString()
 }
 
+// Format cost
+function formatCost(cost: number | null | undefined): string {
+  if (!cost) return ""
+  if (cost >= 1) return `$${cost.toFixed(2)}`
+  if (cost >= 0.01) return `$${cost.toFixed(3)}`
+  return `$${cost.toFixed(4)}`
+}
+
 // Format model name to short form
-function formatModelShort(model: string | undefined): string {
+function formatModelShort(model: string | null | undefined): string {
   if (!model) return "unknown"
-  
+
   const parts = model.split("/")
   const name = parts[parts.length - 1] || model
-  
+
   // Shorten common names
   if (name.includes("kimi-for-coding")) return "kimi"
   if (name.includes("kimi")) return "kimi"
@@ -77,7 +85,7 @@ function formatModelShort(model: string | undefined): string {
   if (name.includes("gpt-4")) return "gpt-4"
   if (name.includes("gemini")) return "gemini"
   if (name.includes("glm")) return "glm"
-  
+
   return name.slice(0, 12)
 }
 
@@ -88,33 +96,38 @@ function getIdleColor(minutes: number): string {
   return "text-red-400" // > 5m: red (possibly stuck)
 }
 
-export function AgentCard({ session, task, projectSlug }: AgentCardProps) {
+export function AgentCard({ task, projectSlug }: AgentCardProps) {
+  // Get session data from the new sessions table via task_id
+  const { sessions, isLoading: isSessionLoading } = useSessionsByTask(task.id)
+  const session = sessions?.[0] // Get the first (most recent) session for this task
+
   // Track current time for live updates
   const [now, setNow] = useState(() => Date.now())
-  
+
   // Update every 10 seconds for live time display
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 10000)
     return () => clearInterval(interval)
   }, [])
-  
-  // Calculate metrics
+
+  // Calculate metrics from session data (not task denormalized fields)
   const metrics = useMemo(() => {
-    const createdAt = session.createdAt ? new Date(session.createdAt).getTime() : 0
-    // Prefer task's agent_last_active_at (updated every loop cycle from JSONL mtime)
-    // over session.updatedAt (only set when session record itself changes)
-    const updatedAt = task?.agent_last_active_at
-      || (session.updatedAt ? new Date(session.updatedAt).getTime() : 0)
-    const totalTokens = session.tokens?.total || 0
-    
+    // Use session data if available, fall back to task data for migration period
+    const createdAt = session?.created_at ?? task.agent_started_at
+    const updatedAt = session?.last_active_at ?? session?.updated_at ?? task.agent_last_active_at ?? createdAt
+    const totalTokens = session?.tokens_total ?? task.agent_tokens_in ?? 0
+    const cost = session?.cost_total
+    const model = session?.model ?? task.agent_model
+
     // Context window varies by model, use 200k as default
     const contextWindow = 200000
-    const contextPercent = contextWindow > 0 ? Math.round((totalTokens / contextWindow) * 100) : 0
-    
+    const contextPercent = contextWindow > 0 && totalTokens ? Math.round((totalTokens / contextWindow) * 100) : 0
+
     // Calculate idle time in minutes
-    const idleMs = now - updatedAt
+    const updatedTime = typeof updatedAt === 'string' ? new Date(updatedAt).getTime() : updatedAt
+    const idleMs = updatedTime ? now - updatedTime : 0
     const idleMinutes = Math.floor(idleMs / (1000 * 60))
-    
+
     return {
       runtime: formatDuration(createdAt),
       lastOutput: formatRelativeTime(updatedAt),
@@ -122,29 +135,22 @@ export function AgentCard({ session, task, projectSlug }: AgentCardProps) {
       totalTokens,
       contextPercent,
       isStuck: idleMinutes >= 5,
+      cost,
+      model,
+      status: session?.status ?? 'idle',
     }
-  }, [session, task?.agent_last_active_at, now])
-  
-  // Determine display title
-  const displayTitle = useMemo(() => {
-    if (task) return task.title
-    // Try to extract from session name or use shortened session ID
-    if (session.name && session.name !== session.id) {
-      return session.name
-    }
-    return `Session ${session.id.slice(0, 8)}`
-  }, [session, task])
-  
+  }, [session, task, now])
+
   // Determine link URL
   const taskUrl = useMemo(() => {
     if (task && projectSlug) {
       return `/projects/${projectSlug}/board?task=${task.id}`
     }
-    return `/sessions/${session.id}`
-  }, [task, projectSlug, session.id])
-  
+    return session ? `/sessions/${encodeURIComponent(session.session_key)}` : '#'
+  }, [task, projectSlug, session])
+
   const idleColor = getIdleColor(metrics.idleMinutes)
-  
+
   return (
     <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)]/50 border border-[var(--border)]/50 hover:border-[var(--border)] transition-colors">
       {/* Header: Icon + Title */}
@@ -156,25 +162,23 @@ export function AgentCard({ session, task, projectSlug }: AgentCardProps) {
           <Link
             href={taskUrl}
             className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent-blue)] truncate block"
-            title={displayTitle}
+            title={task.title}
           >
-            {displayTitle}
+            {task.title}
           </Link>
         </div>
-        {task && (
-          <Link
-            href={taskUrl}
-            className="text-[var(--text-muted)] hover:text-[var(--accent-blue)] flex-shrink-0"
-            title="Open task"
-          >
-            <ExternalLink className="h-3 w-3" />
-          </Link>
-        )}
+        <Link
+          href={taskUrl}
+          className="text-[var(--text-muted)] hover:text-[var(--accent-blue)] flex-shrink-0"
+          title="Open task"
+        >
+          <ExternalLink className="h-3 w-3" />
+        </Link>
       </div>
-      
+
       {/* Metadata row: model · runtime · tokens */}
       <div className="flex items-center gap-1.5 mt-1.5 text-xs text-[var(--text-muted)]">
-        <span className="font-mono">{formatModelShort(session.model)}</span>
+        <span className="font-mono">{formatModelShort(metrics.model)}</span>
         <span>·</span>
         <span className="flex items-center gap-1" title="Runtime">
           <Clock className="h-3 w-3" />
@@ -185,12 +189,12 @@ export function AgentCard({ session, task, projectSlug }: AgentCardProps) {
           {formatTokenCount(metrics.totalTokens)}
         </span>
         {metrics.contextPercent > 0 && (
-          <span 
+          <span
             className={`${
-              metrics.contextPercent > 80 
-                ? "text-red-400" 
-                : metrics.contextPercent > 50 
-                  ? "text-yellow-400" 
+              metrics.contextPercent > 80
+                ? "text-red-400"
+                : metrics.contextPercent > 50
+                  ? "text-yellow-400"
                   : "text-green-400"
             }`}
             title="Context window usage"
@@ -198,8 +202,14 @@ export function AgentCard({ session, task, projectSlug }: AgentCardProps) {
             ({metrics.contextPercent}%)
           </span>
         )}
+        {metrics.cost && metrics.cost > 0 && (
+          <>
+            <span>·</span>
+            <span className="text-green-500/80">{formatCost(metrics.cost)}</span>
+          </>
+        )}
       </div>
-      
+
       {/* Last output / idle status */}
       <div className={`flex items-center gap-1.5 mt-1 text-xs ${idleColor}`}>
         <Activity className="h-3 w-3" />
@@ -212,20 +222,27 @@ export function AgentCard({ session, task, projectSlug }: AgentCardProps) {
           <span>last output {metrics.lastOutput} ago</span>
         )}
       </div>
-      
+
       {/* Status badge for error/cancelled states */}
-      {(session.status === "error" || session.status === "cancelled") && (
+      {(metrics.status === "completed" || metrics.status === "stale") && (
         <div className="mt-1.5">
-          <Badge 
-            variant="outline" 
+          <Badge
+            variant="outline"
             className={`text-[10px] px-1.5 py-0 h-auto ${
-              session.status === "error" 
-                ? "border-red-500/30 text-red-400" 
+              metrics.status === "stale"
+                ? "border-red-500/30 text-red-400"
                 : "border-amber-500/30 text-amber-400"
             }`}
           >
-            {session.status === "error" ? "Error" : "Cancelled"}
+            {metrics.status === "stale" ? "Stale" : "Completed"}
           </Badge>
+        </div>
+      )}
+
+      {/* Loading indicator when fetching session data */}
+      {isSessionLoading && (
+        <div className="mt-1 text-[10px] text-[var(--text-muted)]/50">
+          Loading session data...
         </div>
       )}
     </div>

@@ -4,6 +4,9 @@
  * Session Table Component
  * Responsive data table displaying sessions with enhanced status indicators,
  * agent type badges, and task associations
+ *
+ * Updated to use the new Convex sessions table with full token breakdown
+ * and cost tracking.
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -31,7 +34,7 @@ function useTickingTime(updateIntervalMs = 30000) {
  * Component that displays relative time with minimal re-renders.
  * Only updates when the ticking time changes (every 30s by default).
  */
-function TimeAgo({ timestamp, tickingTime }: { timestamp: string; tickingTime: number }) {
+function TimeAgo({ timestamp, tickingTime }: { timestamp: number; tickingTime: number }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const formatted = useMemo(() => {
     return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
@@ -47,9 +50,9 @@ import {
   SortingState,
   useReactTable,
 } from '@tanstack/react-table';
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronUp, ExternalLink, DollarSign } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { SessionStatus, SessionType, Session } from '@/lib/types';
+import type { Session, SessionStatus, SessionType } from '@/convex/sessions';
 import { useSessionStore } from '@/lib/stores/session-store';
 import {
   Table,
@@ -70,35 +73,33 @@ import { Button } from '@/components/ui/button';
 
 // Type for table data
 interface SessionRowData {
-  id: string;
-  name: string;
-  type: SessionType;
-  model: string;
-  effectiveModel?: string;
+  session_key: string;
+  session_type: SessionType;
+  model: string | null;
+  provider: string | null;
   status: SessionStatus;
   tokens: {
-    input: number;
-    output: number;
-    total: number;
+    input: number | null;
+    output: number | null;
+    cache_read: number | null;
+    cache_write: number | null;
+    total: number | null;
+  };
+  cost: {
+    total: number | null;
   };
   duration: string;
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
-  parentId?: string;
-  task?: {
-    id: string;
-    title: string;
-    status: string;
-    projectSlug?: string;
-  };
+  updated_at: number;
+  completed_at: number | null;
+  task_id: string | null;
+  project_slug: string | null;
 }
 
 /**
  * Enhanced status type that maps session status to user-friendly labels
- * - working: Session is actively processing (running)
+ * - working: Session is actively processing (active)
  * - idle: Session is waiting/idle
- * - stuck: Session has an error or is stuck
+ * - stuck: Session is stale or errored
  * - done: Session completed successfully
  */
 type EnhancedStatus = 'working' | 'idle' | 'stuck' | 'done';
@@ -123,7 +124,8 @@ function formatDurationMs(ms: number): string {
   return `${seconds}s`;
 }
 
-function formatTokens(count: number): string {
+function formatTokens(count: number | null): string {
+  if (!count) return '0';
   if (count >= 1000000) {
     return `${(count / 1000000).toFixed(1)}M`;
   }
@@ -133,14 +135,24 @@ function formatTokens(count: number): string {
   return count.toString();
 }
 
+function formatCost(cost: number | null): string {
+  if (!cost) return '—';
+  if (cost >= 1) {
+    return `$${cost.toFixed(2)}`;
+  }
+  if (cost >= 0.01) {
+    return `$${cost.toFixed(3)}`;
+  }
+  return `$${cost.toFixed(4)}`;
+}
+
 /**
  * Map session status to enhanced status
  */
 function getEnhancedStatus(session: SessionRowData): EnhancedStatus {
-  if (session.status === 'running') return 'working';
-  if (session.status === 'error') return 'stuck';
+  if (session.status === 'active') return 'working';
+  if (session.status === 'stale') return 'stuck';
   if (session.status === 'completed') return 'done';
-  if (session.status === 'cancelled') return 'done';
   return 'idle';
 }
 
@@ -151,7 +163,7 @@ function getStatusLabel(status: EnhancedStatus): string {
   const labels: Record<EnhancedStatus, string> = {
     working: 'Working',
     idle: 'Idle',
-    stuck: 'Stuck',
+    stuck: 'Stale',
     done: 'Done',
   };
   return labels[status];
@@ -180,15 +192,20 @@ function getAgentTypeStyles(type: SessionType): { bg: string; text: string; bord
       text: 'text-blue-600',
       border: 'border-blue-500/30',
     },
-    isolated: {
+    agent: {
       bg: 'bg-purple-500/10',
       text: 'text-purple-600',
       border: 'border-purple-500/30',
     },
-    subagent: {
-      bg: 'bg-amber-500/10',
-      text: 'text-amber-600',
-      border: 'border-amber-500/30',
+    chat: {
+      bg: 'bg-green-500/10',
+      text: 'text-green-600',
+      border: 'border-green-500/30',
+    },
+    cron: {
+      bg: 'bg-orange-500/10',
+      text: 'text-orange-600',
+      border: 'border-orange-500/30',
     },
   };
   return styles[type];
@@ -197,9 +214,10 @@ function getAgentTypeStyles(type: SessionType): { bg: string; text: string; bord
 /**
  * Get display label for agent type
  */
-function getAgentTypeLabel(type: SessionType, parentId?: string): string {
-  if (type === 'subagent' || parentId) return 'Agent';
-  if (type === 'isolated') return 'Isolated';
+function getAgentTypeLabel(type: SessionType): string {
+  if (type === 'agent') return 'Agent';
+  if (type === 'chat') return 'Chat';
+  if (type === 'cron') return 'Cron';
   return 'Main';
 }
 
@@ -212,7 +230,7 @@ function SortHeader({
   children: React.ReactNode;
 }) {
   const sorted = column.getIsSorted();
-  
+
   return (
     <Button
       variant="ghost"
@@ -256,9 +274,9 @@ function StatusBadge({ status }: { status: EnhancedStatus }) {
 }
 
 // Agent type badge with custom colors
-function AgentTypeBadge({ type, parentId }: { type: SessionType; parentId?: string }) {
+function AgentTypeBadge({ type }: { type: SessionType }) {
   const styles = getAgentTypeStyles(type);
-  const label = getAgentTypeLabel(type, parentId);
+  const label = getAgentTypeLabel(type);
 
   return (
     <span
@@ -269,63 +287,17 @@ function AgentTypeBadge({ type, parentId }: { type: SessionType; parentId?: stri
   );
 }
 
-// Task link component
-function TaskLink({ task }: { task?: SessionRowData['task'] }) {
-  const router = useRouter();
-
-  if (!task) {
-    return (
-      <span className="text-sm text-muted-foreground italic">
-        No task
-      </span>
-    );
-  }
-
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const projectSlug = task.projectSlug || 'default';
-    router.push(`/projects/${projectSlug}/board?task=${task.id}`);
-  };
-
-  const statusColors: Record<string, string> = {
-    backlog: 'text-gray-500',
-    ready: 'text-blue-500',
-    in_progress: 'text-amber-500',
-    in_review: 'text-purple-500',
-    done: 'text-green-500',
-  };
-
-  return (
-    <button
-      onClick={handleClick}
-      className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 hover:underline transition-colors"
-      title={`Open task: ${task.title}`}
-    >
-      <span className="truncate max-w-[150px]">{task.title}</span>
-      <ExternalLink className="h-3 w-3 flex-shrink-0" />
-      <span className={`text-xs ${statusColors[task.status] || 'text-gray-500'}`}>
-        ({task.status.replace('_', ' ')})
-      </span>
-    </button>
-  );
-}
-
 // Define columns
 const getColumns = (tickingTime: number): ColumnDef<SessionRowData>[] => [
   {
-    accessorKey: 'name',
+    accessorKey: 'session_key',
     header: ({ column }) => <SortHeader column={column}>Session</SortHeader>,
     cell: ({ row }) => (
       <div className="flex flex-col gap-1">
-        <span className="font-medium truncate max-w-[200px]" title={row.original.name}>
-          {row.original.name}
+        <span className="font-medium truncate max-w-[200px] font-mono text-xs" title={row.original.session_key}>
+          {row.original.session_key.length > 40 ? row.original.session_key.slice(0, 40) + '...' : row.original.session_key}
         </span>
-        <div className="flex items-center gap-2">
-          <AgentTypeBadge type={row.original.type} parentId={row.original.parentId} />
-          {row.original.parentId && (
-            <span className="text-xs text-muted-foreground">(sub)</span>
-          )}
-        </div>
+        <AgentTypeBadge type={row.original.session_type} />
       </div>
     ),
   },
@@ -338,34 +310,57 @@ const getColumns = (tickingTime: number): ColumnDef<SessionRowData>[] => [
     },
   },
   {
-    accessorKey: 'task',
-    header: ({ column }) => <SortHeader column={column}>Task</SortHeader>,
-    cell: ({ row }) => <TaskLink task={row.original.task} />,
-  },
-  {
-    accessorKey: 'effectiveModel',
+    accessorKey: 'model',
     header: ({ column }) => <SortHeader column={column}>Model</SortHeader>,
     cell: ({ row }) => {
-      const effectiveModel = row.original.effectiveModel || row.original.model;
-      const hasOverride = row.original.effectiveModel && row.original.effectiveModel !== row.original.model;
+      const model = row.original.model;
+      const provider = row.original.provider;
+      if (!model) return <span className="text-muted-foreground italic">Unknown</span>;
+
+      const displayModel = model.split('/').pop() || model;
       return (
         <span
-          className={`text-sm truncate max-w-[150px] inline-block ${hasOverride ? 'text-primary font-medium' : ''}`}
-          title={effectiveModel}
+          className="text-sm truncate max-w-[150px] inline-block"
+          title={model}
         >
-          {effectiveModel.split('/').pop() || effectiveModel}
+          {provider && <span className="text-muted-foreground">{provider}/</span>}
+          {displayModel}
         </span>
       );
     },
   },
   {
-    accessorKey: 'totalTokens',
+    accessorKey: 'tokens',
     header: ({ column }) => <SortHeader column={column}>Tokens</SortHeader>,
     cell: ({ row }) => {
-      const tokens = row.original.tokens?.total || 0;
+      const tokens = row.original.tokens;
       return (
-        <div className="flex flex-col">
-          <span className="tabular-nums text-sm">{formatTokens(tokens)}</span>
+        <div className="flex flex-col text-xs">
+          <span className="tabular-nums font-medium">{formatTokens(tokens.total)} total</span>
+          <span className="text-muted-foreground text-[10px]">
+            In: {formatTokens(tokens.input)} · Out: {formatTokens(tokens.output)}
+          </span>
+          {(tokens.cache_read || tokens.cache_write) && (
+            <span className="text-muted-foreground text-[10px]">
+              Cache: +{formatTokens(tokens.cache_read)}/-{formatTokens(tokens.cache_write)}
+            </span>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: 'cost',
+    header: ({ column }) => <SortHeader column={column}>Cost</SortHeader>,
+    cell: ({ row }) => {
+      const cost = row.original.cost.total;
+      if (!cost) {
+        return <span className="text-muted-foreground text-xs">—</span>;
+      }
+      return (
+        <div className="flex items-center gap-1 text-xs">
+          <DollarSign className="h-3 w-3 text-green-500" />
+          <span className="tabular-nums font-medium">{formatCost(cost)}</span>
         </div>
       );
     },
@@ -378,10 +373,10 @@ const getColumns = (tickingTime: number): ColumnDef<SessionRowData>[] => [
     ),
   },
   {
-    accessorKey: 'updatedAt',
+    accessorKey: 'updated_at',
     header: ({ column }) => <SortHeader column={column}>Last Active</SortHeader>,
     cell: ({ row }) => {
-      const ts = row.original.updatedAt;
+      const ts = row.original.updated_at;
       if (!ts) return <span className="text-sm text-muted-foreground">—</span>;
       return <TimeAgo timestamp={ts} tickingTime={tickingTime} />;
     },
@@ -395,32 +390,23 @@ function SessionCard({
   tickingTime,
 }: {
   session: SessionRowData;
-  onRowClick?: (sessionId: string) => void;
+  onRowClick?: (sessionKey: string) => void;
   tickingTime: number;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const router = useRouter();
   const enhancedStatus = getEnhancedStatus(session);
 
-  const handleTaskClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (session.task) {
-      const projectSlug = session.task.projectSlug || 'default';
-      router.push(`/projects/${projectSlug}/board?task=${session.task.id}`);
-    }
-  };
-
   return (
-    <Card 
+    <Card
       className="cursor-pointer hover:shadow-md transition-shadow"
-      onClick={() => onRowClick?.(session.id)}
+      onClick={() => onRowClick?.(session.session_key)}
     >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
-            <h3 className="font-medium truncate">{session.name}</h3>
+            <h3 className="font-medium truncate font-mono text-xs">{session.session_key}</h3>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <AgentTypeBadge type={session.type} parentId={session.parentId} />
+              <AgentTypeBadge type={session.session_type} />
               <StatusBadge status={enhancedStatus} />
             </div>
           </div>
@@ -440,24 +426,11 @@ function SessionCard({
             )}
           </Button>
         </div>
-        
-        {/* Task info on card header */}
-        {session.task && (
-          <div className="mt-2">
-            <button
-              onClick={handleTaskClick}
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              <span className="truncate max-w-[200px]">{session.task.title}</span>
-              <ExternalLink className="h-3 w-3" />
-            </button>
-          </div>
-        )}
-        
+
         <div className="flex items-center justify-between text-sm text-muted-foreground mt-2">
           <span>
-            {session.updatedAt
-              ? <TimeAgo timestamp={session.updatedAt} tickingTime={tickingTime} />
+            {session.updated_at
+              ? <TimeAgo timestamp={session.updated_at} tickingTime={tickingTime} />
               : '—'
             }
           </span>
@@ -471,28 +444,25 @@ function SessionCard({
             <div className="flex justify-between">
               <span className="text-muted-foreground">Model:</span>
               <span
-                className={`text-right truncate ml-2 ${session.effectiveModel && session.effectiveModel !== session.model ? 'text-primary font-medium' : ''}`}
-                title={session.effectiveModel || session.model}
+                className="text-right truncate ml-2"
+                title={session.model || ''}
               >
-                {(session.effectiveModel || session.model).split('/').pop()}
+                {session.model?.split('/').pop() || 'Unknown'}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Tokens:</span>
-              <span className="tabular-nums">
-                {formatTokens(session.tokens?.total || 0)}
-              </span>
+              <div className="text-right text-xs">
+                <div className="tabular-nums font-medium">{formatTokens(session.tokens.total)} total</div>
+                <div className="text-muted-foreground">
+                  In: {formatTokens(session.tokens.input)} · Out: {formatTokens(session.tokens.output)}
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Session ID:</span>
-              <span className="font-mono text-xs truncate ml-2" title={session.id}>
-                {session.id.slice(0, 8)}...
-              </span>
-            </div>
-            {!session.task && (
+            {session.cost.total && session.cost.total > 0 && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Task:</span>
-                <span className="text-muted-foreground italic">No task linked</span>
+                <span className="text-muted-foreground">Cost:</span>
+                <span className="tabular-nums text-green-600">{formatCost(session.cost.total)}</span>
               </div>
             )}
           </div>
@@ -512,7 +482,6 @@ function TableSkeleton() {
           <div key={i} className="flex items-center gap-4 p-4 border-b">
             <Skeleton className="h-4 w-[200px]" />
             <Skeleton className="h-4 w-[80px]" />
-            <Skeleton className="h-4 w-[150px]" />
             <Skeleton className="h-4 w-[150px]" />
             <Skeleton className="h-4 w-[80px]" />
             <Skeleton className="h-4 w-[80px]" />
@@ -575,13 +544,49 @@ function EmptyState() {
 }
 
 interface SessionTableProps {
-  onRowClick?: (sessionId: string) => void;
+  onRowClick?: (sessionKey: string) => void;
   filteredSessions?: Session[];
+}
+
+// Transform Session to SessionRowData
+function transformSession(session: Session): SessionRowData {
+  const now = Date.now();
+  const updatedMs = session.updated_at;
+  const ageMs = now - updatedMs;
+
+  // For completed sessions, show duration from created to completed
+  // For running/idle, show how long ago the session was last active
+  const duration = session.completed_at
+    ? formatDurationMs(session.completed_at - (session.created_at || session.completed_at))
+    : formatDurationMs(ageMs);
+
+  return {
+    session_key: session.session_key,
+    session_type: session.session_type,
+    model: session.model,
+    provider: session.provider,
+    status: session.status,
+    tokens: {
+      input: session.tokens_input,
+      output: session.tokens_output,
+      cache_read: session.tokens_cache_read,
+      cache_write: session.tokens_cache_write,
+      total: session.tokens_total,
+    },
+    cost: {
+      total: session.cost_total,
+    },
+    duration,
+    updated_at: session.updated_at,
+    completed_at: session.completed_at,
+    task_id: session.task_id,
+    project_slug: session.project_slug,
+  };
 }
 
 export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps) {
   const [sorting, setSorting] = useState<SortingState>([
-    { id: 'updatedAt', desc: true },
+    { id: 'updated_at', desc: true },
   ]);
 
   const storeSessions = useSessionStore((state) => state.sessions);
@@ -594,28 +599,10 @@ export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps
   // Shared ticking time for relative time displays - updates every 30s
   const tickingTime = useTickingTime(30000);
 
-  // Transform sessions for table — compute duration once from timestamps, no live ticking.
-  // Since we only have updatedAt (not true createdAt), "duration" shows time since
-  // last activity for running sessions, or "—" for completed ones.
-  // Use useMemo to prevent recreating data on every render (fixes infinite re-render bug)
+  // Transform sessions for table
   const data: SessionRowData[] = useMemo(() => {
-    const now = Date.now();
-    return (filteredSessions || rawSessions).map((session) => {
-      const updatedMs = new Date(session.updatedAt).getTime();
-      const ageMs = now - updatedMs;
-      // For completed sessions, duration is meaningless without a true start time — show "—"
-      // For running/idle, show how long ago the session was last active
-      const duration = session.completedAt
-        ? "—"
-        : formatDurationMs(ageMs);
-
-      return {
-        ...session,
-        duration,
-        task: session.task,
-      };
-    });
-  }, [filteredSessions, rawSessions]);
+    return (rawSessions || []).map(transformSession);
+  }, [rawSessions]);
 
   const columns = getColumns(tickingTime);
 
@@ -691,7 +678,7 @@ export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps
               <TableRow
                 key={row.id}
                 className="cursor-pointer hover:bg-muted/50"
-                onClick={() => onRowClick?.(row.original.id)}
+                onClick={() => onRowClick?.(row.original.session_key)}
               >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id}>
@@ -708,7 +695,7 @@ export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps
       <div className="md:hidden space-y-3">
         {sortedData.map((session) => (
           <SessionCard
-            key={session.id}
+            key={session.session_key}
             session={session}
             onRowClick={onRowClick}
             tickingTime={tickingTime}

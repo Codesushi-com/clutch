@@ -67,7 +67,7 @@ export default function SessionDetailPage() {
     setTimeout(() => setNotification(null), 5000);
   };
   
-  const session = useSessionStore((state) => state.getSessionById(sessionId));
+  const session = useSessionStore((state) => state.getSessionByKey(sessionId));
   const { getSessionPreview, resetSession, compactSession, cancelSession } = useOpenClawHttpRpc();
 
   // Load session preview data with timeout and retry logic
@@ -275,7 +275,7 @@ export default function SessionDetailPage() {
 
       <div className="rounded-lg border bg-card p-6">
         <div className="flex justify-between items-start mb-4">
-          <h1 className="text-2xl font-bold">{displaySession?.name || sessionId}</h1>
+          <h1 className="text-2xl font-bold">{displaySession?.session_key.split(':').pop() || sessionId}</h1>
           
           {/* Action Buttons */}
           <div className="flex gap-2">
@@ -354,7 +354,7 @@ export default function SessionDetailPage() {
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Total Tokens</div>
-            <div className="font-medium">{displaySession?.tokens.total.toLocaleString()}</div>
+            <div className="font-medium">{(displaySession?.tokens_total ?? 0).toLocaleString()}</div>
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Context Usage</div>
@@ -367,8 +367,8 @@ export default function SessionDetailPage() {
           <div>
             <div className="text-sm text-muted-foreground">Last Updated</div>
             <div className="font-medium">
-              {displaySession?.updatedAt 
-                ? new Date(displaySession.updatedAt).toLocaleString()
+              {displaySession?.updated_at 
+                ? new Date(displaySession.updated_at).toLocaleString()
                 : 'Unknown'}
             </div>
           </div>
@@ -382,7 +382,7 @@ export default function SessionDetailPage() {
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Type</div>
-            <div className="capitalize">{displaySession?.type}</div>
+            <div className="capitalize">{displaySession?.session_type}</div>
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Status</div>
@@ -396,15 +396,15 @@ export default function SessionDetailPage() {
           <div className="grid grid-cols-3 gap-4">
             <div className="rounded-lg bg-muted p-4">
               <div className="text-sm text-muted-foreground">Input</div>
-              <div className="text-2xl font-bold">{displaySession?.tokens.input.toLocaleString()}</div>
+              <div className="text-2xl font-bold">{(displaySession?.tokens_input ?? 0).toLocaleString()}</div>
             </div>
             <div className="rounded-lg bg-muted p-4">
               <div className="text-sm text-muted-foreground">Output</div>
-              <div className="text-2xl font-bold">{displaySession?.tokens.output.toLocaleString()}</div>
+              <div className="text-2xl font-bold">{(displaySession?.tokens_output ?? 0).toLocaleString()}</div>
             </div>
             <div className="rounded-lg bg-muted p-4">
               <div className="text-sm text-muted-foreground">Total</div>
-              <div className="text-2xl font-bold">{displaySession?.tokens.total.toLocaleString()}</div>
+              <div className="text-2xl font-bold">{(displaySession?.tokens_total ?? 0).toLocaleString()}</div>
             </div>
           </div>
         </div>
@@ -460,18 +460,7 @@ export default function SessionDetailPage() {
         </div>
 
         {/* Parent Session Link */}
-        {displaySession?.parentId && (
-          <div className="border-t pt-6 mt-6">
-            <div className="text-sm text-muted-foreground">Parent Session</div>
-            <Button
-              variant="link"
-              className="p-0 h-auto font-mono"
-              onClick={() => router.push(`/sessions/${encodeURIComponent(displaySession.parentId!)}`)}
-            >
-              {displaySession.parentId}
-            </Button>
-          </div>
-        )}
+        {/* Note: Parent session tracking removed in new sessions schema */}
 
         {/* HTTP API Note */}
         <div className="border-t pt-6 mt-6">

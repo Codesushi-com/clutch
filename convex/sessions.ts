@@ -35,6 +35,7 @@ export interface Session {
   file_path: string | null
   created_at: number | null
   updated_at: number
+  completed_at: number | null
 }
 
 export interface SessionInput {
@@ -127,6 +128,7 @@ export const get = query({
       file_path: session.file_path ?? null,
       created_at: session.created_at ?? null,
       updated_at: session.updated_at,
+      completed_at: session.completed_at ?? null,
     }
   },
 })
@@ -175,6 +177,7 @@ export const getByTask = query({
       file_path: s.file_path ?? null,
       created_at: s.created_at ?? null,
       updated_at: s.updated_at,
+      completed_at: s.completed_at ?? null,
     }))
   },
 })
@@ -223,6 +226,7 @@ export const getForProject = query({
       file_path: s.file_path ?? null,
       created_at: s.created_at ?? null,
       updated_at: s.updated_at,
+      completed_at: s.completed_at ?? null,
     }))
   },
 })
@@ -251,34 +255,30 @@ export const list = query({
     let sessions
 
     // Use the most specific index available
-    if (args.projectSlug) {
+    const projectSlug = args.projectSlug
+    const status = args.status
+    const sessionType = args.sessionType
+
+    if (projectSlug) {
       sessions = await ctx.db
         .query('sessions')
-        .withIndex('by_project', (q) => q.eq('project_slug', args.projectSlug))
+        .withIndex('by_project', (q) => q.eq('project_slug', projectSlug))
         .collect()
-    } else if (args.status) {
+    } else if (status) {
       sessions = await ctx.db
         .query('sessions')
-        .withIndex('by_status', (q) => q.eq('status', args.status!))
+        .withIndex('by_status', (q) => q.eq('status', status))
         .collect()
-    } else if (args.sessionType) {
+    } else if (sessionType) {
       sessions = await ctx.db
         .query('sessions')
-        .withIndex('by_type', (q) => q.eq('session_type', args.sessionType!))
+        .withIndex('by_type', (q) => q.eq('session_type', sessionType))
         .collect()
     } else {
       sessions = await ctx.db.query('sessions').collect()
     }
 
-    // Apply additional filters in memory
-    if (args.status && args.projectSlug) {
-      sessions = sessions.filter((s) => s.status === args.status!)
-    }
-    if (args.sessionType) {
-      if (args.projectSlug || args.status) {
-        sessions = sessions.filter((s) => s.session_type === args.sessionType!)
-      }
-    }
+    // Additional in-memory filtering is not needed since we filter at the index level above
 
     // Sort by updated_at descending (most recent first)
     sessions = sessions.sort((a, b) => b.updated_at - a.updated_at)
@@ -313,6 +313,7 @@ export const list = query({
       file_path: s.file_path ?? null,
       created_at: s.created_at ?? null,
       updated_at: s.updated_at,
+      completed_at: s.completed_at ?? null,
     }))
   },
 })
@@ -416,6 +417,7 @@ export const upsert = mutation({
         file_path: args.filePath ?? null,
         created_at: existing.created_at ?? null,
         updated_at: now,
+        completed_at: existing.completed_at ?? null,
       }
     } else {
       // Create new session
@@ -476,6 +478,7 @@ export const upsert = mutation({
         file_path: args.filePath ?? null,
         created_at: createdAt,
         updated_at: now,
+        completed_at: null,
       }
     }
   },

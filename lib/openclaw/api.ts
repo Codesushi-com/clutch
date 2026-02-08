@@ -166,19 +166,36 @@ export async function getSessionPreview(
   }
 
   // Build a minimal session object (full session data comes from Convex)
-  const session: Session = {
+  // Note: This uses the legacy Session structure for backwards compatibility
+  // New code should fetch session data from Convex directly using useSession()
+  const now = Date.now();
+  const session = {
     id: sessionKey,
-    name: sessionKey.split(':').pop() || sessionKey,
-    type: 'main',
+    session_key: sessionKey,
+    session_id: sessionKey,
+    session_type: 'main' as const,
     model: effectiveModel,
-    status: 'idle',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    tokens: {
-      input: 0,
-      output: 0,
-      total: 0,
-    },
+    provider: null,
+    status: 'idle' as const,
+    tokens_input: 0,
+    tokens_output: 0,
+    tokens_cache_read: null,
+    tokens_cache_write: null,
+    tokens_total: 0,
+    cost_input: null,
+    cost_output: null,
+    cost_cache_read: null,
+    cost_cache_write: null,
+    cost_total: null,
+    last_active_at: now,
+    output_preview: null,
+    stop_reason: null,
+    task_id: null,
+    project_slug: null,
+    file_path: null,
+    created_at: now,
+    updated_at: now,
+    completed_at: null,
   };
 
   return {

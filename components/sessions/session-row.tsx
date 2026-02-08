@@ -3,12 +3,14 @@
 /**
  * Session Row Component
  * Individual row displaying session information
+ *
+ * Updated to use the new Convex sessions table schema.
  */
 
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { Pause, CheckCircle, XCircle, Loader2, Clock } from 'lucide-react';
-import { Session, SessionStatus } from '@/lib/types';
+import type { Session, SessionStatus } from '@/convex/sessions';
 import { Badge } from '@/components/ui/badge';
 import {
   Tooltip,
@@ -22,8 +24,8 @@ interface SessionRowProps {
 }
 
 const statusConfig: Record<SessionStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' | 'success'; icon: React.ReactNode }> = {
-  running: {
-    label: 'Running',
+  active: {
+    label: 'Active',
     variant: 'default',
     icon: <Loader2 className="h-3 w-3 animate-spin" />,
   },
@@ -37,36 +39,30 @@ const statusConfig: Record<SessionStatus, { label: string; variant: 'default' | 
     variant: 'success',
     icon: <CheckCircle className="h-3 w-3" />,
   },
-  error: {
-    label: 'Error',
+  stale: {
+    label: 'Stale',
     variant: 'destructive',
-    icon: <XCircle className="h-3 w-3" />,
-  },
-  cancelled: {
-    label: 'Cancelled',
-    variant: 'outline',
     icon: <XCircle className="h-3 w-3" />,
   },
 };
 
-function formatDuration(startTime: string, endTime?: string): string {
-  // Without a true createdAt, we can't compute meaningful duration.
+function formatDuration(startTime: number | null, endTime: number | null): string {
+  // Without a true created_at, we can't compute meaningful duration.
   // Show "—" for sessions without a completion time instead of live-ticking.
-  if (!endTime) return '—';
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const diffMs = end.getTime() - start.getTime();
-  
+  if (!startTime || !endTime) return '—';
+  const diffMs = endTime - startTime;
+
   const minutes = Math.floor(diffMs / 60000);
   const seconds = Math.floor((diffMs % 60000) / 1000);
-  
+
   if (minutes > 0) {
     return `${minutes}m ${seconds}s`;
   }
   return `${seconds}s`;
 }
 
-function formatTokens(count: number): string {
+function formatTokens(count: number | null): string {
+  if (!count) return '0';
   if (count >= 1000000) {
     return `${(count / 1000000).toFixed(1)}M`;
   }
@@ -79,11 +75,14 @@ function formatTokens(count: number): string {
 export function SessionRow({ session }: SessionRowProps) {
   const router = useRouter();
   const status = statusConfig[session.status];
-  const duration = formatDuration(session.createdAt, session.completedAt);
-  
+  const duration = formatDuration(session.created_at, session.completed_at);
+
   const handleClick = () => {
-    router.push(`/sessions/${session.id}`);
+    router.push(`/sessions/${encodeURIComponent(session.session_key)}`);
   };
+
+  // Extract display name from session_key
+  const displayName = session.session_key.split(':').pop() || session.session_key;
 
   return (
     <TooltipProvider>
@@ -94,12 +93,9 @@ export function SessionRow({ session }: SessionRowProps) {
         {/* Session Name & Type */}
         <td className="px-4 py-3">
           <div className="flex flex-col">
-            <span className="font-medium text-sm">{session.name}</span>
+            <span className="font-medium text-sm font-mono">{displayName}</span>
             <span className="text-xs text-muted-foreground capitalize">
-              {session.type}
-              {session.parentId && (
-                <span className="ml-1">(child of {session.parentId.slice(0, 8)}...)</span>
-              )}
+              {session.session_type}
             </span>
           </div>
         </td>
@@ -108,16 +104,14 @@ export function SessionRow({ session }: SessionRowProps) {
         <td className="px-4 py-3">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span
-                className={`text-sm truncate max-w-[150px] inline-block ${session.effectiveModel && session.effectiveModel !== session.model ? 'text-primary font-medium' : ''}`}
-              >
-                {session.effectiveModel || session.model}
+              <span className="text-sm truncate max-w-[150px] inline-block">
+                {session.model || 'Unknown'}
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              <p>{session.effectiveModel || session.model}</p>
-              {session.effectiveModel && session.effectiveModel !== session.model && (
-                <p className="text-xs text-muted-foreground">Override from {session.model}</p>
+              <p>{session.model || 'Unknown'}</p>
+              {session.provider && (
+                <p className="text-xs text-muted-foreground">Provider: {session.provider}</p>
               )}
             </TooltipContent>
           </Tooltip>
@@ -137,18 +131,24 @@ export function SessionRow({ session }: SessionRowProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="tabular-nums">
-                  {formatTokens(session.tokens.total)}
+                  {formatTokens(session.tokens_total)}
                 </span>
               </TooltipTrigger>
               <TooltipContent>
                 <div className="text-xs">
-                  <div>Input: {formatTokens(session.tokens.input)}</div>
-                  <div>Output: {formatTokens(session.tokens.output)}</div>
+                  <div>Input: {formatTokens(session.tokens_input)}</div>
+                  <div>Output: {formatTokens(session.tokens_output)}</div>
+                  {session.tokens_cache_read !== null && (
+                    <div>Cache Read: {formatTokens(session.tokens_cache_read)}</div>
+                  )}
+                  {session.tokens_cache_write !== null && (
+                    <div>Cache Write: {formatTokens(session.tokens_cache_write)}</div>
+                  )}
                 </div>
               </TooltipContent>
             </Tooltip>
             <span className="text-xs text-muted-foreground">
-              in: {formatTokens(session.tokens.input)} / out: {formatTokens(session.tokens.output)}
+              in: {formatTokens(session.tokens_input)} / out: {formatTokens(session.tokens_output)}
             </span>
           </div>
         </td>
@@ -166,11 +166,13 @@ export function SessionRow({ session }: SessionRowProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(session.createdAt), { addSuffix: true })}
+                {session.created_at
+                  ? formatDistanceToNow(new Date(session.created_at), { addSuffix: true })
+                  : 'Unknown'}
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              <p>{new Date(session.createdAt).toLocaleString()}</p>
+              <p>{session.created_at ? new Date(session.created_at).toLocaleString() : 'Unknown'}</p>
             </TooltipContent>
           </Tooltip>
         </td>

@@ -25,15 +25,15 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
 
   // Find session matching this chat's session_key
   const session = sessions.find(
-    (s) => s.id === chat.session_key
+    (s) => s.session_key === chat.session_key
   ) || sessions.find(
-    (s) => s.id.endsWith(chat.session_key ?? "")
+    (s) => s.session_key.endsWith(chat.session_key ?? "")
   )
 
   // Derive session info from Convex data
   const sessionInfo = (() => {
     if (!session) return null
-    const tokens = session.tokens.total
+    const tokens = session.tokens_total ?? 0
     const contextWindow = 200000
     const contextPercent = contextWindow > 0 ? Math.round((tokens / contextWindow) * 100) : 0
     return {

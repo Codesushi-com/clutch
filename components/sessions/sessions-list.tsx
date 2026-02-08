@@ -3,19 +3,22 @@
 /**
  * Sessions List Component
  * Reusable component for displaying sessions with optional project filtering
- * Uses Convex for reactive session data derived from task agent tracking
- * 
- * NOTE: This component was migrated from HTTP API (openclaw sessions CLI)
- * to Convex queries. The sessions are now derived from tasks with agent_session_key.
+ * Uses Convex for reactive session data from the sessions table
+ *
+ * Updated to use the unified sessions table which includes:
+ * - main: Main Ada session
+ * - agent: Agent sessions
+ * - chat: Chat sessions
+ * - cron: Cron job sessions
  */
 
 import { useRouter } from 'next/navigation';
 import { Loader2, RefreshCw, Activity, Database } from 'lucide-react';
 import { SessionTable } from '@/components/sessions/session-table';
-import { useAgentSessions, type AgentSession } from '@/lib/hooks/use-agent-sessions';
+import { useSessions } from '@/lib/hooks/use-sessions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Session, SessionStatus, SessionType } from '@/lib/types';
+import type { Session, SessionType } from '@/convex/sessions';
 
 function ConnectionBadge({ connected }: { connected: boolean }) {
   const status = connected ? 'connected' : 'disconnected';
@@ -76,24 +79,11 @@ export interface SessionsListProps {
    * Custom description for the sessions list
    */
   description?: string;
-}
 
-/**
- * Convert AgentSession (from Convex) to Session (for UI compatibility)
- */
-function convertAgentSessionToSession(agentSession: AgentSession): Session {
-  return {
-    id: agentSession.id,
-    name: agentSession.name,
-    type: agentSession.type as SessionType,
-    model: agentSession.model,
-    status: agentSession.status as SessionStatus,
-    createdAt: agentSession.createdAt,
-    updatedAt: agentSession.updatedAt,
-    completedAt: agentSession.completedAt,
-    tokens: agentSession.tokens,
-    task: agentSession.task,
-  };
+  /**
+   * Filter by session type
+   */
+  sessionType?: SessionType;
 }
 
 export function SessionsList({
@@ -103,14 +93,16 @@ export function SessionsList({
   showStats = true,
   title = 'Sessions',
   description,
+  sessionType,
 }: SessionsListProps) {
   const router = useRouter();
 
-  // Fetch agent sessions from Convex (reactive, no polling needed)
-  const { sessions: agentSessions, isLoading } = useAgentSessions(projectId || '', 50);
-
-  // Convert to Session type for compatibility with SessionTable
-  const sessions: Session[] = agentSessions?.map(convertAgentSessionToSession) ?? [];
+  // Fetch sessions from Convex sessions table (reactive, no polling needed)
+  // Note: useSessions uses projectSlug, not projectId
+  const { sessions, isLoading } = useSessions(
+    { projectSlug: projectSlug || undefined, sessionType },
+    100
+  );
 
   const handleRefresh = () => {
     // Convex data is reactive, but we can force a re-render if needed
@@ -118,22 +110,23 @@ export function SessionsList({
     router.refresh();
   };
 
-  const handleRowClick = (sessionId: string) => {
+  const handleRowClick = (sessionKey: string) => {
     if (onSessionClick) {
-      onSessionClick(sessionId);
+      onSessionClick(sessionKey);
     } else {
-      const encodedSessionId = encodeURIComponent(sessionId);
-      router.push(`/sessions/${encodedSessionId}`);
+      const encodedSessionKey = encodeURIComponent(sessionKey);
+      router.push(`/sessions/${encodedSessionKey}`);
     }
   };
 
   // Calculate stats from sessions
-  const runningCount = sessions.filter((s) => s.status === 'running').length;
-  const totalTokens = sessions.reduce((acc, s) => acc + (s.tokens?.total || 0), 0);
+  const runningCount = sessions?.filter((s) => s.status === 'active').length ?? 0;
+  const totalTokens = sessions?.reduce((acc, s) => acc + (s.tokens_total || 0), 0) ?? 0;
+  const totalCost = sessions?.reduce((acc, s) => acc + (s.cost_total || 0), 0) ?? 0;
 
   const defaultDescription = projectSlug
-    ? `Active agent sessions for the ${projectSlug} project`
-    : 'Monitor active agent sessions in real-time';
+    ? `Active sessions for the ${projectSlug} project`
+    : 'Monitor all sessions in real-time (main, chat, agents, cron)';
 
   return (
     <div className="space-y-6">
@@ -169,16 +162,16 @@ export function SessionsList({
 
       {/* Stats - only show if showStats is true */}
       {showStats && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div className="rounded-lg border bg-card p-4">
             <div className="text-sm font-medium text-muted-foreground">
               {projectSlug ? 'Project Sessions' : 'Total Sessions'}
             </div>
-            <div className="text-2xl font-bold mt-1">{sessions.length}</div>
+            <div className="text-2xl font-bold mt-1">{sessions?.length ?? 0}</div>
           </div>
 
           <div className="rounded-lg border bg-card p-4">
-            <div className="text-sm font-medium text-muted-foreground">Running</div>
+            <div className="text-sm font-medium text-muted-foreground">Active</div>
             <div className="text-2xl font-bold mt-1 text-green-600">{runningCount}</div>
           </div>
 
@@ -192,6 +185,19 @@ export function SessionsList({
                 : totalTokens}
             </div>
           </div>
+
+          <div className="rounded-lg border bg-card p-4">
+            <div className="text-sm font-medium text-muted-foreground">Total Cost</div>
+            <div className="text-2xl font-bold mt-1 text-green-600">
+              {totalCost >= 1
+                ? `$${totalCost.toFixed(2)}`
+                : totalCost >= 0.01
+                ? `$${totalCost.toFixed(3)}`
+                : totalCost > 0
+                ? `$${totalCost.toFixed(4)}`
+                : '—'}
+            </div>
+          </div>
         </div>
       )}
 
@@ -199,13 +205,13 @@ export function SessionsList({
       <div className="bg-background rounded-lg">
         <SessionTable
           onRowClick={handleRowClick}
-          filteredSessions={sessions}
+          filteredSessions={sessions || undefined}
         />
       </div>
 
       {/* Footer info */}
       <div className="text-sm text-muted-foreground text-center">
-        Click on any session row to view details or navigate to the associated task
+        Click on any session row to view details
       </div>
     </div>
   );

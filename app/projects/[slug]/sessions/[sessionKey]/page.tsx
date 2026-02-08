@@ -35,6 +35,15 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { openclawApi } from '@/lib/hooks/use-openclaw-http';
 import type { SessionPreview, SessionMessage } from '@/lib/types';
 
+// Simple UUID generator for client-side
+function generateId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 interface ToolCall {
   id: string;
   name: string;
@@ -91,18 +100,32 @@ export default function SessionDetailPage({ params }: { params: Promise<{ slug: 
           const jsonlData = await jsonlResponse.json();
           setSessionData({
             session: jsonlData.session || {
-              id: sessionKey,
-              name: sessionKey.split(':').pop() || sessionKey,
-              type: 'subagent',
+              id: generateId(),
+              session_key: sessionKey,
+              session_id: generateId(),
+              session_type: 'agent',
               model: jsonlData.model || 'unknown',
-              status: jsonlData.stopReason ? 'completed' : 'running',
-              createdAt: jsonlData.startTime ? new Date(jsonlData.startTime).toISOString() : new Date().toISOString(),
-              updatedAt: jsonlData.endTime ? new Date(jsonlData.endTime).toISOString() : new Date().toISOString(),
-              tokens: {
-                input: jsonlData.tokensIn || 0,
-                output: jsonlData.tokensOut || 0,
-                total: (jsonlData.tokensIn || 0) + (jsonlData.tokensOut || 0),
-              },
+              provider: null,
+              status: jsonlData.stopReason ? 'completed' : 'active',
+              tokens_input: jsonlData.tokensIn || 0,
+              tokens_output: jsonlData.tokensOut || 0,
+              tokens_cache_read: null,
+              tokens_cache_write: null,
+              tokens_total: (jsonlData.tokensIn || 0) + (jsonlData.tokensOut || 0),
+              cost_input: null,
+              cost_output: null,
+              cost_cache_read: null,
+              cost_cache_write: null,
+              cost_total: null,
+              last_active_at: jsonlData.endTime || Date.now(),
+              output_preview: null,
+              stop_reason: jsonlData.stopReason || null,
+              task_id: null,
+              project_slug: slug,
+              file_path: null,
+              created_at: jsonlData.startTime || Date.now(),
+              updated_at: jsonlData.endTime || Date.now(),
+              completed_at: jsonlData.stopReason ? jsonlData.endTime || Date.now() : null,
             },
             messages: jsonlData.messages || [],
             contextPercentage: 0,
@@ -164,7 +187,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ slug: 
     return `${seconds}s`;
   };
 
-  const formatTokens = (count: number): string => {
+  const formatTokens = (count: number | null): string => {
     if (!count) return '0';
     if (count >= 1000000) {
       return `${(count / 1000000).toFixed(1)}M`;
@@ -283,7 +306,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ slug: 
           <MetadataItem 
             icon={BarChart3} 
             label="Tokens" 
-            value={`${formatTokens(session.tokens.input)} in / ${formatTokens(session.tokens.output)} out`} 
+            value={`${formatTokens(session.tokens_input)} in / ${formatTokens(session.tokens_output)} out`} 
           />
           <MetadataItem 
             icon={FileText} 

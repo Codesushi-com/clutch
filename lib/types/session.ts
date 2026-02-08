@@ -1,64 +1,33 @@
 /**
  * Session Types
- * Type definitions for OpenClaw sessions and RPC
+ * Type definitions for OpenClaw sessions
+ *
+ * Re-exports from @/convex/sessions for backwards compatibility.
+ * New code should import directly from @/convex/sessions.
  */
 
-import type { TaskStatus } from './index';
+export type {
+  Session,
+  SessionType,
+  SessionStatus,
+  SessionInput,
+} from "@/convex/sessions";
 
-export type SessionStatus = 'running' | 'idle' | 'completed' | 'error' | 'cancelled';
-
-export type SessionType = 'main' | 'isolated' | 'subagent';
-
-/**
- * Task information associated with a session
- */
-export interface SessionTaskInfo {
-  id: string;
-  title: string;
-  status: TaskStatus;
-  projectSlug?: string;
-}
-
-export interface Session {
-  id: string;
-  name: string;
-  type: SessionType;
-  model: string;
-  /**
-   * The actual model used for API calls, extracted from recent messages.
-   * This may differ from `model` when a model override is applied (e.g., via cron jobs).
-   */
-  effectiveModel?: string;
-  status: SessionStatus;
-  parentId?: string;
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
-  tokens: {
-    input: number;
-    output: number;
-    total: number;
-  };
-  cost?: number;
-  metadata?: Record<string, unknown>;
-  /**
-   * Associated task information if this session is linked to a task
-   */
-  task?: SessionTaskInfo;
-}
-
-export interface SessionListResponse {
-  sessions: Session[];
+// Legacy type aliases for backwards compatibility
+export type SessionListResponse = {
+  sessions: import("@/convex/sessions").Session[];
   total: number;
-}
+};
 
-export interface SessionListParams {
-  status?: SessionStatus;
-  type?: SessionType;
+export type SessionListParams = {
+  status?: import("@/convex/sessions").SessionStatus;
+  sessionType?: import("@/convex/sessions").SessionType;
+  /** @deprecated Use sessionType instead */
+  type?: import("@/convex/sessions").SessionType;
   model?: string;
   limit?: number;
   offset?: number;
-}
+};
 
 // RPC Types
 export interface RPCRequest {
@@ -95,7 +64,7 @@ export interface SessionMessage {
 }
 
 export interface SessionPreview {
-  session: Session;
+  session: import("@/convex/sessions").Session;
   messages: SessionMessage[];
   contextPercentage: number;
 }

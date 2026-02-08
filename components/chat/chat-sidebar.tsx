@@ -11,8 +11,8 @@ import { NewIssueDialog } from "@/components/chat/new-issue-dialog"
 import { useConvexTasks } from "@/lib/hooks/use-convex-tasks"
 import { AgentStatus, formatDuration } from "@/components/agents/agent-status"
 import { AgentCard } from "@/components/agents/agent-card"
-import { useAgentSessions } from "@/lib/hooks/use-agent-sessions"
-import type { Task, Session } from "@/lib/types"
+import { useSessions } from "@/lib/hooks/use-sessions"
+import type { Task } from "@/lib/types"
 
 interface ChatSidebarProps {
   projectId: string | null
@@ -56,32 +56,27 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   const { tasks: blockedTasks } = useConvexTasks(projectId ?? "", "blocked")
 
   // Reactive Convex subscription for agent sessions - no polling needed
-  const { sessions: agentSessions } = useAgentSessions(projectId, 50)
+  // Use the new sessions table to find sessions with task associations
+  const { sessions: agentSessions } = useSessions(
+    { sessionType: "agent", projectSlug: projectSlug || undefined },
+    50
+  )
 
-  // Derive active agent sessions (subagents and cron sessions that are running or idle)
-  const activeAgentSessions = useMemo(() => {
-    if (!agentSessions) return []
-    return agentSessions.filter((s) => {
-      // Include running or idle sessions that are subagents or have task associations
-      const isActiveStatus = s.status === "running" || s.status === "idle"
-      const isSubagent = s.type === "subagent"
-      const hasTask = s.task || s.name?.startsWith("trap-")
-      return isActiveStatus && (isSubagent || hasTask)
-    })
-  }, [agentSessions])
+  // Derive active tasks from sessions (tasks that have active agent sessions)
+  const activeAgentTasks = useMemo(() => {
+    if (!agentSessions || !allTasks) return []
 
-  // Build a map of session key -> task for quick lookup
-  const sessionTaskMap = useMemo(() => {
-    const map = new Map<string, Task>()
-    if (!allTasks) return map
+    // Get task IDs from sessions
+    const sessionTaskIds = new Set(
+      agentSessions
+        .filter((s) => s.status === "active" || s.status === "idle")
+        .map((s) => s.task_id)
+        .filter(Boolean)
+    )
 
-    for (const task of allTasks) {
-      if (task.agent_session_key) {
-        map.set(task.agent_session_key, task)
-      }
-    }
-    return map
-  }, [allTasks])
+    // Find corresponding tasks
+    return allTasks.filter((t) => t.agent_session_key && sessionTaskIds.has(t.id))
+  }, [agentSessions, allTasks])
   
   // Section expansion state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -460,7 +455,7 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
       </div>
 
       {/* Active Agents Section */}
-      {activeAgentSessions.length > 0 && (
+      {activeAgentTasks.length > 0 && (
         <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/20">
           {/* Clickable header with chevron */}
           <button
@@ -479,7 +474,7 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
             </svg>
             <h2 className="font-medium text-[var(--text-primary)] text-sm">Active Agents</h2>
             <span className="text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">
-              {activeAgentSessions.length}
+              {activeAgentTasks.length}
             </span>
           </button>
           {/* Collapsible agent list with smooth transition */}
@@ -489,20 +484,13 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
               ${activeAgentsExpanded ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}
             `}
           >
-            {activeAgentSessions.map((session: Session) => {
-              // Try to find associated task
-              const task = sessionTaskMap.get(session.id) ||
-                (session.task?.id ? allTasks?.find((t: Task) => t.id === session.task!.id) : undefined)
-
-              return (
-                <AgentCard
-                  key={session.id}
-                  session={session}
-                  task={task}
-                  projectSlug={projectSlug}
-                />
-              )
-            })}
+            {activeAgentTasks.map((task: Task) => (
+              <AgentCard
+                key={task.id}
+                task={task}
+                projectSlug={projectSlug}
+              />
+            ))}
           </div>
         </div>
       )}

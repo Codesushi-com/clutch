@@ -3,23 +3,21 @@
  * Zustand store for managing session state
  *
  * This store is now populated by ConvexSessionSync, which subscribes to
- * Convex reactive queries. No HTTP polling is performed by this store.
+ * the Convex sessions table. No HTTP polling is performed by this store.
  *
  * Components can read from this store (for zustand-based access) or use
- * useAgentSessions hook for direct Convex subscription.
+ * useSessions hook for direct Convex subscription.
  */
 
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import {
-  Session,
-  SessionStatus,
-  SessionType,
-} from '@/lib/types';
+import type { Session, SessionStatus, SessionType } from '@/convex/sessions';
+
+export type { Session, SessionStatus, SessionType };
 
 export interface SessionFilters {
   status?: SessionStatus;
-  type?: SessionType;
+  sessionType?: SessionType;
   model?: string;
 }
 
@@ -35,14 +33,14 @@ interface SessionState {
 
   // Filters
   filters: SessionFilters;
-  sortBy: 'createdAt' | 'updatedAt' | 'tokens';
+  sortBy: 'created_at' | 'updated_at' | 'tokens';
   sortOrder: 'asc' | 'desc';
 
   // Actions
   setSessions: (sessions: Session[]) => void;
   addSession: (session: Session) => void;
-  updateSession: (id: string, changes: Partial<Session>) => void;
-  removeSession: (id: string) => void;
+  updateSession: (sessionKey: string, changes: Partial<Session>) => void;
+  removeSession: (sessionKey: string) => void;
 
   // Loading actions
   setLoading: (loading: boolean) => void;
@@ -56,13 +54,13 @@ interface SessionState {
 
   /**
    * @deprecated No longer fetches from HTTP. Use ConvexSessionSync component
-   * or useAgentSessions hook for reactive session data.
+   * or useSessions hook for reactive session data.
    */
   fetchAndUpdate: (isInitialLoad?: boolean) => Promise<void>;
 
   // Computed
   getFilteredSessions: () => Session[];
-  getSessionById: (id: string) => Session | undefined;
+  getSessionByKey: (sessionKey: string) => Session | undefined;
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -75,7 +73,7 @@ export const useSessionStore = create<SessionState>()(
       error: null,
       lastFetchedAt: null,
       filters: {},
-      sortBy: 'updatedAt',
+      sortBy: 'updated_at',
       sortOrder: 'desc',
 
       // Data actions
@@ -86,16 +84,16 @@ export const useSessionStore = create<SessionState>()(
           sessions: [session, ...state.sessions],
         })),
 
-      updateSession: (id, changes) =>
+      updateSession: (sessionKey, changes) =>
         set((state) => ({
           sessions: state.sessions.map((s) =>
-            s.id === id ? { ...s, ...changes, updatedAt: new Date().toISOString() } : s
+            s.session_key === sessionKey ? { ...s, ...changes, updated_at: Date.now() } : s
           ),
         })),
 
-      removeSession: (id) =>
+      removeSession: (sessionKey) =>
         set((state) => ({
-          sessions: state.sessions.filter((s) => s.id !== id),
+          sessions: state.sessions.filter((s) => s.session_key !== sessionKey),
         })),
 
       // Loading actions
@@ -127,13 +125,13 @@ export const useSessionStore = create<SessionState>()(
           filtered = filtered.filter((s) => s.status === filters.status);
         }
 
-        if (filters.type) {
-          filtered = filtered.filter((s) => s.type === filters.type);
+        if (filters.sessionType) {
+          filtered = filtered.filter((s) => s.session_type === filters.sessionType);
         }
 
         if (filters.model) {
           filtered = filtered.filter((s) =>
-            s.model.toLowerCase().includes(filters.model!.toLowerCase())
+            s.model?.toLowerCase().includes(filters.model!.toLowerCase())
           );
         }
 
@@ -142,14 +140,14 @@ export const useSessionStore = create<SessionState>()(
           let comparison = 0;
 
           switch (sortBy) {
-            case 'createdAt':
-              comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+            case 'created_at':
+              comparison = (a.created_at ?? 0) - (b.created_at ?? 0);
               break;
-            case 'updatedAt':
-              comparison = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+            case 'updated_at':
+              comparison = a.updated_at - b.updated_at;
               break;
             case 'tokens':
-              comparison = a.tokens.total - b.tokens.total;
+              comparison = (a.tokens_total ?? 0) - (b.tokens_total ?? 0);
               break;
           }
 
@@ -159,8 +157,8 @@ export const useSessionStore = create<SessionState>()(
         return filtered;
       },
 
-      getSessionById: (id) => {
-        return get().sessions.find((s) => s.id === id);
+      getSessionByKey: (sessionKey) => {
+        return get().sessions.find((s) => s.session_key === sessionKey);
       },
     }),
     { name: 'session-store' }
