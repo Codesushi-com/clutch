@@ -448,6 +448,12 @@ function MessageBubble({
               ({message.model.split('/').pop()})
             </span>
           )}
+          {message.timestamp && (
+            <span className="text-xs text-[var(--text-muted)]">
+              <Clock className="h-3 w-3 inline mr-1" />
+              {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          )}
         </div>
         
         {/* Message Content */}
