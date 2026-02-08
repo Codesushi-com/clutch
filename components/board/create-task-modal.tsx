@@ -30,13 +30,11 @@ const PRIORITIES = [
 ] as const
 
 const ROLES = [
-  { value: "any", label: "Any" },
+  { value: "", label: "Auto" },
   { value: "pm", label: "PM" },
   { value: "dev", label: "Dev" },
-  { value: "qa", label: "QA" },
   { value: "research", label: "Research" },
-  { value: "security", label: "Security" },
-  { value: "fixer", label: "Fixer" },
+  { value: "reviewer", label: "Reviewer" },
 ] as const
 
 export function CreateTaskModal({
@@ -48,7 +46,7 @@ export function CreateTaskModal({
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium")
-  const [role, setRole] = useState<TaskRole | undefined>("any")
+  const [role, setRole] = useState<TaskRole | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -65,7 +63,7 @@ export function CreateTaskModal({
       description: description.trim() || undefined,
       status: initialStatus,
       priority,
-      role: role === "any" ? undefined : role,
+      role,
     }
 
     try {
@@ -75,7 +73,7 @@ export function CreateTaskModal({
       setTitle("")
       setDescription("")
       setPriority("medium")
-      setRole("any")
+      setRole(undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create task")
     } finally {
@@ -151,8 +149,8 @@ export function CreateTaskModal({
               <Label htmlFor="role">Role</Label>
               <select
                 id="role"
-                value={role || "any"}
-                onChange={(e) => setRole(e.target.value as TaskRole | undefined)}
+                value={role || ""}
+                onChange={(e) => setRole((e.target.value as TaskRole) || undefined)}
                 className="flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] focus:ring-offset-2"
               >
                 {ROLES.map((r) => (

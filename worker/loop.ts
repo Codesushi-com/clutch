@@ -15,9 +15,6 @@ import { runCleanup } from "./phases/cleanup"
 import { runReview } from "./phases/review"
 import type { Project, WorkLoopPhase } from "../lib/types"
 import { runWork } from "./phases/work"
-import { runAnalyze } from "./phases/analyze"
-import { runNotify } from "./phases/notify"
-import { runSignals } from "./phases/signals"
 import { runTriage } from "./phases/triage"
 import { sessionFileReader } from "./session-file-reader"
 
@@ -370,31 +367,18 @@ async function runProjectCycle(
     }
   )
 
-  // Update state to notify phase
+  // Update state to triage phase
   await convex.mutation(api.workLoop.upsertState, {
     project_id: project.id,
     status: "running",
-    current_phase: "notify",
+    current_phase: "triage",
     current_cycle: cycle,
     active_agents: agentManager.activeCount(project.id),
-    max_agents: project.work_loop_max_agents ?? 2,
+    max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
   })
 
-  // Phase 2: Notify (route PM signals to user)
-  const notifyResult = await runPhase(
-    convex,
-    project.id,
-    "notify",
-    async () => {
-      const result = await runNotify({
-        convex,
-        cycle,
-        projectId: project.id,
-        log: (params) => logRun(convex, params),
-      })
-      return { success: true, actions: result.notifiedCount }
-    }
-  )
+  // Phase 2: Triage (already ran above, but update state for visibility)
+  // Note: Triage runs before cleanup to process blocked tasks
 
   // Update state to review phase
   await convex.mutation(api.workLoop.upsertState, {
@@ -406,7 +390,7 @@ async function runProjectCycle(
     max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
   })
 
-  // Phase 4: Review
+  // Phase 3: Review
   const reviewResult = await runPhase(
     convex,
     project.id,
@@ -424,35 +408,6 @@ async function runProjectCycle(
     }
   )
 
-  // Update state to signals phase
-  await convex.mutation(api.workLoop.upsertState, {
-    project_id: project.id,
-    status: "running",
-    current_phase: "work",
-    current_cycle: cycle,
-    active_agents: agentManager.activeCount(project.id),
-    max_agents: project.work_loop_max_agents ?? 2,
-  })
-
-  // Phase 2.5: Signals (process signal responses and re-queue PM tasks)
-  const signalsResult = await runPhase(
-    convex,
-    project.id,
-    "work",
-    async () => {
-      const result = await runSignals({
-        convex,
-        cycle,
-        project,
-        log: (params) => logRun(convex, params),
-      })
-      return {
-        success: true,
-        actions: result.requeuedCount,
-      }
-    }
-  )
-
   // Update state to work phase
   await convex.mutation(api.workLoop.upsertState, {
     project_id: project.id,
@@ -463,7 +418,7 @@ async function runProjectCycle(
     max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
   })
 
-  // Phase 5: Work
+  // Phase 4: Work
   const workResult = await runPhase(
     convex,
     project.id,
@@ -486,42 +441,9 @@ async function runProjectCycle(
     }
   )
 
-  // Update state to analyze phase
-  await convex.mutation(api.workLoop.upsertState, {
-    project_id: project.id,
-    status: "running",
-    current_phase: "analyze",
-    current_cycle: cycle,
-    active_agents: agentManager.activeCount(project.id),
-    max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
-  })
-
-  // Phase 6: Analyze
-  const analyzeResult = await runPhase(
-    convex,
-    project.id,
-    "analyze",
-    async () => {
-      const result = await runAnalyze({
-        convex,
-        agents: agentManager,
-        config,
-        cycle,
-        project,
-        log: async (params) => {
-          await logRun(convex, params)
-        },
-      })
-      return {
-        success: true,
-        actions: result.spawnedCount,
-      }
-    }
-  )
-
   // Calculate cycle duration and log completion
   const cycleDurationMs = Date.now() - cycleStart
-  const totalActions = cleanupResult.actions + notifyResult.actions + reviewResult.actions + signalsResult.actions + workResult.actions + analyzeResult.actions
+  const totalActions = cleanupResult.actions + reviewResult.actions + workResult.actions
 
   await logCycleComplete(convex, {
     projectId: project.id,
@@ -530,11 +452,8 @@ async function runProjectCycle(
     totalActions,
     phases: {
       cleanup: cleanupResult.success,
-      notify: notifyResult.success,
       review: reviewResult.success,
-      signals: signalsResult.success,
       work: workResult.success,
-      analyze: analyzeResult.success,
     },
   })
 

@@ -1,6 +1,6 @@
 // Work Loop types for Convex integration
 
-export type WorkLoopPhase = "cleanup" | "notify" | "review" | "work" | "analyze" | "idle" | "error"
+export type WorkLoopPhase = "cleanup" | "triage" | "review" | "work" | "idle" | "error"
 export type WorkLoopStatus = "running" | "paused" | "stopped" | "error"
 
 export interface WorkLoopState {

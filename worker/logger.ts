@@ -7,12 +7,11 @@
 
 import type { ConvexHttpClient } from "convex/browser"
 import { api } from "../convex/_generated/api"
+import type { WorkLoopPhase } from "../lib/types"
 
 // ============================================
 // Types
 // ============================================
-
-type WorkLoopPhase = "cleanup" | "notify" | "review" | "work" | "analyze" | "idle" | "error"
 
 export interface LogRunParams {
   projectId: string
@@ -32,11 +31,8 @@ interface LogCycleCompleteParams {
   totalActions: number
   phases: {
     cleanup: boolean
-    notify: boolean
     review: boolean
-    signals: boolean
     work: boolean
-    analyze: boolean
   }
 }
 

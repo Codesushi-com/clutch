@@ -40,13 +40,10 @@ const PRIORITY_OPTIONS: { value: TaskPriority; label: string; color: string }[] 
 ]
 
 const ROLES: { value: TaskRole; label: string }[] = [
-  { value: "any", label: "Any" },
   { value: "pm", label: "PM" },
   { value: "dev", label: "Dev" },
-  { value: "qa", label: "QA" },
   { value: "research", label: "Research" },
-  { value: "security", label: "Security" },
-  { value: "fixer", label: "Fixer" },
+  { value: "reviewer", label: "Reviewer" },
 ]
 
 const AGENT_OPTIONS = [
@@ -62,7 +59,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   const [description, setDescription] = useState("")
   const [status, setStatus] = useState<TaskStatus>("backlog")
   const [priority, setPriority] = useState<TaskPriority>("medium")
-  const [role, setRole] = useState<TaskRole>("any")
+  const [role, setRole] = useState<TaskRole>("dev")
   const [assignee, setAssignee] = useState("")
   const [requiresHumanReview, setRequiresHumanReview] = useState(false)
   const [tags, setTags] = useState("")
@@ -137,7 +134,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
       setDescription(task.description || "")
       setStatus(task.status)
       setPriority(task.priority)
-      setRole(task.role || "any")
+      setRole(task.role || "dev")
       setAssignee(task.assignee || "")
       setRequiresHumanReview(!!task.requires_human_review)
       const taskTags = (() => {
@@ -208,7 +205,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
         description: description.trim() || null,
         status,
         priority,
-        role: role === "any" ? null : role,
+        role,
         assignee: assignee || null,
         requires_human_review: requiresHumanReview ? 1 : 0,
         tags: tagArray.length > 0 ? JSON.stringify(tagArray) : null,
