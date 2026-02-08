@@ -23,6 +23,37 @@ export type {
   SessionPreview,
 } from './session'
 
+// Convex Session type for the sessions table
+export type ConvexSessionType = 'main' | 'chat' | 'agent' | 'cron'
+export type ConvexSessionStatus = 'active' | 'idle' | 'completed' | 'stale'
+
+export interface ConvexSession {
+  id: string                    // session_key (stable identifier)
+  session_id: string            // UUID from sessions.json
+  session_type: ConvexSessionType
+  model: string | null
+  provider: string | null
+  status: ConvexSessionStatus
+  tokens_input: number | null
+  tokens_output: number | null
+  tokens_cache_read: number | null
+  tokens_cache_write: number | null
+  tokens_total: number | null
+  cost_input: number | null
+  cost_output: number | null
+  cost_cache_read: number | null
+  cost_cache_write: number | null
+  cost_total: number | null
+  last_active_at: number | null
+  output_preview: string | null
+  stop_reason: string | null
+  task_id: string | null
+  project_slug: string | null
+  file_path: string | null
+  created_at: number | null
+  updated_at: number
+}
+
 // Re-export work loop types
 export type {
   WorkLoopPhase,

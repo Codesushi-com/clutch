@@ -596,4 +596,47 @@ export default defineSchema({
     .index("by_project", ["project_id"])
     .index("by_project_period", ["project_id", "period", "period_start"])
     .index("by_period", ["period", "period_start"]),
+
+  // Sessions - unified OpenClaw session tracking
+  sessions: defineTable({
+    session_key: v.string(),        // e.g. "agent:main:main", "agent:main:trap:the-trap:xxx"
+    session_id: v.string(),         // UUID from sessions.json
+    session_type: v.string(),       // "main" | "chat" | "agent" | "cron"
+    model: v.optional(v.string()),  // last model used
+    provider: v.optional(v.string()),
+    status: v.string(),             // "active" | "idle" | "completed" | "stale"
+
+    // Token usage (from last assistant message in JSONL)
+    tokens_input: v.optional(v.number()),
+    tokens_output: v.optional(v.number()),
+    tokens_cache_read: v.optional(v.number()),
+    tokens_cache_write: v.optional(v.number()),
+    tokens_total: v.optional(v.number()),
+
+    // Cost tracking
+    cost_input: v.optional(v.number()),
+    cost_output: v.optional(v.number()),
+    cost_cache_read: v.optional(v.number()),
+    cost_cache_write: v.optional(v.number()),
+    cost_total: v.optional(v.number()),
+
+    // Activity
+    last_active_at: v.optional(v.number()),  // file mtime ms
+    output_preview: v.optional(v.string()),  // last assistant text (500 chars)
+    stop_reason: v.optional(v.string()),     // from last assistant message
+
+    // Links
+    task_id: v.optional(v.string()),         // for agent sessions tied to tasks
+    project_slug: v.optional(v.string()),    // extracted from session_key
+
+    // Metadata
+    file_path: v.optional(v.string()),       // JSONL file path
+    created_at: v.optional(v.number()),
+    updated_at: v.number(),
+  })
+    .index("by_session_key", ["session_key"])
+    .index("by_status", ["status"])
+    .index("by_project", ["project_slug"])
+    .index("by_type", ["session_type"])
+    .index("by_task", ["task_id"]),
 })
