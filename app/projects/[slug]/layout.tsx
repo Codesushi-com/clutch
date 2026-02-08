@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ArrowLeft, LayoutGrid, MessageSquare, Activity, Settings, RefreshCw } from "lucide-react"
+import { ArrowLeft, LayoutGrid, MessageSquare, Activity, Settings, RefreshCw, Map } from "lucide-react"
 import type { Project } from "@/lib/types"
 import { MobileProjectSwitcher } from "@/components/layout/mobile-project-switcher"
 import { DesktopProjectSwitcher } from "@/components/layout/desktop-project-switcher"
@@ -18,6 +18,7 @@ type LayoutProps = {
 const TABS = [
   { id: "chat", label: "Chat", icon: MessageSquare, href: "/chat" },
   { id: "board", label: "Board", icon: LayoutGrid, href: "/board" },
+  { id: "roadmap", label: "Roadmap", icon: Map, href: "/roadmap" },
   { id: "sessions", label: "Sessions", icon: Activity, href: "/sessions" },
   { id: "work-loop", label: "Work Loop", icon: RefreshCw, href: "/work-loop" },
   { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
@@ -61,6 +62,7 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
     const path = pathname.replace(`/projects/${slug}`, "")
     if (path === "" || path.startsWith("/chat")) return "chat"
     if (path.startsWith("/board")) return "board"
+    if (path.startsWith("/roadmap")) return "roadmap"
     if (path.startsWith("/sessions")) return "sessions"
     if (path.startsWith("/work-loop")) return "work-loop"
     if (path.startsWith("/settings")) return "settings"

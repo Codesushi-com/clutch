@@ -439,4 +439,102 @@ export default defineSchema({
   })
     .index("by_uuid", ["id"])
     .index("by_model", ["model"]),
+
+  // Features (Epics) - high-level feature definitions
+  features: defineTable({
+    id: v.string(), // UUID primary key
+    project_id: v.string(), // UUID ref to projects
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("planned"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("deferred")
+    ),
+    priority: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent")
+    ),
+    position: v.number(), // for ordering
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_project", ["project_id"])
+    .index("by_project_status", ["project_id", "status"])
+    .index("by_project_position", ["project_id", "position"]),
+
+  // Requirements - individual requirements belonging to features
+  requirements: defineTable({
+    id: v.string(), // UUID primary key (REQ-XXX format or UUID)
+    project_id: v.string(), // UUID ref to projects
+    feature_id: v.optional(v.string()), // UUID ref to features (optional)
+    title: v.string(),
+    description: v.optional(v.string()),
+    category: v.optional(v.string()), // e.g., "AUTH", "CONTENT", "SOCIAL"
+    status: v.union(
+      v.literal("draft"),
+      v.literal("approved"),
+      v.literal("implemented"),
+      v.literal("deferred")
+    ),
+    priority: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent")
+    ),
+    position: v.number(),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_project", ["project_id"])
+    .index("by_feature", ["feature_id"])
+    .index("by_project_category", ["project_id", "category"]),
+
+  // Roadmap Phases - GSD-style phase definitions
+  roadmapPhases: defineTable({
+    id: v.string(), // UUID primary key
+    project_id: v.string(), // UUID ref to projects
+    number: v.number(), // Phase number (1, 2, 3 or 2.1, 2.2 for insertions)
+    name: v.string(),
+    goal: v.string(), // What this phase delivers
+    description: v.optional(v.string()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("planned"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("deferred")
+    ),
+    depends_on: v.optional(v.string()), // JSON array of phase IDs
+    success_criteria: v.optional(v.string()), // JSON array of observable behaviors
+    position: v.number(), // for ordering/display
+    inserted: v.optional(v.boolean()), // true for decimal phases (2.1, 2.2)
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_project", ["project_id"])
+    .index("by_project_number", ["project_id", "number"])
+    .index("by_project_position", ["project_id", "position"]),
+
+  // Phase Requirements - many-to-many mapping between phases and requirements
+  phaseRequirements: defineTable({
+    id: v.string(), // UUID primary key
+    phase_id: v.string(), // UUID ref to roadmapPhases
+    requirement_id: v.string(), // UUID ref to requirements
+    project_id: v.string(), // UUID ref to projects (for efficient queries)
+    created_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_phase", ["phase_id"])
+    .index("by_requirement", ["requirement_id"])
+    .index("by_project", ["project_id"])
+    .index("by_phase_requirement", ["phase_id", "requirement_id"]),
 })

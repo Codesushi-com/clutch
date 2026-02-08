@@ -270,3 +270,115 @@ export interface TaskEvent {
   actor: string | null
   data: string | null // JSON string with event-specific fields
 }
+
+// ============================================
+// Roadmap Types
+// ============================================
+
+export type FeatureStatus = 'draft' | 'planned' | 'in_progress' | 'completed' | 'deferred'
+export type RequirementStatus = 'draft' | 'approved' | 'implemented' | 'deferred'
+export type PhaseStatus = 'draft' | 'planned' | 'in_progress' | 'completed' | 'deferred'
+export type RoadmapDepth = 'quick' | 'standard' | 'comprehensive'
+
+export interface Feature {
+  id: string
+  project_id: string
+  title: string
+  description: string | null
+  status: FeatureStatus
+  priority: TaskPriority
+  position: number
+  created_at: number
+  updated_at: number
+}
+
+export interface Requirement {
+  id: string
+  project_id: string
+  feature_id: string | null
+  title: string
+  description: string | null
+  category: string | null
+  status: RequirementStatus
+  priority: TaskPriority
+  position: number
+  created_at: number
+  updated_at: number
+}
+
+export interface RoadmapPhase {
+  id: string
+  project_id: string
+  number: number
+  name: string
+  goal: string
+  description: string | null
+  status: PhaseStatus
+  depends_on: string[]
+  success_criteria: string[]
+  position: number
+  inserted: boolean
+  created_at: number
+  updated_at: number
+}
+
+export interface PhaseRequirement {
+  id: string
+  phase_id: string
+  requirement_id: string
+  project_id: string
+  created_at: number
+}
+
+export interface RoadmapCoverage {
+  total: number
+  mapped: number
+  unmapped: string[]
+  percentage: number
+}
+
+export interface RoadmapExport {
+  phases: Array<{
+    id: string
+    number: number
+    name: string
+    goal: string
+    description: string | null
+    success_criteria: string[]
+    requirements: Array<{
+      id: string
+      title: string
+      category: string | null
+      description: string | null
+    }>
+  }>
+  coverage: {
+    total: number
+    mapped: number
+    percentage: number
+  }
+}
+
+// Insert types for roadmap entities
+export type FeatureInsert = Omit<Feature, 'id' | 'created_at' | 'updated_at'> & {
+  id?: string
+  created_at?: number
+  updated_at?: number
+}
+
+export type RequirementInsert = Omit<Requirement, 'id' | 'created_at' | 'updated_at'> & {
+  id?: string
+  created_at?: number
+  updated_at?: number
+}
+
+export type RoadmapPhaseInsert = Omit<RoadmapPhase, 'id' | 'created_at' | 'updated_at'> & {
+  id?: string
+  created_at?: number
+  updated_at?: number
+}
+
+export type PhaseRequirementInsert = Omit<PhaseRequirement, 'id' | 'created_at'> & {
+  id?: string
+  created_at?: number
+}
