@@ -4,16 +4,16 @@
  * Runs at the start of each work loop cycle to keep state clean.
  * Handles the items that agent reaping (in loop.ts) doesn't cover:
  *
- * 1. Orphaned in_progress tasks — tasks stuck in_progress with no active
- *    agent AND stale agent_last_active_at. Reset to ready.
- * 2. Stale in_review tasks — tasks stuck in_review with a branch but no PR
- *    for >2 hours. Reset to ready so they can be retried.
- * 3. Stale agent fields — tasks in done/ready that still have agent_*
+ * 1. Ghost agent fields — tasks in in_review with no active agent but still
+ *    have agent_* fields set. Clear them (reaping handles in_progress).
+ * 2. Stale agent fields — tasks in done/ready that still have agent_*
  *    fields set. Clear them.
- * 4. Orphan worktrees — worktrees for tasks that are done. Remove them.
+ * 3. Orphan worktrees — worktrees for tasks that are done. Remove them.
+ * 4. Stale browser tabs — close agent-opened browser tabs to prevent memory leaks.
  *
  * Agent reaping (finished/stale sessions) is handled earlier in
- * runProjectCycle, before this phase runs.
+ * runProjectCycle, before this phase runs. Tasks with issues are moved to
+ * blocked for triage rather than being auto-recovered here.
  */
 
 import { execFileSync } from "node:child_process"
@@ -54,21 +54,12 @@ interface CleanupContext {
   agents: AgentManager
   cycle: number
   project: ProjectInfo
-  staleTaskMinutes: number
   log: (params: LogRunParams) => Promise<void>
 }
 
 interface CleanupResult {
   actions: number
 }
-
-// ============================================
-// Constants
-// ============================================
-
-const MS_PER_MINUTE = 60 * 1000
-const DEFAULT_STALE_MINUTES = 15
-const STUCK_IN_REVIEW_MINUTES = 120 // 2 hours
 
 // ============================================
 // Main Cleanup Function
@@ -80,14 +71,10 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
     agents,
     cycle,
     project,
-    staleTaskMinutes,
     log,
   } = ctx
 
   let actions = 0
-
-  const now = Date.now()
-  const staleMs = (staleTaskMinutes || DEFAULT_STALE_MINUTES) * MS_PER_MINUTE
 
   // Derive paths from project configuration
   const repoPath = project.local_path!
@@ -108,64 +95,10 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   })
 
   // ------------------------------------------------------------------
-  // 1. Detect orphaned in_progress tasks
+  // 1. Clear ghost agent fields on in_review tasks with no active agent
   //
-  //    A task is orphaned if:
-  //    - Status is in_progress
-  //    - No active agent handle in AgentManager
-  //    - agent_last_active_at is >staleMinutes old (or absent)
-  // ------------------------------------------------------------------
-  for (const task of inProgressTasks) {
-    const hasAgent = agents.has(task.id)
-    if (hasAgent) continue
-
-    // No agent handle — check staleness via agent_last_active_at
-    const lastActive = task.agent_last_active_at ?? task.updated_at
-    const idleMs = now - lastActive
-
-    if (idleMs >= staleMs) {
-      // Reset to ready
-      try {
-        await convex.mutation(api.tasks.move, {
-          id: task.id,
-          status: "ready",
-        })
-      } catch (moveErr) {
-        // May fail if dependencies block the transition — log and skip
-        const msg = moveErr instanceof Error ? moveErr.message : String(moveErr)
-        console.warn(`[cleanup] Failed to reset orphaned task ${task.id}: ${msg}`)
-        continue
-      }
-
-      // Clear agent fields
-      try {
-        await convex.mutation(api.tasks.clearAgentActivity, {
-          task_id: task.id,
-        })
-      } catch {
-        // Non-fatal
-      }
-
-      await log({
-        projectId: project.id,
-        cycle,
-        phase: "cleanup",
-        action: "reset_orphaned_in_progress",
-        taskId: task.id,
-        details: {
-          idleMinutes: Math.round(idleMs / MS_PER_MINUTE),
-          agentSessionKey: task.agent_session_key,
-        },
-      })
-      actions++
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // 1b. Clear stale agent fields on in_review tasks with no active agent
-  //
-  //     After reaping, tasks may retain agent_* fields even though no
-  //     agent is running. This causes the UI to show ghost agents.
+  //     After reaping, in_review tasks may retain agent_* fields even
+  //     though no agent is running. This causes the UI to show ghost agents.
   // ------------------------------------------------------------------
   const inReviewTasks = await convex.query(api.tasks.getByProject, {
     projectId: project.id,
@@ -194,68 +127,6 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
       details: {
         agentSessionKey: task.agent_session_key,
         agentModel: task.agent_model,
-      },
-    })
-    actions++
-  }
-
-  // ------------------------------------------------------------------
-  // 1c. Detect tickets stuck in_review without PRs
-  //
-  //    A task is stuck in review if:
-  //    - Status is in_review
-  //    - Has a branch but no PR number
-  //    - Has been in this state for >2 hours
-  //
-  //    This happens when agents create branches but fail to create PRs,
-  //    blocking the work loop. We reset these to ready so they can be
-  //    picked up again.
-  // ------------------------------------------------------------------
-  const stuckInReviewThresholdMs = STUCK_IN_REVIEW_MINUTES * MS_PER_MINUTE
-
-  for (const task of inReviewTasks) {
-    // Skip if no branch or already has a PR
-    if (!task.branch) continue
-    if (task.pr_number) continue
-
-    // Check how long it's been in review
-    const inReviewMs = now - task.updated_at
-    if (inReviewMs < stuckInReviewThresholdMs) continue
-
-    // Move back to ready
-    try {
-      await convex.mutation(api.tasks.move, {
-        id: task.id,
-        status: "ready",
-      })
-    } catch (moveErr) {
-      const msg = moveErr instanceof Error ? moveErr.message : String(moveErr)
-      console.warn(`[cleanup] Failed to reset stuck in_review task ${task.id}: ${msg}`)
-      continue
-    }
-
-    // Add a comment explaining the recovery
-    try {
-      await convex.mutation(api.comments.create, {
-        taskId: task.id,
-        author: "coordinator",
-        authorType: "coordinator",
-        content: `Auto-recovered: Task was stuck in review for ${Math.round(inReviewMs / MS_PER_MINUTE)} minutes with a branch but no PR. Reset to ready for retry.`,
-        type: "status_change",
-      })
-    } catch {
-      // Non-fatal — comment creation failure shouldn't block the recovery
-    }
-
-    await log({
-      projectId: project.id,
-      cycle,
-      phase: "cleanup",
-      action: "reset_stuck_in_review",
-      taskId: task.id,
-      details: {
-        inReviewMinutes: Math.round(inReviewMs / MS_PER_MINUTE),
-        branch: task.branch,
       },
     })
     actions++

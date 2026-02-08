@@ -363,7 +363,6 @@ async function runProjectCycle(
         agents: agentManager,
         cycle,
         project,
-        staleTaskMinutes: config.staleTaskMinutes,
         log: (params) => logRun(convex, params),
       })
       return { success: true, actions: result.actions }
