@@ -247,7 +247,24 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
   // Use actual branch name for worktree path (handles descriptive suffixes)
   const worktreesBase = `${project.local_path}-worktrees`
   const worktreePath = `${worktreesBase}/${branchName}`
-  const prompt = buildReviewerPrompt(task, pr, branchName, worktreePath, project)
+
+  // Fetch task comments for context (filter out automated status-change noise)
+  let comments: Array<{ author: string; content: string; timestamp: string }> | undefined
+  try {
+    const taskComments = await convex.query(api.comments.getByTask, { taskId: task.id })
+    comments = taskComments
+      .filter((c) => c.type !== "status_change")  // Skip automated noise
+      .map((c) => ({
+        author: c.author,
+        content: c.content,
+        timestamp: new Date(c.created_at).toISOString(),
+      }))
+  } catch {
+    // Non-fatal — proceed without comment context
+    comments = undefined
+  }
+
+  const prompt = buildReviewerPrompt(task, pr, branchName, worktreePath, project, comments)
 
   try {
     const handle = await agents.spawn({
@@ -448,8 +465,17 @@ function buildReviewerPrompt(
   pr: PRInfo,
   branchName: string,
   worktreePath: string,
-  project: ProjectInfo
+  project: ProjectInfo,
+  comments?: Array<{ author: string; content: string; timestamp: string }>
 ): string {
+  const commentsSection = comments && comments.length > 0
+    ? `
+## Task Comments (context from previous work / triage)
+
+${comments.map((c) => `[${c.timestamp}] ${c.author}: ${c.content}`).join("\n")}
+`
+    : ""
+
   return `# Code Reviewer
 
 ## Identity
@@ -469,7 +495,7 @@ You are a Code Reviewer responsible for verifying pull requests before merge. Yo
 **Ticket Title:** ${task.title}
 
 ${task.description ? `**Description:**\n${task.description}\n` : ""}
-
+${commentsSection}
 **PR Number:** #${pr.number}
 **PR Title:** ${pr.title}
 **Branch:** ${branchName}

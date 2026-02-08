@@ -373,6 +373,22 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     // Extract image URLs for PM triage tasks
     const imageUrls = role === "pm" ? extractImageUrls(task.description) : undefined
 
+    // Fetch task comments for context (filter out automated status-change noise)
+    let comments: Array<{ author: string; content: string; timestamp: string }> | undefined
+    try {
+      const taskComments = await convex.query(api.comments.getByTask, { taskId: task.id })
+      comments = taskComments
+        .filter((c) => c.type !== "status_change")  // Skip automated noise
+        .map((c) => ({
+          author: c.author,
+          content: c.content,
+          timestamp: new Date(c.created_at).toISOString(),
+        }))
+    } catch {
+      // Non-fatal — proceed without comment context
+      comments = undefined
+    }
+
     const prompt = buildPrompt({
       role,
       taskId: task.id,
@@ -384,6 +400,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
       worktreeDir,
       signalResponses,
       imageUrls,
+      comments,
     })
 
     // --- 5. Spawn agent via gateway RPC ---

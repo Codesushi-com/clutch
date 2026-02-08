@@ -9,6 +9,12 @@
 // Types
 // ============================================
 
+export interface TaskComment {
+  author: string
+  content: string
+  timestamp: string
+}
+
 export interface PromptParams {
   /** The role of the agent (dev, pm, qa, research, reviewer, fixer) */
   role: string
@@ -36,6 +42,32 @@ export interface PromptParams {
   branch?: string | null
   /** Optional review comments (for fixer role) */
   reviewComments?: string | null
+  /** Optional task comments for context (from previous work / triage) */
+  comments?: TaskComment[]
+}
+
+// ============================================
+// Comment Formatting Helper
+// ============================================
+
+/**
+ * Format task comments for inclusion in prompts
+ * Filters out automated status-change noise and formats chronologically
+ */
+function formatCommentsSection(comments: TaskComment[] | undefined): string {
+  if (!comments || comments.length === 0) {
+    return ""
+  }
+
+  const formattedComments = comments
+    .map((c) => `[${c.timestamp}] ${c.author}: ${c.content}`)
+    .join("\n")
+
+  return `
+## Task Comments (context from previous work / triage)
+
+${formattedComments}
+`
 }
 
 // ============================================
@@ -50,6 +82,8 @@ function buildPmInstructions(params: PromptParams): string {
     ? `\n## Attached Images\n\nThe following images are attached to this task:\n${params.imageUrls.map((url, i) => `- Image ${i + 1}: ${url}`).join('\n')}\n\n**Important:** Analyze these images carefully. They may contain screenshots, diagrams, or visual context crucial for understanding the issue.`
     : ''
 
+  const commentsSection = formatCommentsSection(params.comments)
+
   return `## Task: ${params.taskTitle}
 
 **Read ${params.repoDir}/AGENTS.md first.**
@@ -58,7 +92,7 @@ Ticket ID: \`${params.taskId}\`
 Role: \`pm\`
 Mode: **TRIAGE**
 
-${params.taskDescription}${imageSection}
+${params.taskDescription}${imageSection}${commentsSection}
 
 ---
 
@@ -148,6 +182,8 @@ ${signals.map((s, i) => `**Q${i + 1}:** ${s.question}\n**A${i + 1}:** ${s.respon
 `
     : ''
 
+  const commentsSection = formatCommentsSection(params.comments)
+
   return `## Task: ${params.taskTitle}
 
 **Read ${params.repoDir}/AGENTS.md first.**
@@ -157,7 +193,7 @@ Role: \`pm\`
 
 ${params.taskDescription}
 
-${signalContext}---
+${signalContext}${commentsSection}---
 
 **Your job:** Analyze this ticket and break it down into actionable sub-tickets.
 
@@ -211,6 +247,8 @@ NEVER finish without updating the task status. If unsure, move to blocked with a
  * Build Research role instructions
  */
 function buildResearchInstructions(params: PromptParams): string {
+  const commentsSection = formatCommentsSection(params.comments)
+
   return `## Task: ${params.taskTitle}
 
 **Read ${params.repoDir}/AGENTS.md first.**
@@ -218,7 +256,7 @@ function buildResearchInstructions(params: PromptParams): string {
 Ticket ID: \`${params.taskId}\`
 Role: \`research\`
 
-${params.taskDescription}
+${params.taskDescription}${commentsSection}
 
 ---
 
@@ -251,6 +289,8 @@ NEVER finish without updating the task status. If unsure, move to blocked with a
  * Build Reviewer role instructions
  */
 function buildReviewerInstructions(params: PromptParams): string {
+  const commentsSection = formatCommentsSection(params.comments)
+
   return `## Task: ${params.taskTitle}
 
 **Read ${params.repoDir}/AGENTS.md first** (use: \`exec(command="cat ${params.repoDir}/AGENTS.md")\`).
@@ -265,7 +305,7 @@ function buildReviewerInstructions(params: PromptParams): string {
 Ticket ID: \`${params.taskId}\`
 Role: \`reviewer\`
 
-${params.taskDescription}
+${params.taskDescription}${commentsSection}
 
 ---
 
@@ -317,6 +357,7 @@ NEVER finish without updating the task status. If unsure, move to blocked with a
  */
 function buildDevInstructions(params: PromptParams): string {
   const branchName = `fix/${params.taskId.slice(0, 8)}`
+  const commentsSection = formatCommentsSection(params.comments)
 
   return `## Task: ${params.taskTitle}
 
@@ -333,7 +374,7 @@ function buildDevInstructions(params: PromptParams): string {
 Ticket ID: \`${params.taskId}\`
 Role: \`dev\`
 
-${params.taskDescription}
+${params.taskDescription}${commentsSection}
 
 ---
 
