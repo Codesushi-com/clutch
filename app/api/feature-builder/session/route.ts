@@ -4,11 +4,10 @@ import { ConvexHttpClient } from "convex/browser"
 // Session management for Feature Builder
 // Stores sessions in Convex for reference and analytics
 
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL
-
 function getConvexClient() {
+  const convexUrl = process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL
   if (!convexUrl) {
-    throw new Error("NEXT_PUBLIC_CONVEX_URL is not configured")
+    throw new Error("CONVEX_URL or NEXT_PUBLIC_CONVEX_URL is not configured")
   }
   return new ConvexHttpClient(convexUrl)
 }
