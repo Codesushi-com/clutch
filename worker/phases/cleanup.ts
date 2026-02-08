@@ -97,17 +97,17 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   })
 
   // ------------------------------------------------------------------
-  // 1. Clear ghost agent fields on in_progress / in_review tasks with
-  //    no active agent handle in the current loop run.
+  // 1. Handle ghost tasks — tasks in in_progress / in_review with no
+  //    active agent handle in the current loop run.
   //
   //    After a loop restart, the AgentManager starts with an empty map.
-  //    Tasks that had agents in the previous loop instance still carry
-  //    agent_* fields. Without this cleanup they show as stale ghosts
-  //    in the UI sidebar forever.
+  //    Tasks that had agents in the previous loop instance may have
+  //    stale agent state. We do NOT clear agent_session_key - it should
+  //    persist so users can see which agent last worked on the task.
+  //    The UI distinguishes running vs completed agents via sessions table.
   //
-  //    For in_progress ghosts: clear fields AND move to ready so the
-  //    loop can re-assign. For in_review ghosts: just clear fields
-  //    (task already has a PR; reviewer will pick it up again).
+  //    For in_progress ghosts: move to ready so the loop can re-assign.
+  //    For in_review ghosts: leave them alone - reviewer will pick up.
   // ------------------------------------------------------------------
   const inReviewTasks = await convex.query(api.tasks.getByProject, {
     projectId: project.id,
@@ -119,16 +119,9 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   )
 
   for (const task of ghostTasks) {
-    // Clear agent fields
-    try {
-      await convex.mutation(api.tasks.clearAgentActivity, {
-        task_id: task.id,
-      })
-    } catch {
-      continue
-    }
-
     // For in_progress ghosts, move back to ready so the loop re-assigns
+    // We do NOT clear agent_session_key - it provides visibility into
+    // which agent was working on this task before it became a ghost.
     if (task.status === "in_progress") {
       try {
         await convex.mutation(api.tasks.move, {
@@ -138,58 +131,43 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
       } catch {
         // Non-fatal — task may have been moved already
       }
-    }
 
-    await log({
-      projectId: project.id,
-      cycle,
-      phase: "cleanup",
-      action: task.status === "in_progress"
-        ? "clear_ghost_agent_in_progress"
-        : "clear_ghost_agent_in_review",
-      taskId: task.id,
-      details: {
-        status: task.status,
-        agentSessionKey: task.agent_session_key,
-      },
-    })
-    actions++
-  }
-
-  // ------------------------------------------------------------------
-  // 2. Clear stale agent fields on done/ready tasks
-  //
-  //    Tasks that finished or were reset may still carry agent_* fields.
-  //    This happens when a task moves to done/ready outside the normal
-  //    agent completion path (e.g., manual moves, PR auto-merge).
-  // ------------------------------------------------------------------
-  const tasksNeedingFieldClear = [...doneTasks, ...readyTasks].filter(
-    (task) => task.agent_session_key !== null,
-  )
-
-  for (const task of tasksNeedingFieldClear) {
-    try {
-      await convex.mutation(api.tasks.clearAgentActivity, {
-        task_id: task.id,
+      await log({
+        projectId: project.id,
+        cycle,
+        phase: "cleanup",
+        action: "ghost_task_reset_to_ready",
+        taskId: task.id,
+        details: {
+          status: task.status,
+          agentSessionKey: task.agent_session_key,
+        },
       })
-    } catch {
-      // Non-fatal
-      continue
+      actions++
+    } else {
+      // in_review ghost - just log it, don't clear session key
+      await log({
+        projectId: project.id,
+        cycle,
+        phase: "cleanup",
+        action: "ghost_task_in_review",
+        taskId: task.id,
+        details: {
+          status: task.status,
+          agentSessionKey: task.agent_session_key,
+        },
+      })
     }
-
-    await log({
-      projectId: project.id,
-      cycle,
-      phase: "cleanup",
-      action: "clear_stale_agent_fields",
-      taskId: task.id,
-      details: {
-        status: task.status,
-        agentSessionKey: task.agent_session_key,
-      },
-    })
-    actions++
   }
+
+  // ------------------------------------------------------------------
+  // 2. (REMOVED) Stale agent field cleanup
+  //
+  //    Previously we cleared agent_session_key on done/ready tasks.
+  //    Now we preserve it so users can always see which agent last
+  //    worked on a task. The agent_session_key is only cleared on
+  //    explicit task retry/reset, not on normal completion.
+  // ------------------------------------------------------------------
 
   // ------------------------------------------------------------------
   // 3. Clean orphan worktrees

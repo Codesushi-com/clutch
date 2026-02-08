@@ -345,6 +345,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
         await convex.mutation(api.tasks.update, {
           id: task.id,
           session_id: handle.sessionKey,
+          agent_session_key: handle.sessionKey,
         })
         // Note: Agent activity is now tracked in sessions table
         // Log agent assignment event
@@ -458,6 +459,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       await convex.mutation(api.tasks.update, {
         id: task.id,
         session_id: handle.sessionKey,
+        agent_session_key: handle.sessionKey,
       })
       // Note: Agent activity is now tracked in sessions table
       // Log agent assignment event

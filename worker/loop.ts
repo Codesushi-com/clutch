@@ -317,15 +317,9 @@ async function runProjectCycle(
       }
 
       // Note: Agent session data is now tracked in sessions table, not tasks
-
-      // Clear agent fields on the task
-      try {
-        await convex.mutation(api.tasks.clearAgentActivity, {
-          task_id: outcome.taskId,
-        })
-      } catch {
-        // Non-fatal — task may have been deleted
-      }
+      // We intentionally do NOT clear agent_session_key here - it should persist
+      // so users can see which agent last worked on the task. The UI distinguishes
+      // running vs completed agents by checking the sessions table status.
 
       // Post-reap status verification — simplified block rule:
       // If agent finished but task is still in_progress or in_review, move to blocked

@@ -437,6 +437,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
         await convex.mutation(api.tasks.update, {
           id: task.id,
           session_id: handle.sessionKey,
+          agent_session_key: handle.sessionKey,
         })
         // Note: Agent activity is now tracked in sessions table
         // Log agent assignment event
