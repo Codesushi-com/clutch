@@ -11,6 +11,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ObservatoryTab, ComingSoon } from './observatory-tab'
 import { TimeRangeToggle, TimeRange } from './time-range-toggle'
+import { TriageTab } from './triage/triage-tab'
 
 type TabId = 'live' | 'triage' | 'analytics' | 'models' | 'prompts'
 
@@ -93,10 +94,7 @@ export function ObservatoryShell() {
         {/* Triage Tab */}
         <TabsContent value="triage">
           <ObservatoryTab>
-            <ComingSoon
-              title="Triage"
-              description="Review and manage blocked tasks requiring human attention."
-            />
+            <TriageTab />
           </ObservatoryTab>
         </TabsContent>
 
