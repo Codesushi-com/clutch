@@ -143,7 +143,7 @@ async function handleNewCommand(
   args: string[]
 ): Promise<SlashCommandResult> {
   const title = args.length > 0 ? args.join(" ") : undefined;
-  await resetSession(sessionKey, title);
+  await resetSession(sessionKey);
 
   const response = title
     ? `✨ New chat created: "${title}"`
