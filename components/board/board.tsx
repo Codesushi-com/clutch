@@ -406,7 +406,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
           ))}
         </div>
         {/* Desktop: flex layout with horizontal scroll, columns fill width */}
-        <div className="hidden lg:flex flex-1 min-h-0 gap-4 overflow-x-auto pb-4">
+        <div className="hidden lg:flex flex-1 min-h-0 gap-4 overflow-x-auto pb-4 items-stretch">
           {visibleColumns.map((col) => (
             <Column
               key={col.status}
