@@ -11,11 +11,19 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts'
-import type { AnalysisRecord, PromptVersionSummary } from '../types'
+import type { AnalysisRecord, PromptVersionSummary } from './types'
 
 const VERSION_COLORS = [
-  '#3b82f6', '#a855f7', '#22c55e', '#eab308', '#f97316',
-  '#ec4899', '#06b6d4', '#ef4444', '#8b5cf6', '#14b8a6',
+  '#3b82f6',
+  '#a855f7',
+  '#22c55e',
+  '#eab308',
+  '#f97316',
+  '#ec4899',
+  '#06b6d4',
+  '#ef4444',
+  '#8b5cf6',
+  '#14b8a6',
 ]
 
 interface TokenEfficiencyChartProps {
@@ -93,7 +101,7 @@ export function TokenEfficiencyChart({ analyses, promptVersions }: TokenEfficien
             <YAxis
               tick={{ fontSize: 12, fill: 'var(--text-muted)' }}
               stroke="var(--border)"
-              tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
+              tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
             />
             <Tooltip
               contentStyle={{

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TrendingUp, TrendingDown, Minus, Target, Zap, Award, AlertTriangle } from 'lucide-react'
-import type { AnalysisRecord } from '../types'
+import type { AnalysisRecord } from './types'
 
 interface OverviewCardsProps {
   analyses: AnalysisRecord[]
@@ -19,9 +19,10 @@ export function OverviewCards({ analyses }: OverviewCardsProps) {
 
   // Average tokens per task
   const withTokens = analyses.filter((a) => a.token_count !== null)
-  const avgTokens = withTokens.length > 0
-    ? Math.round(withTokens.reduce((sum, a) => sum + (a.token_count ?? 0), 0) / withTokens.length)
-    : null
+  const avgTokens =
+    withTokens.length > 0
+      ? Math.round(withTokens.reduce((sum, a) => sum + (a.token_count ?? 0), 0) / withTokens.length)
+      : null
 
   // Token trend: compare first half vs second half
   const tokenTrend = computeTokenTrend(withTokens)
@@ -43,9 +44,7 @@ export function OverviewCards({ analyses }: OverviewCardsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold text-[var(--text-primary)]">
-            {successRate.toFixed(1)}%
-          </div>
+          <div className="text-2xl font-bold text-[var(--text-primary)]">{successRate.toFixed(1)}%</div>
           <p className="text-xs text-[var(--text-muted)] mt-1">
             {successCount} of {analyses.length} tasks
           </p>
@@ -102,7 +101,10 @@ export function OverviewCards({ analyses }: OverviewCardsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-lg font-bold text-[var(--text-primary)] truncate" title={topFailure?.mode}>
+          <div
+            className="text-lg font-bold text-[var(--text-primary)] truncate"
+            title={topFailure?.mode}
+          >
             {topFailure?.mode ?? '—'}
           </div>
           {topFailure && (
@@ -157,7 +159,9 @@ function computeTokenTrend(analyses: AnalysisRecord[]): number | null {
   return ((avgSecond - avgFirst) / avgFirst) * 100
 }
 
-function computeMostImproved(analyses: AnalysisRecord[]): { role: string; gain: number } | null {
+function computeMostImproved(
+  analyses: AnalysisRecord[]
+): { role: string; gain: number } | null {
   const byRole = new Map<string, AnalysisRecord[]>()
   for (const a of analyses) {
     const list = byRole.get(a.role) ?? []
@@ -175,8 +179,8 @@ function computeMostImproved(analyses: AnalysisRecord[]): { role: string; gain: 
     const firstHalf = sorted.slice(0, mid)
     const secondHalf = sorted.slice(mid)
 
-    const rateFirst = firstHalf.filter((a) => a.outcome === 'success').length / firstHalf.length * 100
-    const rateSecond = secondHalf.filter((a) => a.outcome === 'success').length / secondHalf.length * 100
+    const rateFirst = (firstHalf.filter((a) => a.outcome === 'success').length / firstHalf.length) * 100
+    const rateSecond = (secondHalf.filter((a) => a.outcome === 'success').length / secondHalf.length) * 100
     const gain = rateSecond - rateFirst
 
     if (gain > 0 && (best === null || gain > best.gain)) {

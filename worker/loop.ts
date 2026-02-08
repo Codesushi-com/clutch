@@ -377,24 +377,6 @@ async function runProjectCycle(
     }
   }
 
-  // Run triage phase (after reap, before other phases)
-  const triageResult = await runTriage({
-    convex,
-    cycle,
-    project,
-    log: (params) => logRun(convex, params),
-  })
-
-  if (triageResult.sentCount > 0) {
-    await logRun(convex, {
-      projectId: project.id,
-      cycle,
-      phase: "work",
-      action: "triage_complete",
-      details: { sentCount: triageResult.sentCount, taskIds: triageResult.taskIds },
-    })
-  }
-
   // Update state to show we're starting a cycle
   await convex.mutation(api.workLoop.upsertState, {
     project_id: project.id,
@@ -422,19 +404,6 @@ async function runProjectCycle(
       return { success: true, actions: result.actions }
     }
   )
-
-  // Update state to triage phase
-  await convex.mutation(api.workLoop.upsertState, {
-    project_id: project.id,
-    status: "running",
-    current_phase: "triage",
-    current_cycle: cycle,
-    active_agents: agentManager.activeCount(project.id),
-    max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
-  })
-
-  // Phase 2: Triage (already ran above, but update state for visibility)
-  // Note: Triage runs before cleanup to process blocked tasks
 
   // Update state to review phase
   await convex.mutation(api.workLoop.upsertState, {
@@ -497,9 +466,42 @@ async function runProjectCycle(
     }
   )
 
+  // Update state to triage phase (runs after work + review)
+  await convex.mutation(api.workLoop.upsertState, {
+    project_id: project.id,
+    status: "running",
+    current_phase: "triage",
+    current_cycle: cycle,
+    active_agents: agentManager.activeCount(project.id),
+    max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
+  })
+
+  // Phase 4: Triage (runs after work + review to process blocked tasks)
+  const triageResult = await runTriage({
+    convex,
+    cycle,
+    project,
+    log: (params) => logRun(convex, params),
+  })
+
+  if (triageResult.sentCount > 0 || triageResult.escalatedCount > 0) {
+    await logRun(convex, {
+      projectId: project.id,
+      cycle,
+      phase: "triage",
+      action: "triage_complete",
+      details: {
+        sentCount: triageResult.sentCount,
+        escalatedCount: triageResult.escalatedCount,
+        taskIds: triageResult.taskIds,
+        escalatedIds: triageResult.escalatedIds,
+      },
+    })
+  }
+
   // Calculate cycle duration and log completion
   const cycleDurationMs = Date.now() - cycleStart
-  const totalActions = cleanupResult.actions + reviewResult.actions + workResult.actions
+  const totalActions = cleanupResult.actions + reviewResult.actions + workResult.actions + triageResult.sentCount + triageResult.escalatedCount
 
   await logCycleComplete(convex, {
     projectId: project.id,

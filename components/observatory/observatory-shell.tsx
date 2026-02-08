@@ -11,6 +11,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ObservatoryTab, ComingSoon } from './observatory-tab'
 import { TimeRangeToggle, TimeRange } from './time-range-toggle'
+import { PromptsTab } from './prompts/prompts-tab'
 import { TriageTab } from './triage/triage-tab'
 
 type TabId = 'live' | 'triage' | 'analytics' | 'models' | 'prompts'
@@ -121,10 +122,7 @@ export function ObservatoryShell() {
         {/* Prompts Tab */}
         <TabsContent value="prompts">
           <ObservatoryTab>
-            <ComingSoon
-              title="Prompts"
-              description={`Review prompt effectiveness and evolution over ${timeRange}.`}
-            />
+            <PromptsTab timeRange={timeRange} />
           </ObservatoryTab>
         </TabsContent>
       </Tabs>

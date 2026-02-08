@@ -14,6 +14,7 @@ export const getAnalyses = query({
     role: v.optional(v.string()),
     model: v.optional(v.string()),
     since: v.optional(v.number()), // epoch ms
+    projectId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     let analyses
@@ -27,6 +28,18 @@ export const getAnalyses = query({
       analyses = await ctx.db
         .query('taskAnalyses')
         .collect()
+    }
+
+    // Filter by project if specified (need to look up task)
+    if (args.projectId) {
+      const taskIds = new Set<string>()
+      for (const a of analyses) {
+        const task = await ctx.db.get(a.task_id as any)
+        if (task && (task as any).project_id === args.projectId) {
+          taskIds.add(a.task_id)
+        }
+      }
+      analyses = analyses.filter((a) => taskIds.has(a.task_id))
     }
 
     // Filter by model if specified

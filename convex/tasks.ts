@@ -38,6 +38,10 @@ function toTask(doc: {
   agent_tokens_out?: number
   agent_output_preview?: string
   agent_retry_count?: number
+  triage_sent_at?: number
+  auto_triage_count?: number
+  escalated?: boolean
+  escalated_at?: number
   branch?: string
   pr_number?: number
   review_comments?: string
@@ -72,6 +76,9 @@ function toTask(doc: {
     agent_output_preview: doc.agent_output_preview ?? null,
     agent_retry_count: doc.agent_retry_count ?? null,
     triage_sent_at: (doc as { triage_sent_at?: number }).triage_sent_at ?? null,
+    auto_triage_count: (doc as { auto_triage_count?: number }).auto_triage_count ?? null,
+    escalated: (doc as { escalated?: boolean }).escalated ? 1 : 0,
+    escalated_at: (doc as { escalated_at?: number }).escalated_at ?? null,
     cost_total: (doc as { cost_total?: number }).cost_total ?? null,
     branch: doc.branch ?? null,
     pr_number: doc.pr_number ?? null,
@@ -807,6 +814,9 @@ export const update = mutation({
     review_count: v.optional(v.number()),
     agent_retry_count: v.optional(v.number()),
     triage_sent_at: v.optional(v.number()),
+    auto_triage_count: v.optional(v.number()),
+    escalated: v.optional(v.boolean()),
+    escalated_at: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Task> => {
     const existing = await ctx.db
@@ -847,6 +857,14 @@ export const update = mutation({
     if (args.review_count !== undefined) updates.review_count = args.review_count
     if (args.agent_retry_count !== undefined) updates.agent_retry_count = args.agent_retry_count
     if (args.triage_sent_at !== undefined) updates.triage_sent_at = args.triage_sent_at
+    if (args.auto_triage_count !== undefined) updates.auto_triage_count = args.auto_triage_count
+    if (args.escalated !== undefined) {
+      updates.escalated = args.escalated
+      if (args.escalated) {
+        updates.escalated_at = now
+      }
+    }
+    if (args.escalated_at !== undefined) updates.escalated_at = args.escalated_at
 
     await ctx.db.patch(existing._id, updates)
 
