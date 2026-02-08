@@ -92,5 +92,5 @@ export function TabsContent({ value, children, className }: TabsContentProps) {
     return null
   }
 
-  return <div className={cn("mt-4", className)}>{children}</div>
+  return <div className={cn("mt-4 h-full", className)}>{children}</div>
 }
