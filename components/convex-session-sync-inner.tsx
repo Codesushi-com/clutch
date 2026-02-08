@@ -32,7 +32,7 @@ function convertAgentSessionToSession(agentSession: {
   task: {
     id: string
     title: string
-    status: "backlog" | "ready" | "in_progress" | "in_review" | "done"
+    status: "backlog" | "ready" | "in_progress" | "in_review" | "blocked" | "done"
   }
 }): Session {
   return {

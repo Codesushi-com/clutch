@@ -36,10 +36,11 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
   ready: "Ready",
   in_progress: "In Progress",
   in_review: "In Review",
+  blocked: "Blocked",
   done: "Done",
 }
 
-const STATUS_ORDER: TaskStatus[] = ["backlog", "ready", "in_progress", "in_review", "done"]
+const STATUS_ORDER: TaskStatus[] = ["backlog", "ready", "in_progress", "in_review", "blocked", "done"]
 
 export function TaskCardMenu({ task, projectId, columnTasks, onEdit, onTaskDeleted }: TaskCardMenuProps) {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)

@@ -8,7 +8,7 @@ import { logTaskEvent } from './task_events'
 // Type Helpers
 // ============================================
 
-type TaskStatus = "backlog" | "ready" | "in_progress" | "in_review" | "done"
+type TaskStatus = "backlog" | "ready" | "in_progress" | "in_review" | "blocked" | "done"
 type TaskPriority = "low" | "medium" | "high" | "urgent"
 type TaskRole = "any" | "pm" | "dev" | "qa" | "research" | "security" | "fixer"
 type DispatchStatus = "pending" | "spawning" | "active" | "completed" | "failed"
@@ -132,6 +132,7 @@ export const getByStatus = query({
       v.literal('ready'),
       v.literal('in_progress'),
       v.literal('in_review'),
+      v.literal('blocked'),
       v.literal('done')
     ),
   },
@@ -198,6 +199,7 @@ export const getByProject = query({
       v.literal('ready'),
       v.literal('in_progress'),
       v.literal('in_review'),
+      v.literal('blocked'),
       v.literal('done')
     )),
   },
@@ -241,6 +243,7 @@ export const getByProjectAndStatusPaginated = query({
       v.literal('ready'),
       v.literal('in_progress'),
       v.literal('in_review'),
+      v.literal('blocked'),
       v.literal('done')
     ),
     limit: v.optional(v.number()),
@@ -319,9 +322,10 @@ export const getByAssignee = query({
     const statusOrder: Record<TaskStatus, number> = {
       in_progress: 0,
       in_review: 1,
-      ready: 2,
-      backlog: 3,
-      done: 4,
+      blocked: 2,
+      ready: 3,
+      backlog: 4,
+      done: 5,
     }
 
     return tasks
@@ -689,6 +693,7 @@ export const create = mutation({
       v.literal('ready'),
       v.literal('in_progress'),
       v.literal('in_review'),
+      v.literal('blocked'),
       v.literal('done')
     )),
     priority: v.optional(v.union(
@@ -866,6 +871,7 @@ export const move = mutation({
       v.literal('ready'),
       v.literal('in_progress'),
       v.literal('in_review'),
+      v.literal('blocked'),
       v.literal('done')
     ),
     position: v.optional(v.number()),

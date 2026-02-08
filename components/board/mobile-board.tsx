@@ -171,12 +171,13 @@ export function MobileBoard({
                   Show Columns
                 </div>
                 <div className="space-y-2">
-                  {(["backlog", "ready", "in_progress", "in_review", "done"] as TaskStatus[]).map((status) => {
+                  {(["backlog", "ready", "in_progress", "in_review", "blocked", "done"] as TaskStatus[]).map((status) => {
                     const colTitles: Record<TaskStatus, string> = {
                       backlog: "Backlog",
                       ready: "Ready",
                       in_progress: "In Progress",
                       in_review: "In Review",
+                      blocked: "Blocked",
                       done: "Done",
                     }
                     const colColors: Record<TaskStatus, string> = {
@@ -184,6 +185,7 @@ export function MobileBoard({
                       ready: "#3b82f6",
                       in_progress: "#eab308",
                       in_review: "#a855f7",
+                      blocked: "#ef4444",
                       done: "#22c55e",
                     }
                     return (
