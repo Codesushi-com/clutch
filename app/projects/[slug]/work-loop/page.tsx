@@ -16,7 +16,7 @@ interface PageProps {
 
 // Dynamically import ActivityLog to avoid SSR issues with Convex
 const ActivityLog = dynamic(
-  () => import('@/app/work-loop/components/activity-log').then(mod => ({ default: mod.ActivityLog })),
+  () => import('@/components/observatory/live/activity-log').then(mod => ({ default: mod.ActivityLog })),
   {
     ssr: false,
     loading: () => (

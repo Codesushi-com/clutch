@@ -12,9 +12,10 @@ import { formatTimestamp } from "@/lib/utils"
 interface ActiveAgentsProps {
   projectId: string
   projectSlug: string
+  projectName?: string
 }
 
-export function ActiveAgents({ projectId, projectSlug }: ActiveAgentsProps) {
+export function ActiveAgents({ projectId, projectSlug, projectName }: ActiveAgentsProps) {
   const { tasks, isLoading } = useActiveAgentTasks(projectId)
 
   // Transform tasks to agent cards
@@ -30,8 +31,9 @@ export function ActiveAgents({ projectId, projectSlug }: ActiveAgentsProps) {
       durationTimestamp: task.agent_started_at,
       lastActivity: formatLastActivity(task.agent_last_active_at),
       lastActivityTimestamp: task.agent_last_active_at,
+      projectName: projectName,
     }))
-  }, [tasks])
+  }, [tasks, projectName])
 
   const activeCount = agents.length
 
@@ -100,6 +102,7 @@ interface AgentCardProps {
     durationTimestamp: number | null
     lastActivity: string
     lastActivityTimestamp: number | null
+    projectName?: string
   }
   projectSlug: string
 }
@@ -140,6 +143,12 @@ function AgentCard({ agent, projectSlug }: AgentCardProps) {
           {agent.model}
         </span>
       </div>
+
+      {agent.projectName && (
+        <div className="text-xs text-muted-foreground">
+          {agent.projectName}
+        </div>
+      )}
 
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <Tooltip>

@@ -13,6 +13,8 @@ import { ObservatoryTab, ComingSoon } from './observatory-tab'
 import { TimeRangeToggle, TimeRange } from './time-range-toggle'
 import { PromptsTab } from './prompts/prompts-tab'
 import { TriageTab } from './triage/triage-tab'
+import { ProjectFilter } from './project-filter'
+import { LiveTab } from './live/live-tab'
 import { AnalyticsTab } from './analytics/analytics-tab'
 import { ModelsTab } from './models/models-tab'
 
@@ -56,8 +58,14 @@ export function ObservatoryShell() {
   // Time range state (shared across analytics, models, prompts)
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
 
+  // Project filter state (for Live tab)
+  const [selectedProject, setSelectedProject] = useState<string | null>(null)
+
   // Determine if we should show the time range toggle
   const showTimeRange = ['analytics', 'models', 'prompts'].includes(activeTab)
+
+  // Show project filter on Live tab
+  const showProjectFilter = activeTab === 'live'
 
   return (
     <div className="space-y-6">
@@ -69,9 +77,17 @@ export function ObservatoryShell() {
             Monitor, analyze, and optimize your AI agents
           </p>
         </div>
-        {showTimeRange && (
-          <TimeRangeToggle value={timeRange} onChange={setTimeRange} />
-        )}
+        <div className="flex items-center gap-3">
+          {showProjectFilter && (
+            <ProjectFilter
+              value={selectedProject}
+              onChange={setSelectedProject}
+            />
+          )}
+          {showTimeRange && (
+            <TimeRangeToggle value={timeRange} onChange={setTimeRange} />
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -87,10 +103,7 @@ export function ObservatoryShell() {
         {/* Live Tab */}
         <TabsContent value="live">
           <ObservatoryTab>
-            <ComingSoon
-              title="Live Dashboard"
-              description="Real-time view of active agents, sessions, and work loop status."
-            />
+            <LiveTab selectedProjectId={selectedProject} />
           </ObservatoryTab>
         </TabsContent>
 
