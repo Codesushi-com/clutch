@@ -74,6 +74,7 @@ export default function BoardPage({ params }: PageProps) {
     <div className="flex-1 flex flex-col min-h-0">
       <Board
         projectId={project.id}
+        projectSlug={slug}
         onTaskClick={handleTaskClick}
         onAddTask={handleAddTask}
       />

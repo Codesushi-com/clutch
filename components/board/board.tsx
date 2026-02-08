@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button"
 
 interface BoardProps {
   projectId: string
+  projectSlug: string
   onTaskClick: (task: Task) => void
   onAddTask: (status: TaskStatus) => void
 }
@@ -31,7 +32,7 @@ const COLUMNS: { status: TaskStatus; title: string; color: string; showAdd: bool
   { status: "done", title: "Done", color: "#22c55e", showAdd: false },
 ]
 
-const STORAGE_KEY = (projectId: string) => `board-column-visibility-${projectId}`
+const STORAGE_KEY = (projectSlug: string) => `board-columns:${projectSlug}`
 
 // Default visibility: all columns visible
 const DEFAULT_VISIBILITY: Record<TaskStatus, boolean> = {
@@ -43,10 +44,10 @@ const DEFAULT_VISIBILITY: Record<TaskStatus, boolean> = {
   done: true,
 }
 
-function getInitialVisibility(projectId: string): Record<TaskStatus, boolean> {
+function getInitialVisibility(projectSlug: string): Record<TaskStatus, boolean> {
   if (typeof window === 'undefined') return DEFAULT_VISIBILITY
   try {
-    const saved = localStorage.getItem(STORAGE_KEY(projectId))
+    const saved = localStorage.getItem(STORAGE_KEY(projectSlug))
     if (saved) {
       const parsed = JSON.parse(saved)
       // Merge with defaults to handle new columns
@@ -61,7 +62,7 @@ function getInitialVisibility(projectId: string): Record<TaskStatus, boolean> {
 // Pending optimistic move: taskId → target status
 type PendingMoves = Map<string, TaskStatus>
 
-export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
+export function Board({ projectId, projectSlug, onTaskClick, onAddTask }: BoardProps) {
   // Use paginated Convex hook for reactive task data with per-column pagination
   const { tasksByStatus, totalCounts, isLoading, hasMore, loadMore } = usePaginatedBoardTasks(projectId)
   
@@ -94,18 +95,18 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
   
   // Column visibility state - initialize from localStorage
   const [columnVisibility, setColumnVisibility] = useState<Record<TaskStatus, boolean>>(
-    () => getInitialVisibility(projectId)
+    () => getInitialVisibility(projectSlug)
   )
-  
+
   // Save visibility to localStorage whenever it changes
   const updateColumnVisibility = useCallback((status: TaskStatus, visible: boolean) => {
     setColumnVisibility(prev => {
       const next = { ...prev, [status]: visible }
-      localStorage.setItem(STORAGE_KEY(projectId), JSON.stringify(next))
+      localStorage.setItem(STORAGE_KEY(projectSlug), JSON.stringify(next))
       return next
     })
-  }, [projectId])
-  
+  }, [projectSlug])
+
   // Toggle all columns at once
   const toggleAllColumns = useCallback((visible: boolean) => {
     const next: Record<TaskStatus, boolean> = {
@@ -117,8 +118,8 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
       done: visible,
     }
     setColumnVisibility(next)
-    localStorage.setItem(STORAGE_KEY(projectId), JSON.stringify(next))
-  }, [projectId])
+    localStorage.setItem(STORAGE_KEY(projectSlug), JSON.stringify(next))
+  }, [projectSlug])
 
   // Determine which columns should be visible
   const visibleColumns = useMemo(() => {
