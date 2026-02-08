@@ -26,7 +26,7 @@ import type { Task } from "../../lib/types"
 // Types
 // ============================================
 
-type WorkLoopPhase = "cleanup" | "review" | "work" | "analyze" | "idle" | "error"
+import type { WorkLoopPhase } from "../../lib/types"
 
 interface LogRunParams {
   projectId: string

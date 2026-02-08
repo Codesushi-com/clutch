@@ -199,7 +199,7 @@ export function TaskCard({ task, index, onClick, isMobile = false, projectId, co
               </span>
             )}
 
-            {task.role && task.role !== "any" && (
+            {task.role && (
               <span 
                 className="px-1.5 py-0.5 text-xs rounded font-medium text-white"
                 style={{ backgroundColor: ROLE_COLORS[task.role] || "#52525b" }}

@@ -45,13 +45,10 @@ export default defineSchema({
       v.literal("urgent")
     ),
     role: v.optional(v.union(
-      v.literal("any"),
       v.literal("pm"),
       v.literal("dev"),
-      v.literal("qa"),
       v.literal("research"),
-      v.literal("security"),
-      v.literal("fixer")
+      v.literal("reviewer")
     )),
     assignee: v.optional(v.string()),
     requires_human_review: v.boolean(),
@@ -260,10 +257,9 @@ export default defineSchema({
     cycle: v.number(),
     phase: v.union(
       v.literal("cleanup"),
-      v.literal("notify"),
+      v.literal("triage"),
       v.literal("review"),
       v.literal("work"),
-      v.literal("analyze"),
       v.literal("idle"),
       v.literal("error")
     ),

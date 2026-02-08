@@ -10,7 +10,7 @@ import { logTaskEvent } from './task_events'
 
 type TaskStatus = "backlog" | "ready" | "in_progress" | "in_review" | "blocked" | "done"
 type TaskPriority = "low" | "medium" | "high" | "urgent"
-type TaskRole = "any" | "pm" | "dev" | "qa" | "research" | "security" | "fixer"
+type TaskRole = "pm" | "dev" | "research" | "reviewer"
 type DispatchStatus = "pending" | "spawning" | "active" | "completed" | "failed"
 
 // Convert Convex document to Task type
@@ -704,12 +704,10 @@ export const create = mutation({
       v.literal('urgent')
     )),
     role: v.optional(v.union(
-      v.literal('any'),
       v.literal('pm'),
       v.literal('dev'),
-      v.literal('qa'),
       v.literal('research'),
-      v.literal('security')
+      v.literal('reviewer')
     )),
     assignee: v.optional(v.string()),
     requires_human_review: v.optional(v.boolean()),
@@ -792,13 +790,10 @@ export const update = mutation({
       v.literal('urgent')
     )),
     role: v.optional(v.union(
-      v.literal('any'),
       v.literal('pm'),
       v.literal('dev'),
-      v.literal('qa'),
       v.literal('research'),
-      v.literal('security'),
-      v.literal('fixer')
+      v.literal('reviewer')
     )),
     assignee: v.optional(v.string()),
     requires_human_review: v.optional(v.boolean()),

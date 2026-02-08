@@ -60,8 +60,6 @@ export class AgentManager {
   private gateway: GatewayRpcClient
   private completedQueue: AgentOutcome[] = []
   private sessionFileReader: SessionFileReader
-  /** Tombstones: taskId:role → reap timestamp. Prevents re-spawning recently reaped agents in the same role. */
-  private tombstones = new Map<string, number>()
   /** Timestamp when this loop started. Used to ignore stale session files from previous runs. */
   private loopStartedAt: number
 
@@ -83,22 +81,6 @@ export class AgentManager {
 
     const sessionKey = `agent:main:trap:${params.role}:${params.taskId.slice(0, 8)}`
     const now = Date.now()
-
-    // Check tombstone — don't re-spawn agents that were recently reaped in the same role
-    // Analyzers get a shorter TTL since the analysis record is the primary guard against re-spawning
-    const isAnalyzer = params.role === "analyzer"
-    const TOMBSTONE_TTL_MS = isAnalyzer ? 30_000 : 10 * 60 * 1000 // 30s for analyzers, 10min for others
-    const tombstoneKey = `${params.taskId}:${params.role}`
-    const tombstoneTime = this.tombstones.get(tombstoneKey)
-    if (tombstoneTime && (now - tombstoneTime) < TOMBSTONE_TTL_MS) {
-      const agoSec = Math.round((now - tombstoneTime) / 1000)
-      console.log(`[AgentManager] Skipping spawn for ${params.taskId.slice(0, 8)} role=${params.role} — reaped ${agoSec}s ago (tombstone)`)
-      throw new Error(`Task ${params.taskId.slice(0, 8)} role=${params.role} was reaped ${agoSec}s ago, skipping re-spawn`)
-    }
-    // Clear expired tombstones periodically
-    for (const [key, ts] of this.tombstones) {
-      if ((now - ts) > TOMBSTONE_TTL_MS) this.tombstones.delete(key)
-    }
 
     // Create the long-running RPC promise
     const promise = this._runAgent(params, sessionKey, now)
@@ -287,7 +269,6 @@ export class AgentManager {
         reaped.push(outcome)
         this.completedQueue.push(outcome)
         this.agents.delete(taskId)
-        this.tombstones.set(`${taskId}:${handle.role}`, now)
       }
     }
 
@@ -355,43 +336,6 @@ export class AgentManager {
    */
   has(taskId: string): boolean {
     return this.agents.has(taskId)
-  }
-
-  /**
-   * Check if a task+role was recently reaped (tombstoned).
-   * Returns true if the task should NOT be re-spawned in this role.
-   * If role is omitted, checks if ANY role for this task is tombstoned.
-   *
-   * Analyzers get a shorter TTL (30s) since the analysis record is the primary guard.
-   * Other roles get the standard 10 minute TTL.
-   */
-  isRecentlyReaped(taskId: string, role?: string): boolean {
-    const isAnalyzer = role === "analyzer"
-    const TOMBSTONE_TTL_MS = isAnalyzer ? 30_000 : 10 * 60 * 1000
-    const now = Date.now()
-
-    if (role) {
-      const key = `${taskId}:${role}`
-      const ts = this.tombstones.get(key)
-      if (!ts) return false
-      if ((now - ts) > TOMBSTONE_TTL_MS) {
-        this.tombstones.delete(key)
-        return false
-      }
-      return true
-    }
-
-    // No role specified — check if any role for this task is tombstoned
-    for (const [key, ts] of this.tombstones) {
-      if (key.startsWith(`${taskId}:`)) {
-        if ((now - ts) > TOMBSTONE_TTL_MS) {
-          this.tombstones.delete(key)
-          continue
-        }
-        return true
-      }
-    }
-    return false
   }
 
   /**

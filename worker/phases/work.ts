@@ -73,8 +73,6 @@ const ROLE_MODEL_MAP: Record<string, string> = {
   research: "sonnet",
   reviewer: "moonshot/kimi-for-coding",
   dev: "moonshot/kimi-for-coding",
-  qa: "moonshot/kimi-for-coding",
-  fixer: "moonshot/kimi-for-coding",
 }
 
 /**
@@ -310,19 +308,6 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
   for (const task of sortedTasks) {
     const role = task.role ?? "dev"
 
-    // Check tombstone before claiming — avoid claim→revert thrash loop
-    if (agents.isRecentlyReaped(task.id, role)) {
-      await log({
-        projectId: project.id,
-        cycle,
-        phase: "work",
-        action: "tombstone_blocked",
-        taskId: task.id,
-        details: { title: task.title, role },
-      })
-      continue
-    }
-
     // Check dependencies (before attempting claim)
     const depsMet = await areDependenciesMet(convex, task.id)
     if (!depsMet) {
@@ -388,9 +373,6 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     // Extract image URLs for PM triage tasks
     const imageUrls = role === "pm" ? extractImageUrls(task.description) : undefined
 
-    // For fixer tasks, pass review_comments to the prompt builder
-    const reviewComments = role === "fixer" ? task.review_comments : undefined
-
     const prompt = buildPrompt({
       role,
       taskId: task.id,
@@ -402,7 +384,6 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
       worktreeDir,
       signalResponses,
       imageUrls,
-      reviewComments,
     })
 
     // --- 5. Spawn agent via gateway RPC ---

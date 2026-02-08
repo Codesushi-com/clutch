@@ -36,10 +36,9 @@ interface PhaseBadgeProps {
 export function PhaseBadge({ phase }: PhaseBadgeProps) {
   const colors: Record<WorkLoopPhase, string> = {
     cleanup: "bg-orange-500/20 text-orange-600 border-orange-500/30",
-    notify: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30",
+    triage: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30",
     review: "bg-blue-500/20 text-blue-600 border-blue-500/30",
     work: "bg-green-500/20 text-green-600 border-green-500/30",
-    analyze: "bg-purple-500/20 text-purple-600 border-purple-500/30",
     idle: "bg-gray-500/20 text-gray-600 border-gray-500/30",
     error: "bg-red-500/20 text-red-600 border-red-500/30",
   }
