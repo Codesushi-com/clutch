@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts'
-import type { AnalysisRecord, PromptVersionSummary } from '../types'
+import type { AnalysisRecord, PromptVersionSummary } from './types'
 
 interface BeforeAfterChartProps {
   analyses: AnalysisRecord[]
@@ -94,7 +94,11 @@ export function BeforeAfterChart({ analyses, promptVersions }: BeforeAfterChartP
       </h3>
       <div style={{ width: '100%', height: Math.max(200, transitions.length * 60 + 60) }}>
         <ResponsiveContainer>
-          <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+          <BarChart
+            data={data}
+            layout="vertical"
+            margin={{ top: 5, right: 20, left: 20, bottom: 5 }}
+          >
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis
               type="number"

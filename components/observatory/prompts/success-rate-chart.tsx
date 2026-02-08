@@ -11,16 +11,16 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts'
-import type { AnalysisRecord } from '../types'
+import type { AnalysisRecord } from './types'
 
 const ROLE_COLORS: Record<string, string> = {
-  dev: '#3b82f6',      // blue
-  pm: '#a855f7',       // purple
-  qa: '#22c55e',       // green
+  dev: '#3b82f6', // blue
+  pm: '#a855f7', // purple
+  qa: '#22c55e', // green
   researcher: '#eab308', // yellow
-  reviewer: '#f97316',  // orange
-  pe: '#ec4899',       // pink
-  analyzer: '#06b6d4',  // cyan
+  reviewer: '#f97316', // orange
+  pe: '#ec4899', // pink
+  analyzer: '#06b6d4', // cyan
 }
 
 interface SuccessRateChartProps {

@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { AnalysisRecord, PromptVersionSummary } from '../types'
+import type { AnalysisRecord, PromptVersionSummary } from './types'
 
 interface VersionComparisonProps {
   analyses: AnalysisRecord[]
@@ -46,13 +46,12 @@ export function VersionComparison({ analyses, promptVersions }: VersionCompariso
   const statsB = useMemo(() => computeStats(analyses, versionB), [analyses, versionB])
 
   // Statistical significance: simple check based on sample size
-  const isSignificant = statsA !== null && statsB !== null && statsA.total >= 10 && statsB.total >= 10
+  const isSignificant =
+    statsA !== null && statsB !== null && statsA.total >= 10 && statsB.total >= 10
 
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
-      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">
-        Version Comparison
-      </h3>
+      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">Version Comparison</h3>
 
       {/* Version selectors */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -97,17 +96,23 @@ export function VersionComparison({ analyses, promptVersions }: VersionCompariso
           {!isSignificant && statsA !== null && statsB !== null && (
             <div
               className="text-xs rounded px-3 py-2 mb-4"
-              style={{ backgroundColor: 'rgba(234, 179, 8, 0.1)', color: 'var(--accent-yellow)' }}
+              style={{
+                backgroundColor: 'rgba(234, 179, 8, 0.1)',
+                color: 'var(--accent-yellow)',
+              }}
             >
-              ⚠️ Low sample size — results may not be statistically significant
-              ({statsA.total} + {statsB.total} tasks, recommend 10+ each)
+              ⚠️ Low sample size — results may not be statistically significant ({statsA.total} +{' '}
+              {statsB.total} tasks, recommend 10+ each)
             </div>
           )}
 
           {isSignificant && (
             <div
               className="text-xs rounded px-3 py-2 mb-4"
-              style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: 'var(--accent-green)' }}
+              style={{
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                color: 'var(--accent-green)',
+              }}
             >
               ✓ Sufficient data for meaningful comparison ({statsA.total} + {statsB.total} tasks)
             </div>
@@ -186,28 +191,36 @@ function ComparisonRow({
   const formatValue = (v: number | null): string => {
     if (v === null) return '—'
     switch (format) {
-      case 'percent': return `${v.toFixed(1)}%`
-      case 'duration': return formatDuration(v)
-      case 'number': return v.toLocaleString()
+      case 'percent':
+        return `${v.toFixed(1)}%`
+      case 'duration':
+        return formatDuration(v)
+      case 'number':
+        return v.toLocaleString()
     }
   }
 
   const delta = valueA !== null && valueB !== null ? valueB - valueA : null
-  const deltaColor = delta === null
-    ? 'var(--text-muted)'
-    : higherIsBetter !== undefined
-      ? (higherIsBetter ? delta > 0 : delta < 0)
-        ? 'var(--accent-green)'
-        : delta === 0
-          ? 'var(--text-muted)'
-          : 'var(--accent-red)'
-      : 'var(--text-muted)'
+  const deltaColor =
+    delta === null
+      ? 'var(--text-muted)'
+      : higherIsBetter !== undefined
+        ? (higherIsBetter ? delta > 0 : delta < 0)
+          ? 'var(--accent-green)'
+          : delta === 0
+            ? 'var(--text-muted)'
+            : 'var(--accent-red)'
+        : 'var(--text-muted)'
 
   return (
     <tr className="border-b border-[var(--border)] last:border-0">
       <td className="py-2 text-[var(--text-secondary)]">{label}</td>
-      <td className="py-2 text-right text-[var(--text-primary)] font-mono">{formatValue(valueA)}</td>
-      <td className="py-2 text-right text-[var(--text-primary)] font-mono">{formatValue(valueB)}</td>
+      <td className="py-2 text-right text-[var(--text-primary)] font-mono">
+        {formatValue(valueA)}
+      </td>
+      <td className="py-2 text-right text-[var(--text-primary)] font-mono">
+        {formatValue(valueB)}
+      </td>
       <td className="py-2 text-right font-mono" style={{ color: deltaColor }}>
         {delta !== null ? (delta > 0 ? '+' : '') + formatValue(delta) : '—'}
       </td>
@@ -235,12 +248,16 @@ function computeStats(analyses: AnalysisRecord[], versionId: string): VersionSta
   return {
     total: filtered.length,
     successRate: (successCount / filtered.length) * 100,
-    avgTokens: withTokens.length > 0
-      ? Math.round(withTokens.reduce((s, a) => s + (a.token_count ?? 0), 0) / withTokens.length)
-      : null,
-    avgDuration: withDuration.length > 0
-      ? Math.round(withDuration.reduce((s, a) => s + (a.duration_ms ?? 0), 0) / withDuration.length)
-      : null,
+    avgTokens:
+      withTokens.length > 0
+        ? Math.round(withTokens.reduce((s, a) => s + (a.token_count ?? 0), 0) / withTokens.length)
+        : null,
+    avgDuration:
+      withDuration.length > 0
+        ? Math.round(
+            withDuration.reduce((s, a) => s + (a.duration_ms ?? 0), 0) / withDuration.length
+          )
+        : null,
     failureModes,
   }
 }

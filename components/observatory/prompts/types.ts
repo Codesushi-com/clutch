@@ -1,3 +1,8 @@
+/**
+ * Types for prompt metrics
+ * Migrated from app/prompts/metrics/types.ts
+ */
+
 export interface AnalysisRecord {
   id: string
   task_id: string
@@ -31,16 +36,4 @@ export interface MetricsData {
   analyses: AnalysisRecord[]
   promptVersions: PromptVersionSummary[]
   filterOptions: FilterOptions
-}
-
-export type TimeRange = '7d' | '30d' | '90d' | 'all'
-
-export function timeRangeToMs(range: TimeRange): number | null {
-  const now = Date.now()
-  switch (range) {
-    case '7d': return now - 7 * 24 * 60 * 60 * 1000
-    case '30d': return now - 30 * 24 * 60 * 60 * 1000
-    case '90d': return now - 90 * 24 * 60 * 60 * 1000
-    case 'all': return null
-  }
 }

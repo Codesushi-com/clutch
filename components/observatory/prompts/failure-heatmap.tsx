@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import type { AnalysisRecord } from '../types'
+import type { AnalysisRecord } from './types'
 
 interface FailureHeatmapProps {
   analyses: AnalysisRecord[]
@@ -39,10 +39,7 @@ export function FailureHeatmap({ analyses }: FailureHeatmapProps) {
     })
 
     // Find max across all cells
-    const maxCount = matrix.reduce(
-      (max, row) => Math.max(max, ...row),
-      0
-    )
+    const maxCount = matrix.reduce((max, row) => Math.max(max, ...row), 0)
 
     return { matrix, roles, categories, maxCount }
   }, [analyses])
@@ -53,9 +50,7 @@ export function FailureHeatmap({ analyses }: FailureHeatmapProps) {
 
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
-      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">
-        Failure Mode Heatmap
-      </h3>
+      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">Failure Mode Heatmap</h3>
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
@@ -77,9 +72,7 @@ export function FailureHeatmap({ analyses }: FailureHeatmapProps) {
           <tbody>
             {roles.map((role, ri) => (
               <tr key={role}>
-                <td className="text-sm font-medium text-[var(--text-secondary)] py-1 pr-3">
-                  {role}
-                </td>
+                <td className="text-sm font-medium text-[var(--text-secondary)] py-1 pr-3">{role}</td>
                 {categories.map((cat, ci) => {
                   const count = matrix[ri][ci]
                   const intensity = maxCount > 0 ? count / maxCount : 0
@@ -89,14 +82,16 @@ export function FailureHeatmap({ analyses }: FailureHeatmapProps) {
                       <div
                         className="rounded h-8 flex items-center justify-center text-xs font-medium transition-colors"
                         style={{
-                          backgroundColor: count > 0
-                            ? `rgba(239, 68, 68, ${0.15 + intensity * 0.7})`
-                            : 'var(--bg-tertiary)',
-                          color: intensity > 0.5
-                            ? '#fff'
-                            : count > 0
-                              ? 'var(--accent-red)'
-                              : 'var(--text-muted)',
+                          backgroundColor:
+                            count > 0
+                              ? `rgba(239, 68, 68, ${0.15 + intensity * 0.7})`
+                              : 'var(--bg-tertiary)',
+                          color:
+                            intensity > 0.5
+                              ? '#fff'
+                              : count > 0
+                                ? 'var(--accent-red)'
+                                : 'var(--text-muted)',
                         }}
                         title={`${role}: ${cat} — ${count} occurrence${count !== 1 ? 's' : ''}`}
                       >
