@@ -114,6 +114,7 @@ export function useConvexBoardTasks(
 
 // Default number of tasks to show per column
 const DEFAULT_PAGE_SIZE = 25
+const DONE_COLUMN_PAGE_SIZE = 10  // Smaller initial batch for done column
 
 /**
  * Hook that returns paginated tasks for each board column.
@@ -130,13 +131,14 @@ export function usePaginatedBoardTasks(
   loadMore: (status: TaskStatus) => void
 } {
   // Track page size per column (starts at DEFAULT_PAGE_SIZE, grows with "load more")
+  // Done column starts with smaller batch size for performance (can have 100s of tasks)
   const [pageSizes, setPageSizes] = useState<Record<TaskStatus, number>>({
     backlog: DEFAULT_PAGE_SIZE,
     ready: DEFAULT_PAGE_SIZE,
     in_progress: DEFAULT_PAGE_SIZE,
     in_review: DEFAULT_PAGE_SIZE,
     blocked: DEFAULT_PAGE_SIZE,
-    done: DEFAULT_PAGE_SIZE,
+    done: DONE_COLUMN_PAGE_SIZE,
   })
 
   // Fetch paginated data for each status
@@ -208,10 +210,12 @@ export function usePaginatedBoardTasks(
   }
 
   // Load more function - increases page size for a specific column
+  // Done column increments by smaller batch size (10) vs others (25)
   const loadMore = useCallback((status: TaskStatus) => {
+    const increment = status === 'done' ? DONE_COLUMN_PAGE_SIZE : DEFAULT_PAGE_SIZE
     setPageSizes((prev) => ({
       ...prev,
-      [status]: prev[status] + DEFAULT_PAGE_SIZE,
+      [status]: prev[status] + increment,
     }))
   }, [])
 
