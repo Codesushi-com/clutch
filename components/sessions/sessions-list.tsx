@@ -113,7 +113,12 @@ export function SessionsList({
   const handleRowClick = (sessionKey: string) => {
     if (onSessionClick) {
       onSessionClick(sessionKey);
+    } else if (projectSlug) {
+      // Use project-scoped route when in project context
+      const encodedSessionKey = encodeURIComponent(sessionKey);
+      router.push(`/projects/${projectSlug}/sessions/${encodedSessionKey}`);
     } else {
+      // Use global route for non-project contexts
       const encodedSessionKey = encodeURIComponent(sessionKey);
       router.push(`/sessions/${encodedSessionKey}`);
     }
