@@ -6,6 +6,7 @@
  * logging all actions to Convex for visibility.
  */
 
+import { execFileSync } from "node:child_process"
 import { ConvexHttpClient } from "convex/browser"
 import { loadConfig } from "./config"
 import { api } from "../convex/_generated/api"
@@ -67,6 +68,62 @@ process.on("SIGINT", () => {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// ============================================
+// GitHub PR Helpers (for auto-merge fallback)
+// ============================================
+
+interface PRStatus {
+  mergeable: string
+  reviewDecision: string
+  state: string
+}
+
+/**
+ * Check if a PR is approved and mergeable.
+ * Returns PR status or null on error.
+ */
+function getPRStatus(prNumber: number, project: ProjectInfo): PRStatus | null {
+  try {
+    const result = execFileSync(
+      "gh",
+      ["pr", "view", String(prNumber), "--json", "mergeable,reviewDecision,state"],
+      {
+        encoding: "utf-8",
+        timeout: 10_000,
+        cwd: project.local_path!,
+      }
+    )
+    return JSON.parse(result) as PRStatus
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`[WorkLoop] Failed to check PR #${prNumber} status: ${message}`)
+    return null
+  }
+}
+
+/**
+ * Auto-merge a PR using squash strategy.
+ * Returns true on success, false on failure.
+ */
+function autoMergePR(prNumber: number, project: ProjectInfo): boolean {
+  try {
+    execFileSync(
+      "gh",
+      ["pr", "merge", String(prNumber), "--squash", "--delete-branch"],
+      {
+        encoding: "utf-8",
+        timeout: 30_000,
+        cwd: project.local_path!,
+      }
+    )
+    return true
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`[WorkLoop] Auto-merge failed for PR #${prNumber}: ${message}`)
+    return false
+  }
 }
 
 // ============================================
@@ -347,32 +404,79 @@ async function runProjectCycle(
             details: { reason: "finished_in_progress", role: outcome.role },
           })
         }
-        // Case 2: Reviewer finished but task still in_review → blocked
+        // Case 2: Reviewer finished but task still in_review → try auto-merge fallback, then block
         else if (currentStatus === "in_review" && outcome.role === "reviewer") {
-          await convex.mutation(api.tasks.move, {
-            id: outcome.taskId,
-            status: "blocked",
-          })
-          const reviewerOutput = outcome.reply?.slice(0, 500)
-          const reviewBlockReason = reviewerOutput
-            ? `Reviewer finished without merging. Moving to blocked for triage.\n\n**Reviewer's last output:**\n> ${reviewerOutput}`
-            : `Reviewer finished without merging (no output captured). Moving to blocked for triage.`
-          await convex.mutation(api.comments.create, {
-            taskId: outcome.taskId,
-            author: "work-loop",
-            authorType: "coordinator",
-            content: reviewBlockReason,
-            type: "status_change",
-          })
-          console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (reviewer didn't merge)`)
-          await logRun(convex, {
-            projectId: project.id,
-            cycle,
-            phase: "cleanup",
-            action: "task_blocked",
-            taskId: outcome.taskId,
-            details: { reason: "reviewer_no_merge", role: outcome.role },
-          })
+          const prNumber = task.task.pr_number
+          let autoMerged = false
+
+          // Auto-merge fallback: if PR is approved and mergeable, merge it instead of blocking
+          if (prNumber && project.local_path) {
+            const prStatus = getPRStatus(prNumber, project)
+            if (prStatus?.state === "OPEN" && prStatus?.reviewDecision === "APPROVED" && prStatus?.mergeable === "MERGEABLE") {
+              console.log(`[WorkLoop] PR #${prNumber} is approved and mergeable — attempting auto-merge`)
+              const mergeSuccess = autoMergePR(prNumber, project)
+              if (mergeSuccess) {
+                await convex.mutation(api.tasks.move, {
+                  id: outcome.taskId,
+                  status: "done",
+                })
+                await convex.mutation(api.comments.create, {
+                  taskId: outcome.taskId,
+                  author: "work-loop",
+                  authorType: "coordinator",
+                  content: `Reviewer finished without merging, but PR #${prNumber} was approved and mergeable — auto-merged successfully.`,
+                  type: "status_change",
+                })
+                await convex.mutation(api.task_events.logPRMerged, {
+                  taskId: outcome.taskId,
+                  prNumber: prNumber,
+                  mergedBy: "work-loop (auto-merge fallback)",
+                })
+                console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} auto-merged PR #${prNumber} and marked done`)
+                await logRun(convex, {
+                  projectId: project.id,
+                  cycle,
+                  phase: "cleanup",
+                  action: "task_auto_merged",
+                  taskId: outcome.taskId,
+                  details: { reason: "reviewer_no_merge_but_approved", prNumber, role: outcome.role },
+                })
+                autoMerged = true
+              } else {
+                console.log(`[WorkLoop] Auto-merge failed for PR #${prNumber} — will block for triage`)
+              }
+            } else {
+              console.log(`[WorkLoop] PR #${prNumber} not eligible for auto-merge: state=${prStatus?.state}, decision=${prStatus?.reviewDecision}, mergeable=${prStatus?.mergeable}`)
+            }
+          }
+
+          // If auto-merge didn't happen, block for triage
+          if (!autoMerged) {
+            await convex.mutation(api.tasks.move, {
+              id: outcome.taskId,
+              status: "blocked",
+            })
+            const reviewerOutput = outcome.reply?.slice(0, 500)
+            const reviewBlockReason = reviewerOutput
+              ? `Reviewer finished without merging. Moving to blocked for triage.\n\n**Reviewer's last output:**\n> ${reviewerOutput}`
+              : `Reviewer finished without merging (no output captured). Moving to blocked for triage.`
+            await convex.mutation(api.comments.create, {
+              taskId: outcome.taskId,
+              author: "work-loop",
+              authorType: "coordinator",
+              content: reviewBlockReason,
+              type: "status_change",
+            })
+            console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (reviewer didn't merge)`)
+            await logRun(convex, {
+              projectId: project.id,
+              cycle,
+              phase: "cleanup",
+              action: "task_blocked",
+              taskId: outcome.taskId,
+              details: { reason: "reviewer_no_merge", role: outcome.role },
+            })
+          }
         }
         // Case 3: Task already done/blocked → agent signaled correctly, no action
         else {

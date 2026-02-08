@@ -319,12 +319,19 @@ ${params.taskDescription}${commentsSection}
 
 **Pre-commit Rules:** If you need to make any commits (e.g., fixing issues before merge), **NEVER use \`--no-verify\`.** Fix all pre-commit errors properly.
 
-**If approved:**
+**If approved (MERGE REQUIRED):**
 \`\`\`bash
+# YOU MUST MERGE THE PR AFTER APPROVING - this is a required step
 gh pr merge <number> --squash --delete-branch
+
+# Update task status
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "done"}'
+
+# Clean up worktree
 cd ${params.repoDir} && git worktree remove ${params.worktreeDir} --force 2>/dev/null || true
 \`\`\`
+
+**CRITICAL:** Approving a PR without merging it will cause the task to be blocked. You MUST run \`gh pr merge\` after your review passes.
 
 **If lint/typecheck fails:** Check whether the failures are **from this PR's changes** or **pre-existing**.
 - If caused by this PR → reject, move to blocked with specific feedback.
