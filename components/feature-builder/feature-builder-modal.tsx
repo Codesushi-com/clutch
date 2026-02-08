@@ -499,10 +499,10 @@ export function FeatureBuilderModal({
       <>
         <Dialog open={open} onOpenChange={handleCancel}>
           <DialogContent 
-            className="sm:max-w-2xl max-h-[90vh] p-0 gap-0 overflow-hidden"
+            className="sm:max-w-4xl lg:max-w-5xl max-h-[90vh] p-0 gap-0 overflow-hidden"
             showCloseButton={false}
           >
-            <DialogHeader className="px-6 pt-6 pb-4 border-b">
+            <DialogHeader className="px-8 pt-7 pb-4 border-b">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-primary" />
@@ -524,7 +524,7 @@ export function FeatureBuilderModal({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="px-6 py-4 border-b bg-muted/30">
+            <div className="px-8 py-4 border-b bg-muted/30">
               <StepIndicator
                 currentStep={currentStep}
                 completedSteps={completedSteps}
@@ -533,7 +533,7 @@ export function FeatureBuilderModal({
               />
             </div>
 
-            <div className="px-6 py-6 overflow-y-auto max-h-[50vh]">
+            <div className="px-8 py-6 overflow-y-auto max-h-[60vh]">
               {renderStepContent()}
               
               {errors.submit && (
@@ -543,7 +543,7 @@ export function FeatureBuilderModal({
               )}
             </div>
 
-            <div className="px-6 py-4 border-t bg-muted/30 flex items-center justify-between">
+            <div className="px-8 py-4 border-t bg-muted/30 flex items-center justify-between">
               <Button
                 variant="outline"
                 onClick={handlePrevious}
