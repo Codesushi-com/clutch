@@ -76,6 +76,7 @@ function toTask(doc: {
   agent_output_preview?: string
   agent_retry_count?: number
   triage_sent_at?: number
+  cost_total?: number
   auto_triage_count?: number
   escalated?: boolean
   branch?: string
@@ -112,6 +113,7 @@ function toTask(doc: {
     agent_output_preview: doc.agent_output_preview ?? null,
     agent_retry_count: doc.agent_retry_count ?? null,
     triage_sent_at: doc.triage_sent_at ?? null,
+    cost_total: (doc as { cost_total?: number }).cost_total ?? null,
     branch: doc.branch ?? null,
     pr_number: doc.pr_number ?? null,
     review_comments: doc.review_comments ?? null,
