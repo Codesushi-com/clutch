@@ -184,24 +184,24 @@ export function TaskCard({ task, index, onClick, isMobile = false, projectId, co
           </div>
           
           {/* Tags + Assignee */}
-          <div className="mt-2 flex items-center gap-2 flex-wrap">
-            {tags.slice(0, 2).map((tag) => (
+          <div className="mt-2 flex items-center gap-2 overflow-hidden">
+            {tags.slice(0, 1).map((tag) => (
               <span 
                 key={tag}
-                className="px-1.5 py-0.5 text-xs rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)]"
+                className="px-1.5 py-0.5 text-xs rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)] truncate"
               >
                 {tag}
               </span>
             ))}
-            {tags.length > 2 && (
-              <span className="text-xs text-[var(--text-muted)]">
-                +{tags.length - 2}
+            {tags.length > 1 && (
+              <span className="text-xs text-[var(--text-muted)] flex-shrink-0">
+                +{tags.length - 1}
               </span>
             )}
 
             {task.role && (
               <span 
-                className="px-1.5 py-0.5 text-xs rounded font-medium text-white"
+                className="px-1.5 py-0.5 text-xs rounded font-medium text-white flex-shrink-0"
                 style={{ backgroundColor: ROLE_COLORS[task.role] || "#52525b" }}
                 title={`Role: ${ROLE_LABELS[task.role] || task.role}`}
               >
