@@ -596,4 +596,52 @@ export default defineSchema({
     .index("by_project", ["project_id"])
     .index("by_project_period", ["project_id", "period", "period_start"])
     .index("by_period", ["period", "period_start"]),
+
+  // Sessions - unified tracking for all OpenClaw sessions (main, chat, agent, cron)
+  sessions: defineTable({
+    id: v.string(), // UUID primary key
+    session_key: v.string(), // e.g. "agent:main:main", "agent:main:trap:the-trap:xxx"
+    session_id: v.string(), // UUID from sessions.json
+    session_type: v.union(
+      v.literal("main"),
+      v.literal("chat"),
+      v.literal("agent"),
+      v.literal("cron")
+    ),
+    model: v.optional(v.string()), // last model used
+    provider: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("idle"),
+      v.literal("completed"),
+      v.literal("stale")
+    ),
+    // Token counts
+    tokens_input: v.optional(v.number()),
+    tokens_output: v.optional(v.number()),
+    tokens_cache_read: v.optional(v.number()),
+    tokens_cache_write: v.optional(v.number()),
+    tokens_total: v.optional(v.number()),
+    // Cost tracking (USD)
+    cost_input: v.optional(v.float64()),
+    cost_output: v.optional(v.float64()),
+    cost_cache_read: v.optional(v.float64()),
+    cost_cache_write: v.optional(v.float64()),
+    cost_total: v.optional(v.float64()),
+    last_active_at: v.optional(v.number()),
+    output_preview: v.optional(v.string()),
+    stop_reason: v.optional(v.string()),
+    // Relationships
+    task_id: v.optional(v.string()), // UUID ref to tasks
+    project_slug: v.optional(v.string()), // extracted from session_key
+    file_path: v.optional(v.string()), // path to session JSON file
+    created_at: v.optional(v.number()),
+    updated_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_session_key", ["session_key"])
+    .index("by_status", ["status"])
+    .index("by_project", ["project_slug"])
+    .index("by_type", ["session_type"])
+    .index("by_task", ["task_id"]),
 })
