@@ -399,8 +399,9 @@ ${params.taskDescription}${commentsSection}
 2. **Fetch latest main and attempt rebase:**
    \`\`\`bash
    git fetch origin main
-   git rebase origin/main
+   GIT_SEQUENCE_EDITOR=true git rebase origin/main
    \`\`\`
+   **IMPORTANT:** Never use \`git rebase -i\` (interactive). There is no TTY — interactive rebase will hang and stall the task.
 
 3. **If conflicts occur, analyze them carefully:**
    - Check which files have conflicts: \`git diff --name-only --diff-filter=U\`
