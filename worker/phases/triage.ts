@@ -292,16 +292,6 @@ async function escalateTask(
       escalated: true,
     })
 
-    // Create notification for Dan
-    await convex.mutation(api.notifications.create, {
-      taskId: task.id,
-      projectId: project.id,
-      type: "escalation",
-      severity: "critical",
-      title: `🚨 Escalated: ${task.title}`,
-      message: `Auto-triage circuit breaker: ${reason} (3 attempts exhausted)`,
-    })
-
     await log({
       projectId: project.id,
       cycle,
@@ -318,6 +308,46 @@ async function escalateTask(
       actor: "work-loop",
       data: JSON.stringify({ reason }),
     })
+
+    // Notify Ada's main session — she'll decide whether to handle it
+    // herself or relay to Dan. This replaces the old silent notification
+    // table that nobody reads.
+    try {
+      const triageCount = task.auto_triage_count ?? 0
+      const proxyUrl = process.env.TRAP_URL || "http://127.0.0.1:3002"
+      await fetch(`${proxyUrl}/api/openclaw/rpc`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "req",
+          id: `escalate-${task.id.slice(0, 8)}-${Date.now()}`,
+          method: "chat.send",
+          params: {
+            sessionKey: "main",
+            message: [
+              `🚨 ESCALATION — Auto-triage exhausted (${triageCount} attempts)`,
+              ``,
+              `**Task:** ${task.title}`,
+              `**ID:** \`${task.id}\``,
+              `**Project:** ${project.name}`,
+              `**Reason:** ${reason}`,
+              `**Last agent:** ${task.agent_model ?? "unknown"}`,
+              ``,
+              `I couldn't resolve this after ${triageCount} retries. Please review and either:`,
+              `1. Fix it yourself (unblock/reassign/split via triage API)`,
+              `2. Message Dan if it needs his input`,
+              ``,
+              `The task is now marked escalated and won't be retried automatically.`,
+            ].join("\n"),
+            idempotencyKey: `escalate-${task.id.slice(0, 8)}-${Date.now()}`,
+          },
+        }),
+        signal: AbortSignal.timeout(15_000),
+      })
+    } catch (notifyErr) {
+      // Non-fatal — escalation flag is already set
+      console.warn(`[Triage] Failed to notify Ada about escalation: ${notifyErr}`)
+    }
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     await log({
