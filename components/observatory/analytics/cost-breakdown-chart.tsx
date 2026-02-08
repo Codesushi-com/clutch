@@ -130,7 +130,7 @@ export function CostBreakdownChart({ data, isLoading }: CostBreakdownChartProps)
           <div className="h-4 w-48 bg-muted rounded animate-pulse" />
         </CardHeader>
         <CardContent>
-          <div className="h-[300px] bg-muted rounded animate-pulse" />
+          <div className="h-[300px] min-h-[300px] bg-muted rounded animate-pulse" />
         </CardContent>
       </Card>
     )
@@ -145,7 +145,7 @@ export function CostBreakdownChart({ data, isLoading }: CostBreakdownChartProps)
           <CardDescription>Cost distribution by role</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="h-[300px] flex flex-col items-center justify-center border-2 border-dashed border-border rounded-lg bg-muted/30">
+          <div className="h-[300px] min-h-[300px] flex flex-col items-center justify-center border-2 border-dashed border-border rounded-lg bg-muted/30">
             <p className="text-muted-foreground text-sm">No cost data available</p>
           </div>
         </CardContent>
@@ -168,8 +168,8 @@ export function CostBreakdownChart({ data, isLoading }: CostBreakdownChartProps)
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-[300px] min-h-[300px]">
+          <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
             <PieChart>
               <Pie
                 data={chartData}

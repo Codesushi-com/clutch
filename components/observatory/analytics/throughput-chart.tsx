@@ -105,7 +105,7 @@ export function ThroughputChart({ data, timeRange, showCost = false, isLoading }
           <div className="h-4 w-48 bg-muted rounded animate-pulse" />
         </CardHeader>
         <CardContent>
-          <div className="h-[300px] bg-muted rounded animate-pulse" />
+          <div className="h-[300px] min-h-[300px] bg-muted rounded animate-pulse" />
         </CardContent>
       </Card>
     )
@@ -120,7 +120,7 @@ export function ThroughputChart({ data, timeRange, showCost = false, isLoading }
           <CardDescription>Tasks completed per {timeRange === '24h' ? 'hour' : 'day'}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="h-[300px] flex flex-col items-center justify-center border-2 border-dashed border-border rounded-lg bg-muted/30">
+          <div className="h-[300px] min-h-[300px] flex flex-col items-center justify-center border-2 border-dashed border-border rounded-lg bg-muted/30">
             <p className="text-muted-foreground text-sm">No data for selected time range</p>
           </div>
         </CardContent>
@@ -159,8 +159,8 @@ export function ThroughputChart({ data, timeRange, showCost = false, isLoading }
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-[300px] min-h-[300px]">
+          <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
             <ChartComponent data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
               <XAxis
