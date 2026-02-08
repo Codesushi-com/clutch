@@ -639,7 +639,22 @@ ${task.description ? `**Description:**\n${task.description}\n` : ""}
 
 ### If PR needs changes:
 1. **Leave specific, actionable feedback:**\n   \`\`\`bash\n   gh pr comment ${pr.number} --body "Your detailed feedback here..."\n   \`\`\`
-2. **Move ticket back to ready:**\n   \`\`\`bash\n   curl -X PATCH http://localhost:3002/api/tasks/${task.id} -H 'Content-Type: application/json' -d '{"status": "ready"}'\n   \`\`\`
+2. **Move ticket to blocked:**\n   \`\`\`bash\n   curl -X PATCH http://localhost:3002/api/tasks/${task.id} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\n   \`\`\`
+
+## Completion Contract (REQUIRED)
+
+Before you finish, you MUST update the task status. Choose ONE:
+
+### Task completed successfully:
+- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
+- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
+
+### CANNOT complete the task:
+Post a comment explaining why, then move to blocked:
+1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
+2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
+
+NEVER finish without updating the task status. If unsure, move to blocked with an explanation.
 
 ## Important Notes
 

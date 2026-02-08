@@ -66,6 +66,21 @@ ${params.taskDescription}${imageSection}
 1. **Flesh it out** and change role to \`dev\` if it's clear enough
 2. **Create clarifying questions** as blocking signals if it needs more info
 
+## Completion Contract (REQUIRED)
+
+Before you finish, you MUST update the task status. Choose ONE:
+
+### Task completed successfully:
+- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
+- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
+
+### CANNOT complete the task:
+Post a comment explaining why, then move to blocked:
+1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
+2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
+
+NEVER finish without updating the task status. If unsure, move to blocked with an explanation.
+
 ### Triage Decision Guide
 
 **FLESH OUT when the issue has:**
@@ -175,107 +190,23 @@ curl -X POST http://localhost:3002/api/tasks/<TASK_ID>/dependencies -H 'Content-
 
 Use the task IDs from the POST responses to wire up the dependency chain. If ticket B depends on ticket A, create the dependency after both exist.
 
-**When done:** Mark this ticket done:
-\`\`\`bash
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "done"}'
-\`\`\`
+## Completion Contract (REQUIRED)
+
+Before you finish, you MUST update the task status. Choose ONE:
+
+### Task completed successfully:
+- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
+- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
+
+### CANNOT complete the task:
+Post a comment explaining why, then move to blocked:
+1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
+2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
+
+NEVER finish without updating the task status. If unsure, move to blocked with an explanation.
 
 **DO NOT:** Create branches, write code, or create PRs. You are a PM.`
 }
-
-/**
- * Build QA role instructions
- */
-function buildQaInstructions(params: PromptParams): string {
-  return `## Task: ${params.taskTitle}
-
-**Read ${params.repoDir}/AGENTS.md first.**
-
-Ticket ID: \`${params.taskId}\`
-Role: \`qa\`
-
-${params.taskDescription}
-
----
-
-**Your job:** Test this ticket's requirements via browser automation and code review.
-
-## Browser Testing with agent-browser
-
-You have \`agent-browser\` installed globally. Use it for all UI verification.
-
-**Workflow:**
-\`\`\`bash
-# 1. Open the target page
-agent-browser open http://localhost:3002/projects/the-trap/board
-
-# 2. Get accessibility tree to understand UI state
-agent-browser snapshot
-
-# 3. Interact with elements (use refs from snapshot, or CSS selectors)
-agent-browser click @e5
-agent-browser fill @e3 "test input"
-agent-browser find role button click --name "Save"
-
-# 4. Verify results
-agent-browser get text @e1
-agent-browser snapshot
-agent-browser screenshot /tmp/qa-evidence.png
-
-# 5. ALWAYS close when done
-agent-browser close
-\`\`\`
-
-**Key commands:**
-- \`agent-browser open <url>\` — navigate to page
-- \`agent-browser snapshot\` — get accessibility tree with refs (do this often)
-- \`agent-browser click @ref\` / \`agent-browser click "selector"\` — click
-- \`agent-browser fill @ref "text"\` / \`agent-browser fill "selector" "text"\` — fill input
-- \`agent-browser find role button click --name "Name"\` — semantic find + action
-- \`agent-browser get text @ref\` — read element text
-- \`agent-browser wait --text "Expected"\` — wait for text to appear
-- \`agent-browser wait --load networkidle\` — wait for page to finish loading
-- \`agent-browser screenshot /tmp/name.png\` — capture evidence
-- \`agent-browser close\` — **MUST call when done**
-
-**Notes:**
-- Refs (\`@e5\`) are only valid until the page changes — take a new snapshot after interactions
-- The app runs at \`http://localhost:3002\`
-- Take screenshots of failures as evidence
-
-## Testing Scope
-1. **Browser test** all acceptance criteria in the ticket
-2. **Code review** — check the implementation makes sense (\`cat\`, \`rg\` in the repo)
-3. **Type check** — \`cd ${params.repoDir} && pnpm typecheck\` (if relevant)
-4. **File bug tickets** for any issues found
-
-**When verified (all criteria pass):** Mark done:
-\`\`\`bash
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "done"}'
-\`\`\`
-
-**If issues found:** File a bug ticket, add a comment, and move back to ready:
-\`\`\`bash
-# File a bug ticket for each issue
-curl -X POST http://localhost:3002/api/tasks -H 'Content-Type: application/json' -d '{
-  "project_id": "${params.projectId}",
-  "title": "[BUG] <description>",
-  "description": "## Summary\\n...\\n## Steps to Reproduce\\n1. ...\\n## Expected\\n...\\n## Actual\\n...\\n## Severity\\nHigh/Medium/Low",
-  "status": "ready",
-  "priority": "high",
-  "role": "dev"
-}'
-
-# Comment on the original ticket
-curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "QA failed: <summary of issues found>"}'
-
-# Move back to ready for rework
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "ready"}'
-\`\`\`
-
-**CRITICAL: Always run \`agent-browser close\` before finishing.**`
-}
-
 /**
  * Build Research role instructions
  */
@@ -298,10 +229,20 @@ Write findings as a comment on the ticket:
 curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "<findings>"}'
 \`\`\`
 
-**When done:** Mark this ticket done:
-\`\`\`bash
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "done"}'
-\`\`\`
+## Completion Contract (REQUIRED)
+
+Before you finish, you MUST update the task status. Choose ONE:
+
+### Task completed successfully:
+- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
+- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
+
+### CANNOT complete the task:
+Post a comment explaining why, then move to blocked:
+1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
+2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
+
+NEVER finish without updating the task status. If unsure, move to blocked with an explanation.
 
 **DO NOT:** Create branches or write code unless the ticket explicitly asks for a prototype.`
 }
@@ -343,11 +284,26 @@ curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type:
 cd ${params.repoDir} && git worktree remove ${params.worktreeDir} --force 2>/dev/null || true
 \`\`\`
 
-**If issues found:** Leave a PR comment, move ticket back to ready:
+**If issues found:** Leave a PR comment, move ticket to blocked:
 \`\`\`bash
 gh pr comment <number> --body '<specific feedback>'
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "ready"}'
-\`\`\``
+curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "blocked"}'
+\`\`\`
+
+## Completion Contract (REQUIRED)
+
+Before you finish, you MUST update the task status. Choose ONE:
+
+### Task completed successfully:
+- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
+- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
+
+### CANNOT complete the task:
+Post a comment explaining why, then move to blocked:
+1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
+2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
+
+NEVER finish without updating the task status. If unsure, move to blocked with an explanation.`
 }
 
 /**
@@ -416,124 +372,21 @@ Then update ticket to in_review:
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "in_review"}'
 \`\`\`
 
-**If you encounter blockers:**
-\`\`\`bash
-# Post a comment about any issues during implementation
-curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Blocker: <description of issue>"}'
-\`\`\``
+## Completion Contract (REQUIRED)
+
+Before you finish, you MUST update the task status. Choose ONE:
+
+### Task completed successfully:
+- Dev with PR: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "in_review", "pr_number": NUM, "branch": "BRANCH"}'\`
+- Other roles: \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "done"}'\`
+
+### CANNOT complete the task:
+Post a comment explaining why, then move to blocked:
+1. \`curl -X POST http://localhost:3002/api/tasks/{TASK_ID}/comments -H 'Content-Type: application/json' -d '{"content": "Blocked: [specific reason]", "author": "agent", "author_type": "agent", "type": "message"}'\`
+2. \`curl -X PATCH http://localhost:3002/api/tasks/{TASK_ID} -H 'Content-Type: application/json' -d '{"status": "blocked"}'\`
+
+NEVER finish without updating the task status. If unsure, move to blocked with an explanation.`
 }
-
-/**
- * Build Fixer role instructions
- *
- * The fixer addresses review feedback on an existing PR.
- * Unlike dev, fixer works on an existing branch rather than creating a new one.
- */
-function buildFixerInstructions(params: PromptParams): string {
-  const prNumber = params.prNumber ?? "<pr_number>"
-  const branchName = params.branch ?? `fix/${params.taskId.slice(0, 8)}`
-  const reviewComments = params.reviewComments ?? "<review_comments_not_provided>"
-
-  return `## Task: ${params.taskTitle}
-
-**Read ${params.repoDir}/AGENTS.md first** (use: \`exec(command="cat ${params.repoDir}/AGENTS.md")\`).
-
-## Tool Usage (CRITICAL)
-- **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
-- **Use \`exec\` with \`cat\` to read files:** \`exec(command="cat /path/to/file.ts")\`
-- **Use \`rg\` to search code:** \`exec(command="rg 'pattern' ${params.worktreeDir}/app -t ts")\` (note: \`-t ts\` covers both .ts AND .tsx — do NOT use \`-t tsx\`, it doesn't exist)
-- **Use \`fd\` to find files:** \`exec(command="fd '\\.tsx$' ${params.worktreeDir}/app")\`
-- **Quote paths with brackets:** Next.js uses \`[slug]\` dirs — always quote these in shell: \`cat '${params.worktreeDir}/app/projects/[slug]/page.tsx'\`
-- **All work happens in your worktree:** \`${params.worktreeDir}\` (NOT in ${params.repoDir})
-
-Ticket ID: \`${params.taskId}\`
-Role: \`fixer\`
-
-${params.taskDescription}
-
----
-
-**PR:** #${prNumber}
-**Branch:** ${branchName}
-**Worktree:** \`${params.worktreeDir}\`
-
-## Review Comments
-
-${reviewComments}
-
----
-
-## Your Job
-
-You are a Code Fixer. Your job is to address review feedback on an existing PR.
-
-### Instructions
-
-1. **Check out the existing branch** (do NOT create a new branch)
-   \`\`\`bash
-   cd ${params.worktreeDir}
-   git fetch origin
-   git checkout ${branchName}
-   \`\`\`
-
-2. **Read the review comments carefully** — understand what needs to be fixed
-
-3. **Fix each issue** identified by the reviewer:
-   - Make targeted changes to address the feedback
-   - Follow the project's coding standards (see AGENTS.md)
-   - Keep changes minimal and focused
-
-4. **Verify your fixes:**
-   \`\`\`bash
-   cd ${params.worktreeDir}
-   pnpm typecheck
-   pnpm lint
-   \`\`\`
-
-5. **Commit and push to the same branch** (do NOT create a new PR):
-   \`\`\`bash
-   cd ${params.worktreeDir}
-   git add -A
-   git commit -m "fix: address review feedback"
-   git push origin ${branchName}
-   \`\`\`
-
-6. **Post a comment** confirming fixes are complete:
-   \`\`\`bash
-   curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Addressed review feedback. PR #${prNumber} updated."}'
-   \`\`\`
-
-7. **Move the task back to in_review** for re-review:
-   \`\`\`bash
-   curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "in_review"}'
-   \`\`\`
-
-### Important Rules
-
-- **DO NOT create a new branch** — push to the existing \`${branchName}\` branch
-- **DO NOT create a new PR** — the existing PR #${prNumber} will be updated automatically
-- **DO NOT move the task to done** — it needs re-review after your fixes
-- Run typecheck and lint before committing — reviewers will check these
-
-### If You Encounter Blockers
-
-If a review comment is unclear or you can't address it:
-\`\`\`bash
-# Post a comment asking for clarification
-curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Blocker: <description of the issue with the review comment>"}'
-\`\`\``
-}
-
-// ============================================
-// Main Prompt Builder
-// ============================================
-
-/**
- * Build a role-specific prompt for a task
- *
- * Combines the role SOUL template with task details and role-specific
- * instructions for how to complete the task.
- */
 export function buildPrompt(params: PromptParams): string {
   const roleInstructions = (() => {
     switch (params.role) {
@@ -544,15 +397,11 @@ export function buildPrompt(params: PromptParams): string {
         }
         return buildPmInstructions(params)
       }
-      case "qa":
-        return buildQaInstructions(params)
       case "research":
       case "researcher":
         return buildResearchInstructions(params)
       case "reviewer":
         return buildReviewerInstructions(params)
-      case "fixer":
-        return buildFixerInstructions(params)
       case "dev":
       default:
         return buildDevInstructions(params)
