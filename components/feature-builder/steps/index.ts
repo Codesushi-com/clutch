@@ -1,4 +1,5 @@
 export { OverviewStep } from "./overview-step"
+export { ResearchStep } from "./research-step"
 export { RequirementsStep } from "./requirements-step"
 export { DesignStep } from "./design-step"
 export { ImplementationStep } from "./implementation-step"

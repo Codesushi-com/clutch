@@ -37,6 +37,7 @@ import {
 import { StepIndicator } from "./step-indicator"
 import {
   OverviewStep,
+  ResearchStep,
   RequirementsStep,
   DesignStep,
   ImplementationStep,
@@ -55,6 +56,7 @@ const INITIAL_DATA: FeatureBuilderData = {
   name: "",
   description: "",
   projectId: "",
+  research: null,
   requirements: [],
   acceptanceCriteria: [],
   designNotes: "",
@@ -116,6 +118,10 @@ export function FeatureBuilderModal({
         } else if (data.description.length < 10) {
           newErrors.description = "Description must be at least 10 characters"
         }
+        break
+
+      case "research":
+        // Research is auto-started and optional - user can continue even if incomplete
         break
 
       case "requirements":
@@ -260,6 +266,14 @@ export function FeatureBuilderModal({
           <OverviewStep
             data={data}
             projects={projectList}
+            onChange={updateData}
+            errors={errors}
+          />
+        )
+      case "research":
+        return (
+          <ResearchStep
+            data={data}
             onChange={updateData}
             errors={errors}
           />

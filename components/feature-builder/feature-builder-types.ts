@@ -1,5 +1,6 @@
 export type FeatureBuilderStep = 
   | 'overview'
+  | 'research'
   | 'requirements'
   | 'design'
   | 'implementation'
@@ -12,6 +13,9 @@ export interface FeatureBuilderData {
   name: string
   description: string
   projectId: string
+  
+  // Research step
+  research: ResearchProgress | null
   
   // Requirements step
   requirements: string[]
@@ -43,14 +47,36 @@ export interface StepConfig {
   index: number
 }
 
+export type ResearchThreadStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+export interface ResearchThread {
+  id: string
+  name: string
+  description: string
+  status: ResearchThreadStatus
+  progress: number // 0-100
+  result: string | null
+  error: string | null
+  startedAt: number | null
+  completedAt: number | null
+}
+
+export interface ResearchProgress {
+  threads: ResearchThread[]
+  overallProgress: number // 0-100
+  isComplete: boolean
+  hasErrors: boolean
+}
+
 export const STEPS: StepConfig[] = [
   { id: 'overview', label: 'Overview', description: 'Feature name and basic info', index: 0 },
-  { id: 'requirements', label: 'Requirements', description: 'Define what needs to be built', index: 1 },
-  { id: 'design', label: 'Design', description: 'Technical design and approach', index: 2 },
-  { id: 'implementation', label: 'Implementation', description: 'Plan the development work', index: 3 },
-  { id: 'testing', label: 'Testing', description: 'Define test strategy', index: 4 },
-  { id: 'review', label: 'Review', description: 'Final review before creation', index: 5 },
-  { id: 'launch', label: 'Launch', description: 'Create the feature ticket', index: 6 },
+  { id: 'research', label: 'Research', description: 'Parallel research across domains', index: 1 },
+  { id: 'requirements', label: 'Requirements', description: 'Define what needs to be built', index: 2 },
+  { id: 'design', label: 'Design', description: 'Technical design and approach', index: 3 },
+  { id: 'implementation', label: 'Implementation', description: 'Plan the development work', index: 4 },
+  { id: 'testing', label: 'Testing', description: 'Define test strategy', index: 5 },
+  { id: 'review', label: 'Review', description: 'Final review before creation', index: 6 },
+  { id: 'launch', label: 'Launch', description: 'Create the feature ticket', index: 7 },
 ]
 
 export const TOTAL_STEPS = STEPS.length
