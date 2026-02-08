@@ -14,6 +14,7 @@ import { TimeRangeToggle, TimeRange } from './time-range-toggle'
 import { PromptsTab } from './prompts/prompts-tab'
 import { TriageTab } from './triage/triage-tab'
 import { AnalyticsTab } from './analytics/analytics-tab'
+import { ModelsTab } from './models/models-tab'
 
 type TabId = 'live' | 'triage' | 'analytics' | 'models' | 'prompts'
 
@@ -110,10 +111,7 @@ export function ObservatoryShell() {
         {/* Models Tab */}
         <TabsContent value="models">
           <ObservatoryTab>
-            <ComingSoon
-              title="Models"
-              description={`Analyze model usage, costs, and performance over ${timeRange}.`}
-            />
+            <ModelsTab timeRange={timeRange} />
           </ObservatoryTab>
         </TabsContent>
 
