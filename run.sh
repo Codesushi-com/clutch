@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
-# Trap production server + work loop (separate processes)
+# Trap production server + work loop (systemd-managed)
 #
 # Usage:
-#   ./run.sh start     - build + start server + work loop
-#   ./run.sh stop      - stop everything
-#   ./run.sh restart   - stop + start
-#   ./run.sh watch     - start + auto-rebuild on main changes
-#   ./run.sh status    - show what's running
-#   ./run.sh logs      - tail server log
-#   ./run.sh loop-logs - tail work loop log
-#   ./run.sh loop-restart - restart just the work loop
+#   ./run.sh start      - build + enable/start all services
+#   ./run.sh stop       - stop all services
+#   ./run.sh restart    - stop + start
+#   ./run.sh watch      - start + auto-rebuild on main changes (uses PID files)
+#   ./run.sh status     - show systemd service status
+#   ./run.sh logs       - tail server logs (journald)
+#   ./run.sh loop-logs  - tail work loop logs (journald)
+#   ./run.sh bridge-logs- tail chat bridge logs (journald)
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
 PORT="${PORT:-3002}"
-SERVER_LOG="/tmp/trap-prod.log"
-LOOP_LOG="/tmp/trap-loop.log"
-BRIDGE_LOG="/tmp/trap-bridge.log"
-SERVER_PID="/tmp/trap-server.pid"
-LOOP_PID="/tmp/trap-loop.pid"
-BRIDGE_PID="/tmp/trap-bridge.pid"
+
+# Systemd service names
+SERVER_SERVICE="trap-server"
+LOOP_SERVICE="trap-loop"
+BRIDGE_SERVICE="trap-bridge"
 
 build() {
   echo "[trap] Building..."
@@ -28,15 +27,82 @@ build() {
   echo "[trap] Build complete"
 }
 
+install_services() {
+  # Copy unit files to user systemd directory if they don't exist or are different
+  mkdir -p ~/.config/systemd/user/
+  for service in "$SERVER_SERVICE" "$LOOP_SERVICE" "$BRIDGE_SERVICE"; do
+    if [[ ! -f "systemd/${service}.service" ]]; then
+      echo "[trap] Error: systemd/${service}.service not found"
+      exit 1
+    fi
+    cp "systemd/${service}.service" ~/.config/systemd/user/
+  done
+  systemctl --user daemon-reload
+  echo "[trap] Systemd unit files installed"
+}
+
+start_services() {
+  echo "[trap] Starting services..."
+  systemctl --user start "$SERVER_SERVICE"
+  # Loop and bridge have After=trap-server.service, but we still wait a moment
+  sleep 1
+  systemctl --user start "$BRIDGE_SERVICE"
+  systemctl --user start "$LOOP_SERVICE"
+  echo "[trap] Services started"
+}
+
+stop_services() {
+  echo "[trap] Stopping services..."
+  systemctl --user stop "$LOOP_SERVICE" "$BRIDGE_SERVICE" "$SERVER_SERVICE" 2>/dev/null || true
+  echo "[trap] Services stopped"
+}
+
+enable_services() {
+  systemctl --user enable "$SERVER_SERVICE" "$BRIDGE_SERVICE" "$LOOP_SERVICE"
+  echo "[trap] Services enabled (will start on boot/login)"
+}
+
+status() {
+  echo "=== Trap Systemd Status ==="
+  echo ""
+  systemctl --user status "$SERVER_SERVICE" --no-pager -o short 2>/dev/null || echo "Server: not found"
+  echo ""
+  systemctl --user status "$LOOP_SERVICE" --no-pager -o short 2>/dev/null || echo "Loop: not found"
+  echo ""
+  systemctl --user status "$BRIDGE_SERVICE" --no-pager -o short 2>/dev/null || echo "Bridge: not found"
+}
+
+logs() {
+  journalctl --user -u "$SERVER_SERVICE" -f
+}
+
+loop_logs() {
+  journalctl --user -u "$LOOP_SERVICE" -f
+}
+
+bridge_logs() {
+  journalctl --user -u "$BRIDGE_SERVICE" -f
+}
+
+all_logs() {
+  journalctl --user -u "$SERVER_SERVICE" -u "$LOOP_SERVICE" -u "$BRIDGE_SERVICE" -f
+}
+
+# Legacy watch mode (still uses PID files for git-based auto-rebuild)
+SERVER_LOG="/tmp/trap-prod.log"
+LOOP_LOG="/tmp/trap-loop.log"
+BRIDGE_LOG="/tmp/trap-bridge.log"
+SERVER_PID="/tmp/trap-server.pid"
+LOOP_PID="/tmp/trap-loop.pid"
+BRIDGE_PID="/tmp/trap-bridge.pid"
+
 kill_tree() {
-  # Kill a process and all its descendants via process group
   local pid="$1"
   local pidfile="${2:-}"
   if ! kill -0 "$pid" 2>/dev/null; then
     [[ -n "$pidfile" ]] && rm -f "$pidfile"
     return 0
   fi
-  # Try graceful TERM to the whole process group first
   local pgid
   pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
   if [[ -n "$pgid" && "$pgid" != "0" ]]; then
@@ -45,7 +111,6 @@ kill_tree() {
     kill "$pid" 2>/dev/null || true
   fi
   sleep 1
-  # Force kill any survivors
   if [[ -n "$pgid" && "$pgid" != "0" ]]; then
     kill -9 -- "-$pgid" 2>/dev/null || true
   fi
@@ -53,123 +118,67 @@ kill_tree() {
   [[ -n "$pidfile" ]] && rm -f "$pidfile"
 }
 
-start_server() {
-  stop_server 2>/dev/null || true
-  echo "[trap] Starting production server on port $PORT"
-  NODE_ENV=production setsid nohup volta run node ./node_modules/next/dist/bin/next start -p "$PORT" > "$SERVER_LOG" 2>&1 &
-  echo $! > "$SERVER_PID"
-  echo "[trap] Server PID $(cat "$SERVER_PID"), log: $SERVER_LOG"
-}
-
-stop_server() {
+stop_server_pid() {
   if [[ -f "$SERVER_PID" ]]; then
     local pid
     pid=$(cat "$SERVER_PID")
     kill_tree "$pid" "$SERVER_PID"
-    echo "[trap] Stopped server PID $pid"
   fi
   fuser -k "$PORT/tcp" 2>/dev/null || true
 }
 
-load_env() {
-  if [[ -f .env.local ]]; then
-    set -a
-    source <(grep -v '^#' .env.local)
-    set +a
+stop_loop_pid() {
+  if [[ -f "$LOOP_PID" ]]; then
+    local pid
+    pid=$(cat "$LOOP_PID")
+    kill_tree "$pid" "$LOOP_PID"
   fi
 }
 
-start_loop() {
-  stop_loop 2>/dev/null || true
+stop_bridge_pid() {
+  if [[ -f "$BRIDGE_PID" ]]; then
+    local pid
+    pid=$(cat "$BRIDGE_PID")
+    kill_tree "$pid" "$BRIDGE_PID"
+  fi
+}
+
+start_server_pid() {
+  stop_server_pid 2>/dev/null || true
+  echo "[trap] Starting production server on port $PORT (watch mode)"
+  NODE_ENV=production setsid nohup /home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/next/dist/bin/next start -p "$PORT" > "$SERVER_LOG" 2>&1 &
+  echo $! > "$SERVER_PID"
+}
+
+start_loop_pid() {
+  stop_loop_pid 2>/dev/null || true
   if grep -q "WORK_LOOP_ENABLED=true" .env.local 2>/dev/null; then
-    echo "[trap] Starting work loop (separate process)"
-    load_env
-    setsid nohup volta run npx tsx worker/loop.ts > "$LOOP_LOG" 2>&1 &
+    echo "[trap] Starting work loop (watch mode)"
+    set -a
+    source <(grep -v '^#' .env.local)
+    set +a
+    setsid nohup /home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/.bin/tsx worker/loop.ts > "$LOOP_LOG" 2>&1 &
     echo $! > "$LOOP_PID"
-    echo "[trap] Loop PID $(cat "$LOOP_PID"), log: $LOOP_LOG"
   else
     echo "[trap] Work loop disabled (WORK_LOOP_ENABLED != true)"
   fi
 }
 
-stop_loop() {
-  if [[ -f "$LOOP_PID" ]]; then
-    local pid
-    pid=$(cat "$LOOP_PID")
-    kill_tree "$pid" "$LOOP_PID"
-    echo "[trap] Stopped loop PID $pid"
-  fi
-}
-
-start_bridge() {
-  stop_bridge 2>/dev/null || true
-  echo "[trap] Starting chat bridge (separate process)"
-  load_env
-  setsid nohup volta run npx tsx worker/chat-bridge.ts > "$BRIDGE_LOG" 2>&1 &
+start_bridge_pid() {
+  stop_bridge_pid 2>/dev/null || true
+  echo "[trap] Starting chat bridge (watch mode)"
+  set -a
+  source <(grep -v '^#' .env.local)
+  set +a
+  setsid nohup /home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/.bin/tsx worker/chat-bridge.ts > "$BRIDGE_LOG" 2>&1 &
   echo $! > "$BRIDGE_PID"
-  echo "[trap] Bridge PID $(cat "$BRIDGE_PID"), log: $BRIDGE_LOG"
-}
-
-stop_bridge() {
-  if [[ -f "$BRIDGE_PID" ]]; then
-    local pid
-    pid=$(cat "$BRIDGE_PID")
-    kill_tree "$pid" "$BRIDGE_PID"
-    echo "[trap] Stopped bridge PID $pid"
-  fi
-}
-
-status() {
-  echo "=== Trap Status ==="
-  if [[ -f "$SERVER_PID" ]] && kill -0 "$(cat "$SERVER_PID")" 2>/dev/null; then
-    echo "Server: RUNNING (PID $(cat "$SERVER_PID"), port $PORT)"
-  else
-    echo "Server: STOPPED"
-  fi
-  if [[ -f "$LOOP_PID" ]] && kill -0 "$(cat "$LOOP_PID")" 2>/dev/null; then
-    echo "Loop:   RUNNING (PID $(cat "$LOOP_PID"))"
-  else
-    echo "Loop:   STOPPED"
-  fi
-  if [[ -f "$BRIDGE_PID" ]] && kill -0 "$(cat "$BRIDGE_PID")" 2>/dev/null; then
-    echo "Bridge: RUNNING (PID $(cat "$BRIDGE_PID"))"
-  else
-    echo "Bridge: STOPPED"
-  fi
-
-  # Detect orphaned processes (trap-related processes not in any tracked process group)
-  local tracked_pgids=""
-  for pidfile in "$SERVER_PID" "$LOOP_PID" "$BRIDGE_PID"; do
-    [[ -f "$pidfile" ]] && {
-      local p; p=$(cat "$pidfile")
-      kill -0 "$p" 2>/dev/null && tracked_pgids+=" $(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')"
-    }
-  done
-  local orphan_pids=""
-  while read -r pid pgid; do
-    local is_tracked=false
-    for tpg in $tracked_pgids; do
-      [[ "$pgid" == "$tpg" ]] && { is_tracked=true; break; }
-    done
-    $is_tracked || orphan_pids+=" $pid"
-  done < <(ps aux | grep -E '/home/dan/src/trap.*(loop|bridge|next)' | grep -v grep | awk '{print $2}' | while read -r p; do
-    echo "$p $(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')"
-  done)
-  if [[ -n "${orphan_pids// /}" ]]; then
-    echo ""
-    echo "⚠️  ORPHANS detected:$orphan_pids"
-    echo "   Run: ./run.sh clean"
-  fi
-
-  echo ""
-  grep "WORK_LOOP" .env.local 2>/dev/null || echo "(no work loop config)"
 }
 
 watch_and_rebuild() {
   build
-  start_server
-  start_bridge
-  start_loop
+  start_server_pid
+  start_bridge_pid
+  start_loop_pid
 
   echo "[trap] Watching for git changes on main..."
   local last_hash
@@ -187,12 +196,12 @@ watch_and_rebuild() {
         last_hash="$remote_hash"
         echo "[trap] Rebuilding..."
         if build; then
-          stop_server
-          start_server
-          stop_bridge
-          start_bridge
-          stop_loop
-          start_loop
+          stop_server_pid
+          start_server_pid
+          stop_bridge_pid
+          start_bridge_pid
+          stop_loop_pid
+          start_loop_pid
           echo "[trap] Restarted at $(date '+%H:%M:%S')"
         else
           echo "[trap] BUILD FAILED — server still running old version"
@@ -204,71 +213,71 @@ watch_and_rebuild() {
   done
 }
 
+# Legacy clean command (kill all trap processes)
 clean() {
-  # Kill ALL trap-related processes, tracked or not
   echo "[trap] Killing all trap-related processes..."
+  stop_services 2>/dev/null || true
   local pids
   pids=$(ps aux | grep -E 'trap.*(loop|bridge|next|chat-bridge)' | grep -v grep | awk '{print $2}')
   if [[ -n "$pids" ]]; then
     echo "$pids" | xargs kill 2>/dev/null || true
     sleep 1
     echo "$pids" | xargs kill -9 2>/dev/null || true
-    echo "[trap] Killed: $pids"
-  else
-    echo "[trap] No trap processes found"
   fi
   rm -f "$SERVER_PID" "$LOOP_PID" "$BRIDGE_PID"
   fuser -k "$PORT/tcp" 2>/dev/null || true
   echo "[trap] Clean complete"
 }
 
+# Main command dispatch
 case "${1:-status}" in
   start)
+    install_services
     build
-    start_server
-    start_bridge
-    start_loop
+    enable_services
+    start_services
     ;;
   stop)
-    stop_loop
-    stop_bridge
-    stop_server
+    stop_services
     ;;
   restart)
-    stop_loop
-    stop_bridge
-    stop_server
+    stop_services
     sleep 1
+    install_services
     build
-    start_server
-    start_bridge
-    start_loop
+    start_services
     ;;
   watch)
-    trap 'stop_loop; stop_bridge; stop_server; exit 0' INT TERM
+    trap 'stop_loop_pid; stop_bridge_pid; stop_server_pid; exit 0' INT TERM
     watch_and_rebuild
     ;;
   status)
     status
     ;;
   logs|log)
-    tail -f "$SERVER_LOG"
+    logs
     ;;
   loop-logs|loop-log)
-    tail -f "$LOOP_LOG"
+    loop_logs
     ;;
-  loop-restart)
-    stop_loop
-    start_loop
+  bridge-logs|bridge-log)
+    bridge_logs
     ;;
-  loop-stop)
-    stop_loop
+  all-logs)
+    all_logs
+    ;;
+  enable)
+    install_services
+    enable_services
+    ;;
+  install)
+    install_services
     ;;
   clean)
     clean
     ;;
   *)
-    echo "Usage: $0 {start|stop|restart|watch|status|logs|loop-logs|loop-restart|loop-stop|clean}"
+    echo "Usage: $0 {start|stop|restart|watch|status|logs|loop-logs|bridge-logs|all-logs|enable|install|clean}"
     exit 1
     ;;
 esac
