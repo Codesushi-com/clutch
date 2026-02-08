@@ -1,5 +1,6 @@
 import { query } from './_generated/server'
 import { v } from 'convex/values'
+import type { Id } from './_generated/dataModel'
 
 // ============================================
 // Metrics Queries - Aggregated task analysis data
@@ -34,8 +35,9 @@ export const getAnalyses = query({
     if (args.projectId) {
       const taskIds = new Set<string>()
       for (const a of analyses) {
-        const task = await ctx.db.get(a.task_id as any)
-        if (task && (task as any).project_id === args.projectId) {
+        // task_id is stored as UUID string, cast to Id<"tasks"> for ctx.db.get
+        const task = await ctx.db.get(a.task_id as unknown as Id<'tasks'>)
+        if (task && (task as { project_id: string }).project_id === args.projectId) {
           taskIds.add(a.task_id)
         }
       }

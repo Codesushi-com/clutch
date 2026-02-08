@@ -338,10 +338,9 @@ export default function ChatPage({ params }: PageProps) {
 
     // Handle post-command actions
     if (result.action === "clear_chat") {
-      // The session has been reset - clear local messages via store
-      // Note: The Convex sync will handle this automatically on next refresh
-      // but we trigger a re-fetch by updating the chat store
-      // Streaming removed — Convex sync handles refresh automatically
+      // Clear the local message cache so old messages disappear from UI
+      // New messages will appear via Convex reactive sync as they come in
+      useChatStore.getState().syncMessages(activeChat.id, [])
     } else if (result.action === "refresh_session") {
       // Refresh session info (for /model command)
       // The session info effect will pick up the change automatically
