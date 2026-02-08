@@ -27,7 +27,7 @@ export function MessageActions({ message, onCreateTask }: MessageActionsProps) {
   }, [showMenu])
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(message.content)
+    await navigator.clipboard?.writeText(message.content)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
     setShowMenu(false)

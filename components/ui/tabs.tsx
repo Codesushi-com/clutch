@@ -28,7 +28,7 @@ interface TabsProps {
 export function Tabs({ value, onValueChange, children, className }: TabsProps) {
   return (
     <TabsContext.Provider value={{ value, onValueChange }}>
-      <div className={cn("flex flex-col", className)}>{children}</div>
+      <div className={cn("flex flex-col min-h-0", className)}>{children}</div>
     </TabsContext.Provider>
   )
 }

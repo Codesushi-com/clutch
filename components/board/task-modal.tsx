@@ -409,7 +409,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                 <span
                   className="text-xs text-[var(--text-muted)] font-mono cursor-pointer hover:text-[var(--accent-blue)] transition-colors select-all"
                   title="Click to copy ID"
-                  onClick={() => navigator.clipboard.writeText(task.id.substring(0, 8))}
+                  onClick={() => navigator.clipboard?.writeText(task.id.substring(0, 8))}
                 >
                   #{task.id.substring(0, 8)}
                 </span>
@@ -497,12 +497,12 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                 </TabsList>
               </div>
 
-              <div className="flex-1 overflow-hidden p-4 min-h-0">
-                <div className="flex gap-8 h-full min-h-0">
+              <div className="flex-1 overflow-hidden p-4 min-h-0 flex flex-col">
+                <div className="flex gap-8 flex-1 min-h-0 overflow-hidden">
                   {/* Main content */}
-                  <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                  <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
                     {/* Description Tab */}
-                    <TabsContent value="description" className="mt-0 flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                    <TabsContent value="description" className="mt-0 flex-1 min-h-0 overflow-y-auto">
                       {isEditingDescription ? (
                         <textarea
                           value={description}
@@ -520,7 +520,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                       ) : (
                         <div
                           onClick={() => setIsEditingDescription(true)}
-                          className="w-full flex-1 min-h-0 h-full bg-[var(--bg-primary)] border border-transparent hover:border-[var(--border)] rounded-lg px-4 py-3 cursor-text group transition-colors overflow-y-auto"
+                          className="w-full bg-[var(--bg-primary)] border border-transparent hover:border-[var(--border)] rounded-lg px-4 py-3 cursor-text group transition-colors"
                         >
                           {description.trim() ? (
                             <div className="relative">
@@ -542,7 +542,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     </TabsContent>
 
                     {/* Comments Tab */}
-                    <TabsContent value="comments" className="mt-0 flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                    <TabsContent value="comments" className="mt-0 flex-1 min-h-0 flex flex-col overflow-hidden">
                       {loadingComments ? (
                         <div className="text-sm text-[var(--text-muted)]">Loading comments...</div>
                       ) : (
@@ -556,21 +556,17 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     </TabsContent>
 
                     {/* Analysis Tab */}
-                    <TabsContent value="analysis" className="mt-0 flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                      <div className="flex-1 overflow-y-auto min-h-0">
-                        <TaskAnalysisContent taskId={task.id} projectSlug={projectSlug} />
-                      </div>
+                    <TabsContent value="analysis" className="mt-0 flex-1 min-h-0 overflow-y-auto">
+                      <TaskAnalysisContent taskId={task.id} projectSlug={projectSlug} />
                     </TabsContent>
 
                     {/* History Tab */}
-                    <TabsContent value="history" className="mt-0 flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                      <div className="flex-1 overflow-y-auto min-h-0">
-                        <TaskTimeline
-                          events={taskEvents}
-                          isLoading={loadingEvents}
-                          projectSlug={projectSlug}
-                        />
-                      </div>
+                    <TabsContent value="history" className="mt-0 flex-1 min-h-0 overflow-y-auto">
+                      <TaskTimeline
+                        events={taskEvents}
+                        isLoading={loadingEvents}
+                        projectSlug={projectSlug}
+                      />
                     </TabsContent>
                   </div>
 

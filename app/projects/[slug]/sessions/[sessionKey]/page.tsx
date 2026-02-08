@@ -164,7 +164,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ slug: 
 
   const copyToClipboard = async (text: string, id: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard?.writeText(text);
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {

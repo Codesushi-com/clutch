@@ -17,7 +17,7 @@ export function ToolCallBlock({ tool, params, result, error }: ToolCallBlockProp
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation()
     const text = result || JSON.stringify(params, null, 2)
-    await navigator.clipboard.writeText(text)
+    await navigator.clipboard?.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

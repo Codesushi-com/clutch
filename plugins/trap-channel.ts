@@ -146,8 +146,18 @@ export default function register(api: OpenClawPluginApi) {
       }
     }
     
-    if (!lastAssistantContent.trim()) {
+    const trimmed = lastAssistantContent.trim();
+    if (!trimmed || trimmed === "NO_REPLY" || trimmed === "HEARTBEAT_OK") {
       api.logger.info(`Trap: no assistant content to save for chat ${chatId}`);
+      // Still clear typing indicator
+      const trapUrl2 = getTrapUrl(api);
+      try {
+        await fetch(`${trapUrl2}/api/chats/${chatId}/typing`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ typing: false, author: "ada" }),
+        });
+      } catch { /* ignore */ }
       return;
     }
     

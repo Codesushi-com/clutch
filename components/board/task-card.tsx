@@ -127,7 +127,7 @@ export function TaskCard({ task, index, onClick, isMobile = false, projectId, co
               title="Click to copy ID"
               onClick={(e) => {
                 e.stopPropagation()
-                navigator.clipboard.writeText(task.id.substring(0, 8))
+                navigator.clipboard?.writeText(task.id.substring(0, 8))
               }}
             >
               #{task.id.substring(0, 8)}
