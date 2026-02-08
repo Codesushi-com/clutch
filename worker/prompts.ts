@@ -360,6 +360,121 @@ NEVER finish without updating the task status. If unsure, move to blocked with a
 }
 
 /**
+ * Build Conflict Resolver role instructions
+ * Handles PRs with merge conflicts by rebasing and resolving conflicts.
+ */
+function buildConflictResolverInstructions(params: PromptParams): string {
+  const commentsSection = formatCommentsSection(params.comments)
+
+  return `## Task: ${params.taskTitle}
+
+**Read ${params.repoDir}/AGENTS.md first** (use: \`exec(command="cat ${params.repoDir}/AGENTS.md")\`).
+
+## Tool Usage (CRITICAL)
+- **\`read\` tool REQUIRES a \`path\` parameter.** Never call read() with no arguments.
+- **Use \`exec\` with \`cat\` to read files:** \`exec(command="cat /path/to/file.ts")\`
+- **Use \`rg\` to search code:** \`exec(command="rg 'pattern' ${params.worktreeDir} -t ts")\` (note: \`-t ts\` covers both .ts AND .tsx)
+- **Quote paths with brackets:** Next.js uses \`[slug]\` dirs — always quote: \`cat '${params.worktreeDir}/app/projects/[slug]/page.tsx'\`
+- **All work happens in the task worktree:** \`${params.worktreeDir}\`
+
+Ticket ID: \`${params.taskId}\`
+Role: \`conflict_resolver\`
+
+${params.taskDescription}${commentsSection}
+
+---
+
+**Your job:** Resolve merge conflicts for PR #${params.prNumber} so it can be reviewed and merged.
+
+**Conflict Resolution Steps:**
+
+1. **Navigate to the worktree and check status:**
+   \`\`\`bash
+   cd ${params.worktreeDir}
+   git status
+   \`\`\`
+
+2. **Fetch latest main and attempt rebase:**
+   \`\`\`bash
+   git fetch origin main
+   git rebase origin/main
+   \`\`\`
+
+3. **If conflicts occur, examine each conflicted file:**
+   \`\`\`bash
+   git diff --name-only --diff-filter=U  # List conflicted files
+   \`\`\`
+
+4. **Resolve conflicts carefully:**
+   - Open each conflicted file
+   - Look for \`<<<<<<< HEAD\`, \`=======\`, \`>>>>>>>\` markers
+   - **Prefer main's changes** for unrelated lines (code that moved/changed in main)
+   - **Preserve the task's intent** for lines directly related to the PR's purpose
+   - When in doubt, favor the implementation that makes the code work correctly
+   - Do NOT leave conflict markers in the file
+
+5. **After resolving all conflicts:**
+   \`\`\`bash
+   git add -A
+   git rebase --continue
+   \`\`\`
+
+6. **Run tests and lint to verify:**
+   \`\`\`bash
+   pnpm typecheck
+   pnpm lint
+   \`\`\`
+
+7. **Push the rebased branch (force-with-lease is safe for PR branches):**
+   \`\`\`bash
+   git push --force-with-lease
+   \`\`\`
+
+8. **Verify PR is now mergeable:**
+   \`\`\`bash
+   gh pr view ${params.prNumber} --json mergeable
+   \`\`\`
+
+## Conflict Resolution Guidelines
+
+**Prefer main when:**
+- The conflict is due to code being moved or refactored in main
+- The conflicting lines are unrelated to this PR's purpose
+- Main has a newer/better implementation of the same functionality
+
+**Preserve task intent when:**
+- The conflicting lines are the core changes this PR introduces
+- The PR fixes a bug and main's version still has the bug
+- The PR adds a feature and main lacks it entirely
+
+**If truly ambiguous:** Make a reasonable choice and document it in your completion comment.
+
+## Completion Contract (REQUIRED)
+
+Before you finish, you MUST update the task status. Choose ONE:
+
+### Conflicts resolved successfully:
+\`\`\`bash
+# Post success comment
+curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "✅ Conflicts resolved. Rebased onto main, resolved conflicts in: <list-files>. PR #${params.prNumber} is now mergeable.", "author": "agent", "author_type": "agent"}'
+
+# Keep in_review so reviewer can now review
+curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "in_review", "agent_retry_count": 0}'
+\`\`\`
+
+### CANNOT resolve conflicts confidently:
+\`\`\`bash
+# List the files with unresolvable conflicts and explain why
+curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "❌ Cannot resolve conflicts confidently.\n\n**Files with complex conflicts:**\n- \`file1.ts\`: <explain the conflict>\n- \`file2.ts\`: <explain the conflict>\n\n**Why it is ambiguous:** <explanation>", "author": "agent", "author_type": "agent"}'
+
+# Move to blocked for triage
+curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "blocked"}'
+\`\`\`
+
+NEVER finish without updating the task status. If conflicts cannot be resolved, block with clear explanation.`
+}
+
+/**
  * Build Dev role instructions (default)
  */
 function buildDevInstructions(params: PromptParams): string {
@@ -463,6 +578,8 @@ export function buildPrompt(params: PromptParams): string {
         return buildResearchInstructions(params)
       case "reviewer":
         return buildReviewerInstructions(params)
+      case "conflict_resolver":
+        return buildConflictResolverInstructions(params)
       case "dev":
       default:
         return buildDevInstructions(params)

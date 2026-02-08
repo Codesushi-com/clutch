@@ -52,7 +52,7 @@ export interface Project {
 
 export type TaskStatus = "backlog" | "ready" | "in_progress" | "in_review" | "blocked" | "done"
 export type TaskPriority = "low" | "medium" | "high" | "urgent"
-export type TaskRole = "pm" | "dev" | "research" | "reviewer"
+export type TaskRole = "pm" | "dev" | "research" | "reviewer" | "conflict_resolver"
 export type DispatchStatus = "pending" | "spawning" | "active" | "completed" | "failed"
 
 export interface Task {

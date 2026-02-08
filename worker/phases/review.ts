@@ -133,6 +133,19 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
       })
       break
     }
+
+    // Check conflict resolver limit
+    const conflictResolverCount = agents.activeCountByRole("conflict_resolver")
+    if (conflictResolverCount >= config.maxConflictResolverAgents) {
+      await ctx.log({
+        projectId: project.id,
+        cycle,
+        phase: "review",
+        action: "limit_reached",
+        details: { reason: "conflict_resolver_limit", conflictResolverCount, limit: config.maxConflictResolverAgents },
+      })
+      break
+    }
   }
 
   return { spawnedCount, skippedCount }
@@ -225,25 +238,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
     }
   }
 
-  // Check if PR has merge conflicts — skip review until author resolves
-  const mergeableStatus = getPRMergeableStatus(pr.number, project)
-
-  if (mergeableStatus === "CONFLICTING") {
-    console.log(`[ReviewPhase] Skipping task ${task.id.slice(0, 8)} — PR #${pr.number} has merge conflicts`)
-    return {
-      spawned: false,
-      details: {
-        reason: "pr_has_conflicts",
-        taskId: task.id,
-        prNumber: pr.number,
-      },
-    }
-  }
-
-  // UNKNOWN is treated as reviewable (GitHub sometimes returns this briefly)
-  // MERGEABLE is obviously fine to review
-
-  // Spawn reviewer via gateway RPC
+  // Setup worktree path and fetch comments (needed for both conflict resolver and reviewer)
   // Use actual branch name for worktree path (handles descriptive suffixes)
   const worktreesBase = `${project.local_path}-worktrees`
   const worktreePath = `${worktreesBase}/${branchName}`
@@ -264,6 +259,17 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
     comments = undefined
   }
 
+  // Check if PR has merge conflicts — spawn conflict resolver or proceed to review
+  const mergeableStatus = getPRMergeableStatus(pr.number, project)
+
+  if (mergeableStatus === "CONFLICTING" || mergeableStatus === "DIRTY") {
+    return await handleConflictingPR(ctx, task, pr, branchName, worktreePath, comments)
+  }
+
+  // UNKNOWN is treated as reviewable (GitHub sometimes returns this briefly)
+  // MERGEABLE is obviously fine to review
+
+  // Spawn reviewer via gateway RPC
   const prompt = buildReviewerPrompt(task, pr, branchName, worktreePath, project, comments)
 
   try {
@@ -318,6 +324,159 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       spawned: false,
       details: {
         reason: "spawn_failed",
+        taskId: task.id,
+        error: message,
+      },
+    }
+  }
+}
+
+// ============================================
+// Conflict Resolution Handler
+// ============================================
+
+/**
+ * Handle a PR with merge conflicts (CONFLICTING or DIRTY status).
+ *
+ * Logic:
+ * 1. Check retry count against max attempts
+ * 2. If max attempts exceeded → move to blocked with triage comment
+ * 3. Otherwise → spawn conflict resolver agent
+ */
+async function handleConflictingPR(
+  ctx: ReviewContext,
+  task: Task,
+  pr: PRInfo,
+  branchName: string,
+  worktreePath: string,
+  comments?: Array<{ author: string; content: string; timestamp: string }>
+): Promise<TaskProcessResult> {
+  const { convex, agents, config, project } = ctx
+
+  // Get current retry count (conflict resolution attempts)
+  const retryCount = task.agent_retry_count ?? 0
+
+  // Check if max attempts exceeded
+  if (retryCount >= config.maxConflictResolutionAttempts) {
+    console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} — PR #${pr.number} has conflicts, max attempts (${config.maxConflictResolutionAttempts}) exceeded, moving to blocked`)
+
+    try {
+      // Post triage comment explaining why it's blocked
+      await convex.mutation(api.comments.create, {
+        taskId: task.id,
+        author: "work-loop",
+        authorType: "coordinator",
+        content: `🔄 **Conflict Resolution Failed**\n\nPR #${pr.number} has merge conflicts that could not be resolved automatically after ${retryCount} attempt(s).\n\n**Status:** CONFLICTING/DIRTY\n**Attempts:** ${retryCount}/${config.maxConflictResolutionAttempts}\n\nHuman intervention required to resolve complex conflicts.`,
+        type: "status_change",
+      })
+
+      // Move to blocked
+      await convex.mutation(api.tasks.move, {
+        id: task.id,
+        status: "blocked",
+      })
+
+      // Log event
+      await convex.mutation(api.task_events.logStatusChange, {
+        taskId: task.id,
+        from: 'in_review',
+        to: 'blocked',
+        actor: 'work-loop',
+        reason: 'conflict_resolution_max_attempts_exceeded',
+      })
+    } catch (err) {
+      console.error(`[ReviewPhase] Failed to block task ${task.id.slice(0, 8)}:`, err)
+    }
+
+    return {
+      spawned: false,
+      details: {
+        reason: "conflict_resolution_max_attempts_exceeded",
+        taskId: task.id,
+        prNumber: pr.number,
+        retryCount,
+        maxAttempts: config.maxConflictResolutionAttempts,
+      },
+    }
+  }
+
+  // Increment retry count and spawn conflict resolver
+  const newRetryCount = retryCount + 1
+  console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} — PR #${pr.number} has conflicts, spawning conflict resolver (attempt ${newRetryCount}/${config.maxConflictResolutionAttempts})`)
+
+  // Build conflict resolver prompt
+  const prompt = buildConflictResolverPrompt(task, pr, branchName, worktreePath, project, comments)
+
+  try {
+    // Update retry count before spawning
+    await convex.mutation(api.tasks.update, {
+      id: task.id,
+      agent_retry_count: newRetryCount,
+    })
+
+    const handle = await agents.spawn({
+      taskId: task.id,
+      projectId: project.id,
+      role: "conflict_resolver",
+      message: prompt,
+      model: "kimi",
+      timeoutSeconds: 600,
+    })
+
+    // Write agent info to task
+    try {
+      await convex.mutation(api.tasks.update, {
+        id: task.id,
+        session_id: handle.sessionKey,
+      })
+      await convex.mutation(api.tasks.updateAgentActivity, {
+        updates: [{
+          task_id: task.id,
+          agent_session_key: handle.sessionKey,
+          agent_model: "kimi",
+          agent_started_at: handle.spawnedAt,
+          agent_last_active_at: handle.spawnedAt,
+        }],
+      })
+      // Log agent assignment event
+      await convex.mutation(api.task_events.logAgentAssigned, {
+        taskId: task.id,
+        sessionKey: handle.sessionKey,
+        model: "kimi",
+        role: "conflict_resolver",
+      })
+      // Log conflict resolution attempt
+      await convex.mutation(api.comments.create, {
+        taskId: task.id,
+        author: "work-loop",
+        authorType: "coordinator",
+        content: `🔄 **Conflict Resolution Attempt ${newRetryCount}/${config.maxConflictResolutionAttempts}**\n\nPR #${pr.number} has merge conflicts. Spawning conflict resolver agent to rebase and resolve.`,
+        type: "status_change",
+      })
+    } catch (updateError) {
+      console.error(`[ReviewPhase] Failed to update task agent info:`, updateError)
+    }
+
+    return {
+      spawned: true,
+      details: {
+        taskId: task.id,
+        prNumber: pr.number,
+        prTitle: pr.title,
+        branch: branchName,
+        sessionKey: handle.sessionKey,
+        role: "conflict_resolver",
+        attempt: newRetryCount,
+        maxAttempts: config.maxConflictResolutionAttempts,
+      },
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[ReviewPhase] Failed to spawn conflict resolver for ${task.id.slice(0, 8)}:`, message)
+    return {
+      spawned: false,
+      details: {
+        reason: "conflict_resolver_spawn_failed",
         taskId: task.id,
         error: message,
       },
@@ -549,5 +708,141 @@ NEVER finish without updating the task status. If unsure, move to blocked with a
 - **CRITICAL:** If the PR touches files in \`convex/\`, you MUST run \`npx convex deploy --yes\` after merging. The web UI will crash if schema/functions are not deployed.
 
 Start by reading \`\${project.local_path}/AGENTS.md\` to understand project conventions, then proceed with the review.
+`
+}
+
+// ============================================
+// Conflict Resolver Prompt Builder
+// ============================================
+
+function buildConflictResolverPrompt(
+  task: Task,
+  pr: PRInfo,
+  branchName: string,
+  worktreePath: string,
+  project: ProjectInfo,
+  comments?: Array<{ author: string; content: string; timestamp: string }>
+): string {
+  const commentsSection = comments && comments.length > 0
+    ? `
+## Task Comments (context from previous work / triage)
+
+${comments.map((c) => `[${c.timestamp}] ${c.author}: ${c.content}`).join("\n")}
+`
+    : ""
+
+  return `# Conflict Resolver
+
+## Identity
+You are a Conflict Resolver responsible for rebasing PR branches onto main and resolving merge conflicts automatically.
+
+## Responsibilities
+- Fetch latest main branch
+- Rebase PR branch onto main
+- Resolve merge conflicts intelligently
+- Prefer main for unrelated changes, preserve task intent for PR-specific changes
+- Run tests and lint to verify resolution
+- Push resolved branch back to remote
+
+## Current Task
+
+**Ticket ID:** ${task.id}
+**Ticket Title:** ${task.title}
+
+${task.description ? `**Description:**\n${task.description}\n` : ""}${commentsSection}
+**PR Number:** #${pr.number}
+**PR Title:** ${pr.title}
+**Branch:** ${branchName}
+**Worktree Path:** ${worktreePath}
+**Project Path:** ${project.local_path}
+
+## Conflict Resolution Steps
+
+1. **Navigate to the worktree and check status:**
+   \`\`\`bash
+   cd ${worktreePath}
+   git status
+   \`\`\`
+
+2. **Fetch latest main and attempt rebase:**
+   \`\`\`bash
+   git fetch origin main
+   git rebase origin/main
+   \`\`\`
+
+3. **If conflicts occur, examine each conflicted file:**
+   \`\`\`bash
+   git diff --name-only --diff-filter=U  # List conflicted files
+   \`\`\`
+
+4. **Resolve conflicts carefully:**
+   - Open each conflicted file
+   - Look for \`<<<<<<< HEAD\`, \`=======\`, \`>>>>>>>\` markers
+   - **Prefer main's changes** for unrelated lines (code that moved/changed in main)
+   - **Preserve the task's intent** for lines directly related to the PR's purpose
+   - When in doubt, favor the implementation that makes the code work correctly
+   - Do NOT leave conflict markers in the file
+
+5. **After resolving all conflicts:**
+   \`\`\`bash
+   git add -A
+   git rebase --continue
+   \`\`\`
+
+6. **Run tests and lint to verify:**
+   \`\`\`bash
+   pnpm typecheck
+   pnpm lint
+   \`\`\`
+
+7. **Push the rebased branch (force-with-lease is safe for PR branches):**
+   \`\`\`bash
+   git push --force-with-lease
+   \`\`\`
+
+8. **Verify PR is now mergeable:**
+   \`\`\`bash
+   gh pr view ${pr.number} --json mergeable
+   \`\`\`
+
+## Conflict Resolution Guidelines
+
+**Prefer main when:**
+- The conflict is due to code being moved or refactored in main
+- The conflicting lines are unrelated to this PR's purpose
+- Main has a newer/better implementation of the same functionality
+
+**Preserve task intent when:**
+- The conflicting lines are the core changes this PR introduces
+- The PR fixes a bug and main's version still has the bug
+- The PR adds a feature and main lacks it entirely
+
+**If truly ambiguous:** Make a reasonable choice and document it in your completion comment.
+
+## Completion Contract (REQUIRED)
+
+Before you finish, you MUST update the task status. Choose ONE:
+
+### Conflicts resolved successfully:
+\`\`\`bash
+# Post success comment
+curl -X POST http://localhost:3002/api/tasks/${task.id}/comments -H 'Content-Type: application/json' -d '{"content": "✅ Conflicts resolved. Rebased onto main, resolved conflicts in: <list-files>. PR #${pr.number} is now mergeable.", "author": "agent", "author_type": "agent"}'
+
+# Keep in_review so reviewer can now review, reset retry count
+curl -X PATCH http://localhost:3002/api/tasks/${task.id} -H 'Content-Type: application/json' -d '{"status": "in_review", "agent_retry_count": 0}'
+\`\`\`
+
+### CANNOT resolve conflicts confidently:
+\`\`\`bash
+# List the files with unresolvable conflicts and explain why
+curl -X POST http://localhost:3002/api/tasks/${task.id}/comments -H 'Content-Type: application/json' -d '{"content": "❌ Cannot resolve conflicts confidently after attempt.\n\n**Files with complex conflicts:**\n- \`file1.ts\`: <explain the conflict>\n- \`file2.ts\`: <explain the conflict>\n\n**Why it is ambiguous:** <explanation>", "author": "agent", "author_type": "agent"}'
+
+# Move to blocked for triage
+curl -X PATCH http://localhost:3002/api/tasks/${task.id} -H 'Content-Type: application/json' -d '{"status": "blocked"}'
+\`\`\`
+
+NEVER finish without updating the task status. If conflicts cannot be resolved, block with clear explanation of which files had conflicts and why they were unresolvable.
+
+Start by reading \`${project.local_path}/AGENTS.md\` to understand project conventions, then proceed with conflict resolution.
 `
 }
