@@ -11,7 +11,7 @@ import type { AgentManager } from "../agent-manager"
 import type { WorkLoopConfig } from "../config"
 import type { LogRunParams } from "../logger"
 import type { Task, TaskPriority } from "../../lib/types"
-import { buildPrompt } from "../prompts"
+import { buildPromptAsync } from "../prompts"
 
 // ============================================
 // Types
@@ -135,35 +135,12 @@ async function claimTask(
 }
 
 // ============================================
-// SOUL Template Loading
+// SOUL Template Loading (from Convex)
 // ============================================
-
-import { readFile } from "node:fs/promises"
-import { join } from "node:path"
-
-const ROLES_DIR = "/home/dan/clawd/roles"
-const DEFAULT_ROLE = "dev"
-
-/**
- * Load the SOUL template for a role
- */
-async function loadSoulTemplate(role: string): Promise<string> {
-  const soulPath = join(ROLES_DIR, `${role}.md`)
-  const fallbackPath = join(ROLES_DIR, `${DEFAULT_ROLE}.md`)
-
-  try {
-    return await readFile(soulPath, "utf-8")
-  } catch {
-    // Role file doesn't exist, use fallback
-    try {
-      return await readFile(fallbackPath, "utf-8")
-    } catch {
-      // Even fallback doesn't exist - return a minimal default
-      console.error(`[WorkPhase] Could not load SOUL template for role ${role} or fallback`)
-      return `# Developer\n\nYou are a software developer. Implement the task as specified.`
-    }
-  }
-}
+// NOTE: SOUL templates are now loaded from Convex promptVersions.
+// See worker/prompt-fetcher.ts for the fetch implementation.
+// The buildPromptAsync function handles fetching the SOUL template
+// from Convex and combining it with task-specific context.
 
 // ============================================
 // Image URL Extraction
@@ -347,8 +324,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
       details: { title: task.title, role },
     })
 
-    // --- 4. Load SOUL and build prompt ---
-    const soulTemplate = await loadSoulTemplate(role)
+    // --- 4. Build prompt (fetches SOUL from Convex) ---
     const repoDir = project.local_path!
     const worktreesBase = `${repoDir}-worktrees`
     const worktreeDir = `${worktreesBase}/fix/${task.id.slice(0, 8)}`
@@ -389,19 +365,47 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
       comments = undefined
     }
 
-    const prompt = buildPrompt({
-      role,
-      taskId: task.id,
-      taskTitle: task.title,
-      taskDescription: task.description ?? "",
-      soulTemplate,
-      projectId: project.id,
-      repoDir,
-      worktreeDir,
-      signalResponses,
-      imageUrls,
-      comments,
-    })
+    // Fetch prompt from Convex (single source of truth)
+    // Errors loudly if no active prompt version exists for the role
+    let prompt: string
+    try {
+      prompt = await buildPromptAsync({
+        role,
+        taskId: task.id,
+        taskTitle: task.title,
+        taskDescription: task.description ?? "",
+        projectId: project.id,
+        repoDir,
+        worktreeDir,
+        signalResponses,
+        imageUrls,
+        comments,
+      }, { convex })
+    } catch (promptError) {
+      const message = promptError instanceof Error ? promptError.message : String(promptError)
+      console.error(`[WorkPhase] Failed to build prompt for role ${role}: ${message}`)
+      await log({
+        projectId: project.id,
+        cycle,
+        phase: "work",
+        action: "prompt_build_failed",
+        taskId: task.id,
+        details: { error: message, role },
+      })
+
+      // Move task back to ready since we can't build a prompt
+      try {
+        await convex.mutation(api.tasks.move, {
+          id: task.id,
+          status: "ready",
+        })
+      } catch (moveError) {
+        console.error(`[WorkPhase] Failed to revert task status:`, moveError)
+      }
+
+      // Continue to next task
+      continue
+    }
 
     // --- 5. Spawn agent via gateway RPC ---
     const model = getModelForRole(role)
