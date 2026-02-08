@@ -396,7 +396,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
         </div>
         {/* Desktop: grid layout with horizontal scroll */}
         <div className="hidden lg:block overflow-x-auto pb-4">
-          <div className="flex gap-4" style={{
+          <div className="flex gap-4 items-start" style={{
             width: 'max-content',
             minWidth: '100%'
           }}>

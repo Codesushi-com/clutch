@@ -39,7 +39,7 @@ export function Column({
   const displayCount = totalCount !== undefined ? totalCount : tasks.length
 
   return (
-    <div className={`flex flex-col bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] min-h-[500px] max-h-[calc(100vh-200px)] ${
+    <div className={`flex flex-col bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] max-h-[calc(100vh-200px)] ${
       isMobile
         ? "w-full"
         : "w-[280px] flex-shrink-0 lg:w-full lg:min-w-[280px]"
