@@ -82,8 +82,8 @@ export function ChatInput({
     const lastLine = lines[lines.length - 1]
     const isAtStartOfLine = lastLine.startsWith("/")
 
-    if (isAtStartOfLine && !content.includes("/ ")) {
-      // Don't show autocomplete if there's already a space after the command
+    if (isAtStartOfLine && !/^\/\S+\s/.test(lastLine)) {
+      // Don't show autocomplete if there's already a space after the command (e.g., "/new ")
       const parsed = parseSlashCommand(trimmed)
       const knownCommands = Object.keys(SLASH_COMMANDS)
       setSlashCommandMode({
@@ -99,12 +99,16 @@ export function ChatInput({
   }, [content])
 
   const handleAutocompleteSelect = (command: string) => {
-    // Replace the current partial command with the selected one
+    // Set the command text and immediately submit it
     const lines = content.split("\n")
     lines[lines.length - 1] = command
-    setContent(lines.join("\n") + " ")
+    const finalContent = lines.join("\n")
+    setContent(finalContent)
     setShowAutocomplete(false)
-    textareaRef.current?.focus()
+    // Execute the command directly (avoiding the two-Enter problem)
+    setTimeout(() => {
+      handleSendWithContent(finalContent)
+    }, 0)
   }
 
   const handleAutocompleteDismiss = () => {
@@ -170,14 +174,15 @@ export function ChatInput({
     })
   }
 
-  const handleSend = async () => {
-    if ((!content.trim() && images.length === 0) || sending || disabled || isAssistantTyping) return
+  // Core send logic, accepts optional content override (used by autocomplete)
+  const handleSendWithContent = async (overrideContent?: string) => {
+    const messageText = (overrideContent ?? content).trim()
+    if ((!messageText && images.length === 0) || sending || disabled || isAssistantTyping) return
 
-    const message = content.trim()
     const imagesToUpload = [...images]
 
     // Check if this is a slash command
-    const parsedCommand = parseSlashCommand(message)
+    const parsedCommand = parseSlashCommand(messageText)
     if (parsedCommand.isCommand) {
       // Execute slash command
       setSending(true)
@@ -192,7 +197,7 @@ export function ChatInput({
           setContent("")
         } else {
           // Unknown command - send as message after showing warning
-          await onSend(message, undefined)
+          await onSend(messageText, undefined)
           setContent("")
         }
       } catch (error) {
@@ -237,7 +242,7 @@ export function ChatInput({
       }
 
       // Send message with uploaded image URLs
-      await onSend(message, uploadedUrls.length > 0 ? uploadedUrls : undefined)
+      await onSend(messageText, uploadedUrls.length > 0 ? uploadedUrls : undefined)
 
       // Clean up object URLs
       imagesToUpload.forEach(img => URL.revokeObjectURL(img.url))
@@ -246,7 +251,7 @@ export function ChatInput({
       setContextUpdateTrigger(prev => prev + 1)
     } catch (error) {
       // Restore content and images if send failed
-      setContent(message)
+      setContent(messageText)
       setImages(imagesToUpload.map(img => ({ ...img, uploading: false })))
       console.error("Failed to send message:", error)
     } finally {
@@ -255,6 +260,9 @@ export function ChatInput({
       setTimeout(() => textareaRef.current?.focus(), 0)
     }
   }
+
+  // Default send handler (uses current content state)
+  const handleSend = () => handleSendWithContent()
 
   const handleStop = async () => {
     if (!onStop || stopping) return
