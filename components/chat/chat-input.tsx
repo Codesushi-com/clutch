@@ -312,10 +312,10 @@ export function ChatInput({
   const hasContent = content.trim() || images.length > 0
 
   return (
-    <div className="border-t border-[var(--border)] p-3 md:p-4">
+    <div className="border-t border-[var(--border)] p-2 md:p-3">
       {/* Image previews */}
       {images.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-2">
+        <div className="mb-2 flex flex-wrap gap-2">
           {images.map(image => (
             <div key={image.id} className="relative group">
               <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-[var(--border)]">
@@ -360,7 +360,7 @@ export function ChatInput({
 
       {/* Slash command indicator (shown when not using autocomplete or for unknown commands) */}
       {slashCommandMode.active && !showAutocomplete && (
-        <div className={`mb-2 flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg ${slashCommandMode.valid ? 'bg-[var(--accent-blue)]/10 text-[var(--accent-blue)]' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
+        <div className={`mb-1.5 flex items-center gap-2 text-xs px-2 py-1 rounded-lg ${slashCommandMode.valid ? 'bg-[var(--accent-blue)]/10 text-[var(--accent-blue)]' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
           {slashCommandMode.valid ? (
             <>
               <Command className="h-3.5 w-3.5" />
@@ -437,14 +437,14 @@ export function ChatInput({
       </div>
 
       {/* Context indicator */}
-      <div className="mt-2 md:mt-3 mb-1 md:mb-2">
+      <div className="mt-1.5 md:mt-2">
         <ContextIndicator
           sessionKey={sessionKey}
           projectId={projectId}
         />
       </div>
 
-      <p className="text-xs text-[var(--text-muted)] hidden md:block">
+      <p className="text-xs text-[var(--text-muted)] hidden md:block mt-1">
         Press Enter to send, Shift+Enter for newline • Paste images with Cmd+V • Use /help for commands
       </p>
     </div>

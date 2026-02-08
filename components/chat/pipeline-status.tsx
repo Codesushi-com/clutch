@@ -172,7 +172,7 @@ export function PipelineStatus({
 
   return (
     <TooltipProvider>
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+      <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] mb-2">
         <span className={`flex items-center gap-2 text-sm ${config.className}`}>
           {config.icon}
           <span>{config.text}</span>
