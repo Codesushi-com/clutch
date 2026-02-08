@@ -52,6 +52,9 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   // when tasks are created, updated, moved, or deleted
   const { tasks: allTasks, isLoading: loadingTasks } = useConvexTasks(projectId ?? "")
 
+  // Reactive Convex subscription for blocked tasks - separate query for sidebar widget
+  const { tasks: blockedTasks } = useConvexTasks(projectId ?? "", "blocked")
+
   // Reactive Convex subscription for agent sessions - no polling needed
   const { sessions: agentSessions } = useAgentSessions(projectId, 50)
 
@@ -105,6 +108,22 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   useEffect(() => {
     localStorage.setItem('trap:activeAgentsExpanded', String(activeAgentsExpanded))
   }, [activeAgentsExpanded])
+
+  // Blocked tasks section expanded state (persisted in localStorage)
+  const [blockedExpanded, setBlockedExpanded] = useState(true)
+
+  // Load blocked expanded state from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem('trap:blockedExpanded')
+    if (stored !== null) {
+      setBlockedExpanded(stored === 'true')
+    }
+  }, [])
+
+  // Persist blocked expanded state to localStorage
+  useEffect(() => {
+    localStorage.setItem('trap:blockedExpanded', String(blockedExpanded))
+  }, [blockedExpanded])
   
   // Task modal state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
@@ -484,6 +503,69 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
                 />
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Blocked Tasks Section */}
+      {blockedTasks && blockedTasks.length > 0 && (
+        <div className="p-3 border-b border-[var(--border)] bg-red-500/5">
+          {/* Clickable header with chevron */}
+          <button
+            onClick={() => setBlockedExpanded(!blockedExpanded)}
+            className="w-full flex items-center gap-2 mb-2 hover:opacity-80 transition-opacity"
+          >
+            {blockedExpanded ? (
+              <ChevronDown className="h-4 w-4 text-red-500" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-red-500" />
+            )}
+            <svg className="h-4 w-4 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            <h2 className="font-medium text-[var(--text-primary)] text-sm">Blocked</h2>
+            <span className="text-xs bg-red-500/20 text-red-500 px-1.5 py-0.5 rounded">
+              {blockedTasks.length}
+            </span>
+          </button>
+          {/* Collapsible blocked task list */}
+          <div
+            className={`
+              space-y-1 overflow-hidden transition-all duration-300 ease-in-out
+              ${blockedExpanded ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}
+            `}
+          >
+            {blockedTasks.map((task) => (
+              <Link
+                key={task.id}
+                href={projectSlug ? `/projects/${projectSlug}/board?task=${task.id}` : '#'}
+                className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-red-500/10 transition-colors group"
+              >
+                <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0 bg-red-500" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-[var(--text-primary)] group-hover:text-red-500 truncate">
+                    {truncateTitle(task.title, 40)}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-[var(--text-muted)]">
+                      {formatDuration(task.updated_at)}
+                    </span>
+                    {task.agent_retry_count && task.agent_retry_count > 0 && (
+                      <span className="text-xs text-orange-500">
+                        {task.agent_retry_count} retry{task.agent_retry_count > 1 ? 'ies' : 'y'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {task.escalated ? (
+                  <span className="text-xs bg-orange-500/20 text-orange-500 px-1 py-0.5 rounded flex-shrink-0">
+                    ⚠️
+                  </span>
+                ) : null}
+              </Link>
+            ))}
           </div>
         </div>
       )}
