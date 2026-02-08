@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Chat, ChatMessage } from "@/lib/types"
+import type { Chat, ChatMessage, DeliveryStatus } from "@/lib/types"
 
 export type ChatWithLastMessage = Chat & {
   lastMessage?: {
@@ -54,6 +54,14 @@ interface ChatState {
   getScrollPosition: (chatId: string) => number
   getLastActiveChatForProject: (projectId: string) => string | null
   setLastActiveChatForProject: (projectId: string, chatId: string) => void
+
+  // Delivery status tracking
+  updateMessageDeliveryStatus: (
+    chatId: string,
+    messageId: string,
+    status: DeliveryStatus,
+    updates?: { deliveredAt?: number; failureReason?: string }
+  ) => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -456,5 +464,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
         [projectId]: chatId,
       },
     }))
+  },
+
+  // Update delivery status for a specific message (optimistic UI updates)
+  updateMessageDeliveryStatus: (chatId, messageId, status, updates) => {
+    set((state) => {
+      const chatMessages = state.messages[chatId] || []
+      const updatedMessages = chatMessages.map((msg) =>
+        msg.id === messageId
+          ? {
+              ...msg,
+              delivery_status: status,
+              ...(updates?.deliveredAt !== undefined && {
+                delivered_at: updates.deliveredAt,
+              }),
+              ...(updates?.failureReason !== undefined && {
+                failure_reason: updates.failureReason,
+              }),
+            }
+          : msg
+      )
+
+      return {
+        messages: {
+          ...state.messages,
+          [chatId]: updatedMessages,
+        },
+      }
+    })
   },
 }))

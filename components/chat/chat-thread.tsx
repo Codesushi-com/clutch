@@ -34,6 +34,7 @@ interface ChatThreadProps {
   activeCrons?: SubAgentDetails[]
   projectSlug?: string
   hasMore?: boolean
+  onRetryMessage?: (message: ChatMessage) => void
 }
 
 // Threshold in pixels for considering the user "at the bottom"
@@ -52,6 +53,7 @@ export function ChatThread({
   activeCrons = [],
   projectSlug,
   hasMore = false,
+  onRetryMessage,
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -300,6 +302,12 @@ export function ChatThread({
               const prevGroup = groupedMessages[groupIndex - 1]
               prevMessage = prevGroup.messages[prevGroup.messages.length - 1]
             }
+
+            // Calculate the absolute index in the visible messages array
+            let messageIndex = msgIndex
+            for (let i = 0; i < groupIndex; i++) {
+              messageIndex += groupedMessages[i].messages.length
+            }
             
             return (
               <MessageBubble
@@ -311,6 +319,9 @@ export function ChatThread({
                 activeCrons={activeCrons}
                 projectSlug={projectSlug}
                 prevMessage={prevMessage}
+                allMessages={visibleMessages}
+                messageIndex={messageIndex}
+                onRetryMessage={onRetryMessage}
               />
             )
           })}

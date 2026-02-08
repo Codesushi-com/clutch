@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useCallback } from "react"
 import type { ChatMessage } from "@/lib/types"
 import { formatDistanceToNow } from "date-fns"
 import { MessageActions } from "./message-actions"
@@ -9,6 +9,7 @@ import { MarkdownContent } from "./markdown-content"
 import { Button } from "@/components/ui/button"
 import { ExternalLink, ChevronDown, ChevronRight, Bot } from "lucide-react"
 import Link from "next/link"
+import { DeliveryStatusIndicator, useHasResponse } from "./delivery-status"
 
 interface SubAgentDetails {
   key: string
@@ -30,6 +31,9 @@ interface MessageBubbleProps {
   activeCrons?: SubAgentDetails[]
   projectSlug?: string
   prevMessage?: ChatMessage
+  allMessages?: ChatMessage[]  // All messages in the chat for response tracking
+  messageIndex?: number  // Index of this message in allMessages
+  onRetryMessage?: (message: ChatMessage) => void  // Callback to retry a failed message
 }
 
 const AUTHOR_NAMES: Record<string, string> = {
@@ -57,17 +61,30 @@ function formatGenerationTime(ms: number): string | null {
   return `${mins}m ${remainingSecs}s`
 }
 
-export function MessageBubble({ 
-  message, 
-  isOwnMessage = false, 
+export function MessageBubble({
+  message,
+  isOwnMessage = false,
   showAuthor = true,
   onCreateTask,
   activeCrons = [],
   projectSlug: _projectSlug, // eslint-disable-line @typescript-eslint/no-unused-vars
   prevMessage,
+  allMessages = [],
+  messageIndex = 0,
+  onRetryMessage,
 }: MessageBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const authorName = AUTHOR_NAMES[message.author] || message.author
+
+  // Check if a response has arrived for this message
+  const hasResponse = useHasResponse(allMessages, messageIndex)
+
+  // Handle retry
+  const handleRetry = useCallback(() => {
+    if (onRetryMessage) {
+      onRetryMessage(message)
+    }
+  }, [message, onRetryMessage])
 
   // Calculate generation time for assistant messages
   const generationTime = useMemo(() => {
@@ -307,6 +324,18 @@ export function MessageBubble({
             className="break-words min-w-0"
           />
         </div>
+
+        {/* Delivery status indicator - only for user's own messages */}
+        {isOwnMessage && (
+          <DeliveryStatusIndicator
+            status={message.delivery_status}
+            sentAt={message.sent_at}
+            deliveredAt={message.delivered_at}
+            failureReason={message.failure_reason}
+            onRetry={onRetryMessage ? handleRetry : undefined}
+            hasResponse={hasResponse}
+          />
+        )}
       </div>
     </div>
   )

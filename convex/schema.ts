@@ -154,6 +154,16 @@ export default defineSchema({
     run_id: v.optional(v.string()),
     session_key: v.optional(v.string()),
     is_automated: v.optional(v.boolean()),
+    // Delivery status tracking
+    delivery_status: v.optional(v.union(
+      v.literal("sending"),
+      v.literal("sent"),
+      v.literal("processing"),
+      v.literal("failed")
+    )),
+    sent_at: v.optional(v.number()), // timestamp when send initiated
+    delivered_at: v.optional(v.number()), // timestamp when HTTP 200 received
+    failure_reason: v.optional(v.string()),
     created_at: v.number(),
   })
     .index("by_uuid", ["id"])

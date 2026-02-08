@@ -65,6 +65,7 @@ export default function ChatPage({ params }: PageProps) {
     setActiveChat,
     setTyping,
     getLastActiveChatForProject,
+    updateMessageDeliveryStatus,
   } = useChatStore()
 
   // Generate session key based on project and active chat
@@ -227,8 +228,16 @@ export default function ChatPage({ params }: PageProps) {
   }, [chats, activeChat, setActiveChat, projectId, getLastActiveChatForProject])
 
   // ==========================================================================
-  // Message sending
+  // Message sending with delivery status tracking
   // ==========================================================================
+
+  // Track pending messages for delivery status
+  const [pendingMessages, setPendingMessages] = useState<Record<string, {
+    messageId: string
+    sentAt: number
+    chatId: string
+    content: string
+  }>>({})
 
   const handleSendMessage = async (content: string, images?: string[]) => {
     if (!activeChat) return
@@ -256,8 +265,20 @@ export default function ChatPage({ params }: PageProps) {
       messageContent = content ? `${content}\n\n${imageMarkdown}` : imageMarkdown
     }
 
-    // Save user message to Convex
-    await sendMessageToDb(activeChat.id, messageContent, "dan")
+    // Generate a temporary ID for optimistic tracking
+    const tempMessageId = `temp-${Date.now()}`
+    const sentAt = Date.now()
+
+    // Track this message as pending
+    setPendingMessages((prev) => ({
+      ...prev,
+      [tempMessageId]: {
+        messageId: tempMessageId,
+        sentAt,
+        chatId: activeChat.id,
+        content: messageContent,
+      },
+    }))
 
     // Record send timestamp for pipeline status tracking
     setLastSentAt(Date.now())
@@ -283,9 +304,61 @@ export default function ChatPage({ params }: PageProps) {
     // Send to OpenClaw via HTTP POST
     // Response persistence is handled by the trap-channel plugin (agent_end hook)
     try {
+      // Mark as "sending" in the local store immediately
+      // The actual message will be created by sendMessageToDb
+      const message = await sendMessageToDb(activeChat.id, messageContent, "dan")
+
+      // Track the real message ID
+      setPendingMessages((prev) => {
+        const rest = Object.fromEntries(
+          Object.entries(prev).filter(([key]) => key !== tempMessageId)
+        )
+        return {
+          ...rest,
+          [message.id]: {
+            messageId: message.id,
+            sentAt,
+            chatId: activeChat.id,
+            content: messageContent,
+          },
+        }
+      })
+
+      // Update delivery status to "sending"
+      updateMessageDeliveryStatus(activeChat.id, message.id, "sending", { deliveredAt: sentAt })
+
+      // Send to OpenClaw
       await sendChatMessage(sessionKey, openClawMessage)
+
+      // HTTP 200 received - update to "sent"
+      const deliveredAt = Date.now()
+      updateMessageDeliveryStatus(activeChat.id, message.id, "sent", { deliveredAt })
+
+      // Clean up from pending after a delay (delivery indicators will fade on response)
+      setTimeout(() => {
+        setPendingMessages((prev) => {
+          return Object.fromEntries(
+            Object.entries(prev).filter(([key]) => key !== message.id)
+          )
+        })
+      }, 30000) // 30 second cleanup window
     } catch (error) {
       console.error("[Chat] Failed to send to OpenClaw:", error)
+
+      // Find the message in chat messages
+      const chatMessages = messages[activeChat.id] || []
+      const lastMessage = chatMessages[chatMessages.length - 1]
+
+      if (lastMessage && lastMessage.author === "dan" && lastMessage.content === messageContent) {
+        // Update the actual message to failed status
+        updateMessageDeliveryStatus(
+          activeChat.id,
+          lastMessage.id,
+          "failed",
+          { failureReason: error instanceof Error ? error.message : "Failed to send" }
+        )
+      }
+
       // Clear typing indicator on send failure (both local and Convex)
       void setTyping(activeChat.id, "ada", false)
       setLastSentAt(null) // Clear lastSentAt on error
@@ -294,8 +367,63 @@ export default function ChatPage({ params }: PageProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ typing: false, author: "ada" }),
       })
+
+      // Clean up pending
+      setPendingMessages((prev) => {
+        return Object.fromEntries(
+          Object.entries(prev).filter(([key]) => key !== tempMessageId)
+        )
+      })
     }
   }
+
+  // Handle retrying a failed message
+  const handleRetryMessage = async (message: ChatMessage) => {
+    if (!activeChat) return
+
+    // Update status back to sending
+    updateMessageDeliveryStatus(activeChat.id, message.id, "sending")
+
+    try {
+      // Retry sending to OpenClaw
+      await sendChatMessage(sessionKey, message.content)
+
+      // Success - mark as sent
+      const deliveredAt = Date.now()
+      updateMessageDeliveryStatus(activeChat.id, message.id, "sent", { deliveredAt })
+    } catch (error) {
+      // Still failed
+      updateMessageDeliveryStatus(
+        activeChat.id,
+        message.id,
+        "failed",
+        { failureReason: error instanceof Error ? error.message : "Retry failed" }
+      )
+    }
+  }
+
+  // Monitor sessions for "processing" state updates
+  useEffect(() => {
+    if (!activeChat || !sessions.length) return
+
+    // Find the session for this chat
+    const session = sessions.find((s) => s.id === activeChat.session_key)
+    if (!session?.last_active_at) return
+
+    // Check all pending messages
+    const chatMessages = messages[activeChat.id] || []
+    Object.values(pendingMessages).forEach((pending) => {
+      if (pending.chatId !== activeChat.id) return
+
+      const message = chatMessages.find((m) => m.id === pending.messageId)
+      if (!message || message.delivery_status !== "sent") return
+
+      // If session has been active since we sent this message, mark as processing
+      if (session.last_active_at && session.last_active_at > pending.sentAt) {
+        updateMessageDeliveryStatus(activeChat.id, pending.messageId, "processing")
+      }
+    })
+  }, [activeChat, sessions, messages, pendingMessages, updateMessageDeliveryStatus])
 
   const handleStopChat = async () => {
     if (!activeChat) return
@@ -457,6 +585,7 @@ export default function ChatPage({ params }: PageProps) {
                 activeCrons={activeCrons}
                 projectSlug={slug}
                 hasMore={hasMoreMessages[activeChat.id] ?? false}
+                onRetryMessage={handleRetryMessage}
               />
 
               <ChatInput

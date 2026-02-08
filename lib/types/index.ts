@@ -120,6 +120,8 @@ export interface Chat {
   updated_at: number
 }
 
+export type DeliveryStatus = "sending" | "sent" | "processing" | "failed"
+
 export interface ChatMessage {
   id: string
   chat_id: string
@@ -128,6 +130,11 @@ export interface ChatMessage {
   run_id?: string | null
   session_key?: string | null
   is_automated?: number | null  // SQLite boolean (0/1) - true for cron/sub-agent messages
+  // Delivery status tracking
+  delivery_status?: DeliveryStatus
+  sent_at?: number | null       // timestamp when send initiated
+  delivered_at?: number | null  // timestamp when HTTP 200 received
+  failure_reason?: string | null
   created_at: number
 }
 
