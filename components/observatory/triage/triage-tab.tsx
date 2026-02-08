@@ -13,8 +13,12 @@ import { ProjectFilter } from '../project-filter'
 import { CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
 import type { TriageTask } from '@/convex/triage'
 
-export function TriageTab() {
-  const [projectFilter, setProjectFilter] = useState<string | null>(null)
+interface TriageTabProps {
+  lockedProjectId?: string
+}
+
+export function TriageTab({ lockedProjectId }: TriageTabProps) {
+  const [projectFilter, setProjectFilter] = useState<string | null>(lockedProjectId ?? null)
 
   // Fetch triage queue from Convex
   const queueData = useQuery(api.triage.triageQueue, {
@@ -55,7 +59,7 @@ export function TriageTab() {
               0 blocked
             </span>
           </div>
-          <ProjectFilter value={projectFilter} onChange={setProjectFilter} />
+          <ProjectFilter value={projectFilter} onChange={setProjectFilter} locked={lockedProjectId} />
         </div>
 
         {/* Empty state */}
@@ -88,7 +92,7 @@ export function TriageTab() {
             </span>
           )}
         </div>
-        <ProjectFilter value={projectFilter} onChange={setProjectFilter} />
+        <ProjectFilter value={projectFilter} onChange={setProjectFilter} locked={lockedProjectId} />
       </div>
 
       {/* Triage cards */}

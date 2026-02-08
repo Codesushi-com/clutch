@@ -2,31 +2,59 @@
 
 /**
  * Project Work Loop Page
- * Shows work loop activity log filtered to the current project
+ * Shows Observatory dashboard locked to the current project
  */
 
 import { use, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
-import { RefreshCw } from 'lucide-react';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-// Dynamically import ActivityLog to avoid SSR issues with Convex
-const ActivityLog = dynamic(
-  () => import('@/components/observatory/live/activity-log').then(mod => ({ default: mod.ActivityLog })),
+// Dynamically import ObservatoryShell to avoid SSR issues with Convex
+const ObservatoryShell = dynamic(
+  () => import('@/components/observatory/observatory-shell').then(mod => ({ default: mod.ObservatoryShell })),
   {
     ssr: false,
-    loading: () => (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64" />
-      </div>
-    ),
+    loading: () => <ObservatorySkeleton />,
   }
 );
+
+function ObservatorySkeleton() {
+  return (
+    <div className="container mx-auto py-8 px-4 space-y-6">
+      {/* Header skeleton */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <Skeleton className="h-9 w-40" />
+      </div>
+
+      {/* Tabs skeleton */}
+      <div className="flex items-center gap-1 border-b border-[var(--border)]">
+        {['Live', 'Triage', 'Analytics', 'Models', 'Prompts'].map((tab) => (
+          <div key={tab} className="px-4 py-2">
+            <Skeleton className="h-5 w-16" />
+          </div>
+        ))}
+      </div>
+
+      {/* Content skeleton */}
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    </div>
+  );
+}
 
 interface ProjectInfo {
   id: string;
@@ -57,17 +85,7 @@ export default function ProjectWorkLoopPage({ params }: PageProps) {
   }, [slug]);
 
   if (isLoading) {
-    return (
-      <div className="container mx-auto py-8 px-4">
-        <div className="space-y-6">
-          <div className="flex items-center gap-3">
-            <RefreshCw className="h-6 w-6 text-muted-foreground" />
-            <Skeleton className="h-8 w-48" />
-          </div>
-          <Skeleton className="h-64" />
-        </div>
-      </div>
-    );
+    return <ObservatorySkeleton />;
   }
 
   if (!project) {
@@ -85,16 +103,7 @@ export default function ProjectWorkLoopPage({ params }: PageProps) {
 
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <RefreshCw className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-bold">Work Loop Activity</h1>
-        </div>
-        <p className="text-muted-foreground">
-          Recent work loop cycles and actions for the {project.name} project
-        </p>
-        <ActivityLog projectId={project.id} projectSlug={slug} />
-      </div>
+      <ObservatoryShell lockedProjectId={project.id} />
     </div>
   );
 }

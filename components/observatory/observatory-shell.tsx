@@ -9,7 +9,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { ObservatoryTab, ComingSoon } from './observatory-tab'
+import { ObservatoryTab } from './observatory-tab'
 import { TimeRangeToggle, TimeRange } from './time-range-toggle'
 import { PromptsTab } from './prompts/prompts-tab'
 import { TriageTab } from './triage/triage-tab'
@@ -34,7 +34,12 @@ function isValidTabId(value: string | null): value is TabId {
   return value !== null && VALID_TAB_IDS.has(value)
 }
 
-export function ObservatoryShell() {
+interface ObservatoryShellProps {
+  /** If provided, locks the observatory to this project (disables project filter) */
+  lockedProjectId?: string
+}
+
+export function ObservatoryShell({ lockedProjectId }: ObservatoryShellProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -58,14 +63,14 @@ export function ObservatoryShell() {
   // Time range state (shared across analytics, models, prompts)
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
 
-  // Project filter state (for Live tab)
-  const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  // Project filter state (for Live tab) - initialized to locked project if provided
+  const [selectedProject, setSelectedProject] = useState<string | null>(lockedProjectId ?? null)
 
   // Determine if we should show the time range toggle
   const showTimeRange = ['analytics', 'models', 'prompts'].includes(activeTab)
 
-  // Show project filter on Live tab
-  const showProjectFilter = activeTab === 'live'
+  // Show project filter on Live tab (or always if locked)
+  const showProjectFilter = activeTab === 'live' || lockedProjectId !== undefined
 
   return (
     <div className="space-y-6">
@@ -82,6 +87,7 @@ export function ObservatoryShell() {
             <ProjectFilter
               value={selectedProject}
               onChange={setSelectedProject}
+              locked={lockedProjectId}
             />
           )}
           {showTimeRange && (
@@ -110,28 +116,28 @@ export function ObservatoryShell() {
         {/* Triage Tab */}
         <TabsContent value="triage">
           <ObservatoryTab>
-            <TriageTab />
+            <TriageTab lockedProjectId={lockedProjectId} />
           </ObservatoryTab>
         </TabsContent>
 
         {/* Analytics Tab */}
         <TabsContent value="analytics">
           <ObservatoryTab>
-            <AnalyticsTab timeRange={timeRange} />
+            <AnalyticsTab timeRange={timeRange} lockedProjectId={lockedProjectId} />
           </ObservatoryTab>
         </TabsContent>
 
         {/* Models Tab */}
         <TabsContent value="models">
           <ObservatoryTab>
-            <ModelsTab timeRange={timeRange} />
+            <ModelsTab timeRange={timeRange} lockedProjectId={lockedProjectId} />
           </ObservatoryTab>
         </TabsContent>
 
         {/* Prompts Tab */}
         <TabsContent value="prompts">
           <ObservatoryTab>
-            <PromptsTab timeRange={timeRange} />
+            <PromptsTab timeRange={timeRange} lockedProjectId={lockedProjectId} />
           </ObservatoryTab>
         </TabsContent>
       </Tabs>

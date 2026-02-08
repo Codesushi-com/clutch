@@ -51,11 +51,12 @@ function timeRangeToDates(range: TimeRange): { startDate: number | undefined; en
 
 interface ModelsTabProps {
   timeRange: TimeRange
+  lockedProjectId?: string
 }
 
-export function ModelsTab({ timeRange }: ModelsTabProps) {
-  // Project filter
-  const [selectedProject, setSelectedProject] = useState<string | null>(null)
+export function ModelsTab({ timeRange, lockedProjectId }: ModelsTabProps) {
+  // Project filter - initialized to locked project if provided
+  const [selectedProject, setSelectedProject] = useState<string | null>(lockedProjectId ?? null)
 
   // Role filter
   const [selectedRole, setSelectedRole] = useState<RoleFilter>('all')
@@ -125,6 +126,7 @@ export function ModelsTab({ timeRange }: ModelsTabProps) {
           <ProjectFilter
             value={selectedProject}
             onChange={setSelectedProject}
+            locked={lockedProjectId}
           />
 
           <Select
