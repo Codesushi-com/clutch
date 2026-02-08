@@ -28,6 +28,7 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string; color: string }[] = [
   { value: "ready", label: "Ready", color: "#3b82f6" },
   { value: "in_progress", label: "In Progress", color: "#eab308" },
   { value: "in_review", label: "Review", color: "#a855f7" },
+  { value: "blocked", label: "Blocked", color: "#ef4444" },
   { value: "done", label: "Done", color: "#22c55e" },
 ]
 

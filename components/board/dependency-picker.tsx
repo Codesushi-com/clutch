@@ -20,6 +20,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   ready: "#3b82f6",
   in_progress: "#eab308",
   in_review: "#a855f7",
+  blocked: "#ef4444",
   done: "#22c55e",
 }
 
@@ -28,6 +29,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
   ready: "Ready",
   in_progress: "In Progress",
   in_review: "Review",
+  blocked: "Blocked",
   done: "Done",
 }
 

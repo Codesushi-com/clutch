@@ -35,6 +35,7 @@ export default defineSchema({
       v.literal("ready"),
       v.literal("in_progress"),
       v.literal("in_review"),
+      v.literal("blocked"),
       v.literal("done")
     ),
     priority: v.union(

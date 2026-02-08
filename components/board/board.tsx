@@ -27,6 +27,7 @@ const COLUMNS: { status: TaskStatus; title: string; color: string; showAdd: bool
   { status: "ready", title: "Ready", color: "#3b82f6", showAdd: true },
   { status: "in_progress", title: "In Progress", color: "#eab308", showAdd: false },
   { status: "in_review", title: "In Review", color: "#a855f7", showAdd: false },
+  { status: "blocked", title: "Blocked", color: "#ef4444", showAdd: false },
   { status: "done", title: "Done", color: "#22c55e", showAdd: false },
 ]
 
@@ -38,6 +39,7 @@ const DEFAULT_VISIBILITY: Record<TaskStatus, boolean> = {
   ready: true,
   in_progress: true,
   in_review: true,
+  blocked: true,
   done: true,
 }
 
@@ -111,6 +113,7 @@ export function Board({ projectId, onTaskClick, onAddTask }: BoardProps) {
       ready: visible,
       in_progress: visible,
       in_review: visible,
+      blocked: visible,
       done: visible,
     }
     setColumnVisibility(next)

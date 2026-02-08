@@ -3,6 +3,8 @@
  * Type definitions for OpenClaw sessions and RPC
  */
 
+import type { TaskStatus } from './index';
+
 export type SessionStatus = 'running' | 'idle' | 'completed' | 'error' | 'cancelled';
 
 export type SessionType = 'main' | 'isolated' | 'subagent';
@@ -13,7 +15,7 @@ export type SessionType = 'main' | 'isolated' | 'subagent';
 export interface SessionTaskInfo {
   id: string;
   title: string;
-  status: 'backlog' | 'ready' | 'in_progress' | 'in_review' | 'done';
+  status: TaskStatus;
   projectSlug?: string;
 }
 

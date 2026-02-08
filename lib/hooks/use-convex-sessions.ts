@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import type { TaskStatus } from "@/lib/types"
 
 /**
  * Task information for session association
@@ -9,7 +10,7 @@ import { api } from "@/convex/_generated/api"
 export interface SessionTaskInfo {
   id: string
   title: string
-  status: 'backlog' | 'ready' | 'in_progress' | 'in_review' | 'done'
+  status: TaskStatus
   project_id: string
   session_id: string
 }

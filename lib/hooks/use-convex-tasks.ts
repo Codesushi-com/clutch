@@ -81,6 +81,7 @@ export function useConvexBoardTasks(
     ready: [],
     in_progress: [],
     in_review: [],
+    blocked: [],
     done: [],
   }
 
@@ -134,6 +135,7 @@ export function usePaginatedBoardTasks(
     ready: DEFAULT_PAGE_SIZE,
     in_progress: DEFAULT_PAGE_SIZE,
     in_review: DEFAULT_PAGE_SIZE,
+    blocked: DEFAULT_PAGE_SIZE,
     done: DEFAULT_PAGE_SIZE,
   })
 
@@ -154,6 +156,10 @@ export function usePaginatedBoardTasks(
     api.tasks.getByProjectAndStatusPaginated,
     projectId ? { projectId, status: "in_review", limit: pageSizes.in_review, offset: 0 } : "skip"
   )
+  const blockedResult = useQuery(
+    api.tasks.getByProjectAndStatusPaginated,
+    projectId ? { projectId, status: "blocked", limit: pageSizes.blocked, offset: 0 } : "skip"
+  )
   const doneResult = useQuery(
     api.tasks.getByProjectAndStatusPaginated,
     projectId ? { projectId, status: "done", limit: pageSizes.done, offset: 0 } : "skip"
@@ -164,6 +170,7 @@ export function usePaginatedBoardTasks(
     ready: readyResult,
     in_progress: inProgressResult,
     in_review: inReviewResult,
+    blocked: blockedResult,
     done: doneResult,
   }
 
@@ -176,6 +183,7 @@ export function usePaginatedBoardTasks(
     ready: readyResult?.tasks ?? [],
     in_progress: inProgressResult?.tasks ?? [],
     in_review: inReviewResult?.tasks ?? [],
+    blocked: blockedResult?.tasks ?? [],
     done: doneResult?.tasks ?? [],
   }
 
@@ -185,6 +193,7 @@ export function usePaginatedBoardTasks(
     ready: readyResult?.totalCount ?? 0,
     in_progress: inProgressResult?.totalCount ?? 0,
     in_review: inReviewResult?.totalCount ?? 0,
+    blocked: blockedResult?.totalCount ?? 0,
     done: doneResult?.totalCount ?? 0,
   }
 
@@ -194,6 +203,7 @@ export function usePaginatedBoardTasks(
     ready: (readyResult?.tasks.length ?? 0) < (readyResult?.totalCount ?? 0),
     in_progress: (inProgressResult?.tasks.length ?? 0) < (inProgressResult?.totalCount ?? 0),
     in_review: (inReviewResult?.tasks.length ?? 0) < (inReviewResult?.totalCount ?? 0),
+    blocked: (blockedResult?.tasks.length ?? 0) < (blockedResult?.totalCount ?? 0),
     done: (doneResult?.tasks.length ?? 0) < (doneResult?.totalCount ?? 0),
   }
 
