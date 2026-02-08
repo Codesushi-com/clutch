@@ -93,7 +93,7 @@ export function BeforeAfterChart({ analyses, promptVersions }: BeforeAfterChartP
         Before / After Version Changes
       </h3>
       <div style={{ width: '100%', height: Math.max(200, transitions.length * 60 + 60) }}>
-        <ResponsiveContainer>
+        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
           <BarChart
             data={data}
             layout="vertical"

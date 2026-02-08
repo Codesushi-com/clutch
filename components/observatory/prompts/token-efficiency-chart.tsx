@@ -90,7 +90,7 @@ export function TokenEfficiencyChart({ analyses, promptVersions }: TokenEfficien
         Token Efficiency by Role & Version
       </h3>
       <div style={{ width: '100%', height: 300 }}>
-        <ResponsiveContainer>
+        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
           <BarChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis
