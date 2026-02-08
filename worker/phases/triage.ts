@@ -43,6 +43,7 @@ interface BlockedTask {
   description: string | null
   role: string | null
   agent_session_key: string | null
+  agent_model?: string | null
   agent_retry_count: number | null
   auto_triage_count: number | null
   triage_sent_at: number | null
