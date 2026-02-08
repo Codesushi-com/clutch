@@ -258,8 +258,10 @@ export default defineSchema({
     phase: v.union(
       v.literal("cleanup"),
       v.literal("triage"),
+      v.literal("notify"),
       v.literal("review"),
       v.literal("work"),
+      v.literal("analyze"),
       v.literal("idle"),
       v.literal("error")
     ),
