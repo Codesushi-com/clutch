@@ -3,12 +3,13 @@
 import { useEffect, useState, use } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ArrowLeft, LayoutGrid, MessageSquare, Activity, Settings, RefreshCw } from "lucide-react"
+import { ArrowLeft, LayoutGrid, MessageSquare, Activity, Settings, RefreshCw, Map } from "lucide-react"
 import type { Project } from "@/lib/types"
 import { MobileProjectSwitcher } from "@/components/layout/mobile-project-switcher"
 import { DesktopProjectSwitcher } from "@/components/layout/desktop-project-switcher"
 import { useMobileDetection } from "@/components/board/use-mobile-detection"
 import { WorkLoopHeaderStatus } from "@/components/work-loop/work-loop-header-status"
+import { FeatureBuilderButton } from "@/components/feature-builder"
 
 type LayoutProps = {
   children: React.ReactNode
@@ -18,6 +19,7 @@ type LayoutProps = {
 const TABS = [
   { id: "chat", label: "Chat", icon: MessageSquare, href: "/chat" },
   { id: "board", label: "Board", icon: LayoutGrid, href: "/board" },
+  { id: "roadmap", label: "Roadmap", icon: Map, href: "/roadmap" },
   { id: "sessions", label: "Sessions", icon: Activity, href: "/sessions" },
   { id: "work-loop", label: "Work Loop", icon: RefreshCw, href: "/work-loop" },
   { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
@@ -61,6 +63,7 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
     const path = pathname.replace(`/projects/${slug}`, "")
     if (path === "" || path.startsWith("/chat")) return "chat"
     if (path.startsWith("/board")) return "board"
+    if (path.startsWith("/roadmap")) return "roadmap"
     if (path.startsWith("/sessions")) return "sessions"
     if (path.startsWith("/work-loop")) return "work-loop"
     if (path.startsWith("/settings")) return "settings"
@@ -128,20 +131,26 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
                 </nav>
               </div>
 
-              {/* Work loop status row (mobile only, if enabled) */}
-              {project.work_loop_enabled === 1 && (
-                <div className="flex justify-end">
+              {/* Work loop status + Feature Builder button (mobile) */}
+              <div className="flex items-center justify-between gap-2">
+                {project.work_loop_enabled === 1 && (
                   <WorkLoopHeaderStatus
                     projectId={project.id}
                     workLoopEnabled={true}
                   />
-                </div>
-              )}
+                )}
+                <FeatureBuilderButton
+                  defaultProjectId={project.id}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-8 ml-auto"
+                />
+              </div>
             </div>
           ) : (
             /* Desktop: Original layout */
             <>
-              {/* Top row: back + project name + work loop status */}
+              {/* Top row: back + project name + feature builder + work loop status */}
               <div className="py-4 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <Link
@@ -155,10 +164,17 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
                     projects={projects}
                   />
                 </div>
-                <WorkLoopHeaderStatus
-                  projectId={project.id}
-                  workLoopEnabled={project.work_loop_enabled === 1}
-                />
+                <div className="flex items-center gap-3">
+                  <FeatureBuilderButton
+                    defaultProjectId={project.id}
+                    variant="outline"
+                    size="sm"
+                  />
+                  <WorkLoopHeaderStatus
+                    projectId={project.id}
+                    workLoopEnabled={project.work_loop_enabled === 1}
+                  />
+                </div>
               </div>
               
               {/* Tab navigation */}

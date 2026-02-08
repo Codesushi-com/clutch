@@ -12,6 +12,7 @@ import {
   CATEGORY_CONFIG,
   REQUIREMENT_TEMPLATES,
 } from "../feature-builder-types"
+import { FeatureBuilderStepHeader } from "../feature-builder-help"
 
 interface RequirementsStepProps {
   data: Pick<FeatureBuilderData, "requirements" | "acceptanceCriteria">
@@ -49,14 +50,7 @@ export function RequirementsStep({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Requirements</h3>
-        <p className="text-sm text-muted-foreground">
-          Define what needs to be built using GSD methodology. Categorize
-          requirements into V1 (Must Have), V2 (Should Have), and Out of Scope.
-        </p>
-      </div>
+      <FeatureBuilderStepHeader stepId="requirements" />
 
       {/* Validation Alert */}
       {!hasV1 && stats.total > 0 && (
@@ -100,7 +94,10 @@ export function RequirementsStep({
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <Badge variant="outline" className={CATEGORY_CONFIG["out-of-scope"].color}>
+          <Badge
+            variant="outline"
+            className={CATEGORY_CONFIG["out-of-scope"].color}
+          >
             Out
           </Badge>
           <span className="text-muted-foreground">
@@ -125,8 +122,14 @@ export function RequirementsStep({
         <AlertDescription className="space-y-2">
           <p>Use clear, testable language. Good requirements describe:</p>
           <ul className="list-disc list-inside space-y-0.5 ml-2 text-muted-foreground">
-            <li>Who (the actor) - e.g., &quot;User&quot;, &quot;Admin&quot;, &quot;System&quot;</li>
-            <li>What (the action) - e.g., &quot;can create&quot;, &quot;validates&quot;, &quot;sends&quot;</li>
+            <li>
+              Who (the actor) - e.g., &quot;User&quot;, &quot;Admin&quot;,
+              &quot;System&quot;
+            </li>
+            <li>
+              What (the action) - e.g., &quot;can create&quot;,
+              &quot;validates&quot;, &quot;sends&quot;
+            </li>
             <li>Outcome - what happens after the action</li>
           </ul>
         </AlertDescription>
@@ -148,7 +151,9 @@ export function RequirementsStep({
             </div>
           </div>
           <div className="space-y-1.5">
-            <span className="font-medium text-yellow-700">V2 (Should Have)</span>
+            <span className="font-medium text-yellow-700">
+              V2 (Should Have)
+            </span>
             <div className="space-y-1 ml-2 text-muted-foreground">
               {REQUIREMENT_TEMPLATES.v2.slice(0, 2).map((t, i) => (
                 <div key={i} className="flex gap-2">
@@ -170,7 +175,9 @@ export function RequirementsStep({
         </p>
         <textarea
           className="w-full min-h-[80px] px-3 py-2 text-sm border rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-          placeholder={"Given [context], when [action], then [outcome]\nGiven logged out user, when valid credentials submitted, then user is authenticated"}
+          placeholder={
+            "Given [context], when [action], then [outcome]\nGiven logged out user, when valid credentials submitted, then user is authenticated"
+          }
           value={(data.acceptanceCriteria || []).join("\n")}
           onChange={(e) => {
             const items = e.target.value

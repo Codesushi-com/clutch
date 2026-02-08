@@ -18,6 +18,8 @@ export interface WorkLoopConfig {
   maxDevAgents: number
   /** Max concurrent reviewer agents — default 2 */
   maxReviewerAgents: number
+  /** Max concurrent conflict resolver agents — default 1 */
+  maxConflictResolverAgents: number
   /** How long before in_progress is considered "stalled" — default 15 minutes */
   staleTaskMinutes: number
   /** How long before in_review without PR is stalled — default 30 minutes */
@@ -34,6 +36,7 @@ const DEFAULT_CONFIG: WorkLoopConfig = {
   maxAgentsGlobal: 5,
   maxDevAgents: 2,
   maxReviewerAgents: 2,
+  maxConflictResolverAgents: 1,
   staleTaskMinutes: 15,
   staleReviewMinutes: 30,
 }
@@ -81,6 +84,7 @@ export function loadConfig(): WorkLoopConfig {
     maxAgentsGlobal: parseNumber(process.env.WORK_LOOP_MAX_AGENTS, DEFAULT_CONFIG.maxAgentsGlobal),
     maxDevAgents: parseNumber(process.env.WORK_LOOP_MAX_DEV_AGENTS, DEFAULT_CONFIG.maxDevAgents),
     maxReviewerAgents: parseNumber(process.env.WORK_LOOP_MAX_REVIEWER_AGENTS, DEFAULT_CONFIG.maxReviewerAgents),
+    maxConflictResolverAgents: parseNumber(process.env.WORK_LOOP_MAX_CONFLICT_RESOLVER_AGENTS, DEFAULT_CONFIG.maxConflictResolverAgents),
     staleTaskMinutes: parseNumber(process.env.WORK_LOOP_STALE_TASK_MINUTES, DEFAULT_CONFIG.staleTaskMinutes),
     staleReviewMinutes: parseNumber(process.env.WORK_LOOP_STALE_REVIEW_MINUTES, DEFAULT_CONFIG.staleReviewMinutes),
   }

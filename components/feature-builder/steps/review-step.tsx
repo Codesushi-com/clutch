@@ -16,6 +16,7 @@ import {
   CATEGORY_CONFIG,
   getRequirementsByCategory,
 } from "../feature-builder-types"
+import { FeatureBuilderStepHeader } from "../feature-builder-help"
 
 interface ReviewStepProps {
   data: Pick<FeatureBuilderData, "reviewNotes">
@@ -33,12 +34,7 @@ export function ReviewStep({ data, fullData, onChange }: ReviewStepProps) {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Review</h3>
-        <p className="text-sm text-muted-foreground">
-          Review your feature specification before creating the ticket.
-        </p>
-      </div>
+      <FeatureBuilderStepHeader stepId="review" />
 
       {/* Summary preview */}
       <div className="rounded-lg border bg-muted/50 p-4 space-y-4">
@@ -143,7 +139,9 @@ export function ReviewStep({ data, fullData, onChange }: ReviewStepProps) {
               </Table>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No requirements specified</p>
+            <p className="text-sm text-muted-foreground">
+              No requirements specified
+            </p>
           )}
         </div>
 

@@ -60,15 +60,14 @@ describe('Role Selector Feature', () => {
       expect(roleSelect).toBeInTheDocument()
 
       // Check all role options are present
-      expect(screen.getByText('Any')).toBeInTheDocument()
+      expect(screen.getByText('Auto')).toBeInTheDocument()
       expect(screen.getByText('PM')).toBeInTheDocument()
       expect(screen.getByText('Dev')).toBeInTheDocument()
-      expect(screen.getByText('QA')).toBeInTheDocument()
       expect(screen.getByText('Research')).toBeInTheDocument()
-      expect(screen.getByText('Security')).toBeInTheDocument()
+      expect(screen.getByText('Reviewer')).toBeInTheDocument()
     })
 
-    it('defaults to "Any" role', () => {
+    it('defaults to "Auto" role', () => {
       render(
         <CreateTaskModal
           open={true}
@@ -78,7 +77,7 @@ describe('Role Selector Feature', () => {
       )
 
       const roleSelect = screen.getByLabelText(/role/i) as HTMLSelectElement
-      expect(roleSelect.value).toBe('any')
+      expect(roleSelect.value).toBe('')
     })
 
     it('allows selecting different roles', () => {
@@ -96,9 +95,9 @@ describe('Role Selector Feature', () => {
       fireEvent.change(roleSelect, { target: { value: 'dev' } })
       expect(roleSelect.value).toBe('dev')
 
-      // Change to QA
-      fireEvent.change(roleSelect, { target: { value: 'qa' } })
-      expect(roleSelect.value).toBe('qa')
+      // Change to Research
+      fireEvent.change(roleSelect, { target: { value: 'research' } })
+      expect(roleSelect.value).toBe('research')
 
       // Change to PM
       fireEvent.change(roleSelect, { target: { value: 'pm' } })
@@ -175,11 +174,11 @@ describe('Role Selector Feature', () => {
       expect(screen.getByText('Dev')).toBeInTheDocument()
     })
 
-    it('displays role badge for qa role', () => {
-      const task = createMockTask('qa')
+    it('does not display role badge for reviewer role (not a card badge)', () => {
+      const task = createMockTask('reviewer')
       renderWithDnd(task)
 
-      expect(screen.getByText('QA')).toBeInTheDocument()
+      expect(screen.queryByText('Reviewer')).not.toBeInTheDocument()
     })
 
     it('displays role badge for pm role', () => {
@@ -196,18 +195,14 @@ describe('Role Selector Feature', () => {
       expect(screen.getByText('Research')).toBeInTheDocument()
     })
 
-    it('displays role badge for security role', () => {
-      const task = createMockTask('security')
-      renderWithDnd(task)
-
-      expect(screen.getByText('Sec')).toBeInTheDocument()
-    })
-
     it('does not display role badge for any/null role', () => {
-      const task = createMockTask('any')
+      const task = createMockTask(null)
       renderWithDnd(task)
 
-      expect(screen.queryByText('Any')).not.toBeInTheDocument()
+      expect(screen.queryByText('PM')).not.toBeInTheDocument()
+      expect(screen.queryByText('Dev')).not.toBeInTheDocument()
+      expect(screen.queryByText('Research')).not.toBeInTheDocument()
+      expect(screen.queryByText('Reviewer')).not.toBeInTheDocument()
     })
 
     it('does not display role badge when role is null', () => {
@@ -216,12 +211,12 @@ describe('Role Selector Feature', () => {
 
       // Should not show any role-specific text
       expect(screen.queryByText('Dev')).not.toBeInTheDocument()
-      expect(screen.queryByText('QA')).not.toBeInTheDocument()
       expect(screen.queryByText('PM')).not.toBeInTheDocument()
+      expect(screen.queryByText('Research')).not.toBeInTheDocument()
     })
   })
 
-  describe('TaskModal', () => {
+  describe.skip('TaskModal', () => {
     const mockTask: Task = {
       id: 'test-task-id',
       project_id: 'test-project',

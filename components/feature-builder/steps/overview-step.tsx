@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { FeatureBuilderData } from "../feature-builder-types"
+import { FeatureBuilderStepHeader } from "../feature-builder-help"
 
 interface OverviewStepProps {
   data: Pick<FeatureBuilderData, "name" | "description" | "projectId">
@@ -22,12 +23,7 @@ interface OverviewStepProps {
 export function OverviewStep({ data, projects, onChange, errors }: OverviewStepProps) {
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Feature Overview</h3>
-        <p className="text-sm text-muted-foreground">
-          Give your feature a clear name and description so everyone understands what you&apos;re building.
-        </p>
-      </div>
+      <FeatureBuilderStepHeader stepId="overview" />
 
       <div className="space-y-4">
         <div className="space-y-2">

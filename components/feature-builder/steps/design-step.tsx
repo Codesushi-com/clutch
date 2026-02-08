@@ -3,6 +3,7 @@
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import type { FeatureBuilderData } from "../feature-builder-types"
+import { FeatureBuilderStepHeader } from "../feature-builder-help"
 
 interface DesignStepProps {
   data: Pick<FeatureBuilderData, "designNotes" | "technicalApproach">
@@ -13,12 +14,7 @@ interface DesignStepProps {
 export function DesignStep({ data, onChange, errors }: DesignStepProps) {
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Design</h3>
-        <p className="text-sm text-muted-foreground">
-          Outline the technical approach and design considerations for this feature.
-        </p>
-      </div>
+      <FeatureBuilderStepHeader stepId="design" />
 
       <div className="space-y-4">
         <div className="space-y-2">

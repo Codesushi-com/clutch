@@ -67,7 +67,7 @@ interface TaskEventDoc {
 interface TaskDoc {
   id: string
   agent_model?: string | null
-  role?: 'pm' | 'dev' | 'research' | 'reviewer' | null
+  role?: 'pm' | 'dev' | 'research' | 'reviewer' | 'conflict_resolver' | null
   completed_at?: number | null
   agent_tokens_in?: number | null
   agent_tokens_out?: number | null

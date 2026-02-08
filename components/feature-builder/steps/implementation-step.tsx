@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { FeatureBuilderData } from "../feature-builder-types"
+import { FeatureBuilderStepHeader } from "../feature-builder-help"
 
 interface ImplementationStepProps {
   data: Pick<FeatureBuilderData, "implementationPlan" | "estimatedHours">
@@ -14,12 +15,7 @@ interface ImplementationStepProps {
 export function ImplementationStep({ data, onChange, errors }: ImplementationStepProps) {
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Implementation Plan</h3>
-        <p className="text-sm text-muted-foreground">
-          Break down the work into manageable tasks and estimate the effort required.
-        </p>
-      </div>
+      <FeatureBuilderStepHeader stepId="implementation" />
 
       <div className="space-y-4">
         <div className="space-y-2">

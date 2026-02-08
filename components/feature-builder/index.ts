@@ -38,3 +38,15 @@ export type {
   ConversationMessage,
   FeatureBuilderState,
 } from "./types"
+
+// Error handling and help
+export {
+  FeatureBuilderErrorBoundary,
+  useFeatureBuilderAnalytics,
+  FEATURE_BUILDER_HELP,
+} from "./feature-builder-error-boundary"
+export type { FeatureBuilderStepId } from "./feature-builder-error-boundary"
+export {
+  FeatureBuilderHelpTooltip,
+  FeatureBuilderStepHeader,
+} from "./feature-builder-help"

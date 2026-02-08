@@ -147,7 +147,7 @@ export function CycleTimeChart({ data, isLoading }: CycleTimeChartProps) {
           <div className="h-4 w-48 bg-muted rounded animate-pulse" />
         </CardHeader>
         <CardContent>
-          <div className="h-[250px] bg-muted rounded animate-pulse" />
+          <div className="h-[250px] min-h-[250px] bg-muted rounded animate-pulse" />
         </CardContent>
       </Card>
     )
@@ -162,7 +162,7 @@ export function CycleTimeChart({ data, isLoading }: CycleTimeChartProps) {
           <CardDescription>Average time spent in each phase</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="h-[250px] flex flex-col items-center justify-center border-2 border-dashed border-border rounded-lg bg-muted/30">
+          <div className="h-[250px] min-h-[250px] flex flex-col items-center justify-center border-2 border-dashed border-border rounded-lg bg-muted/30">
             <p className="text-muted-foreground text-sm">No cycle time data available</p>
           </div>
         </CardContent>
@@ -185,8 +185,8 @@ export function CycleTimeChart({ data, isLoading }: CycleTimeChartProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[250px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-[250px] min-h-[250px]">
+          <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
             <BarChart
               data={chartData}
               layout="vertical"

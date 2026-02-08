@@ -1,14 +1,16 @@
 import type { LucideIcon } from "lucide-react"
 
 export type FeatureBuilderStep =
-  | "overview"
-  | "research"
-  | "requirements"
-  | "design"
-  | "implementation"
-  | "testing"
-  | "review"
-  | "launch"
+  | 'overview'
+  | 'research'
+  | 'requirements'
+  | 'design'
+  | 'implementation'
+  | 'breakdown'
+  | 'qa'
+  | 'testing'
+  | 'review'
+  | 'launch'
 
 // GSD Requirement Categories
 export type RequirementCategory = "v1" | "v2" | "out-of-scope"
@@ -37,6 +39,44 @@ export interface RequirementsExport {
   }
 }
 
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type TaskRole = 'pm' | 'dev' | 'research' | 'reviewer'
+
+export interface GeneratedTask {
+  id: string // Temporary ID for editing
+  title: string
+  description: string
+  priority: TaskPriority
+  role: TaskRole
+  phaseIndex: number // Which phase this task belongs to
+  dependsOn: string[] // IDs of tasks this depends on
+}
+
+export interface TaskPhase {
+  index: number
+  name: string
+  description: string
+  tasks: GeneratedTask[]
+}
+
+export interface TaskBreakdown {
+  phases: TaskPhase[]
+  isGenerating: boolean
+  createdTaskIds?: string[] // IDs of tasks after creation
+  error?: string
+}
+
+export interface QAValidation {
+  checklist: {
+    completeness: boolean
+    clarity: boolean
+    requirementsCoverage: boolean
+    dependencies: boolean
+    missingPieces: boolean
+  }
+  notes: string
+}
+
 export interface FeatureBuilderData {
   // Overview step
   name: string
@@ -46,9 +86,8 @@ export interface FeatureBuilderData {
   // Research step
   research: ResearchProgress | null
 
-  // Requirements step - NEW structured format
+  // Requirements step - structured format
   requirements: Requirement[]
-  // Legacy fields for backward compatibility
   acceptanceCriteria: string[]
 
   // Design step
@@ -58,6 +97,12 @@ export interface FeatureBuilderData {
   // Implementation step
   implementationPlan: string
   estimatedHours: number
+
+  // Breakdown step
+  taskBreakdown: TaskBreakdown | null
+
+  // QA validation step
+  qaValidation: QAValidation
 
   // Testing step
   testStrategy: string
@@ -100,54 +145,16 @@ export interface ResearchProgress {
 }
 
 export const STEPS: StepConfig[] = [
-  {
-    id: "overview",
-    label: "Overview",
-    description: "Feature name and basic info",
-    index: 0,
-  },
-  {
-    id: "research",
-    label: "Research",
-    description: "Parallel research across domains",
-    index: 1,
-  },
-  {
-    id: "requirements",
-    label: "Requirements",
-    description: "Define what needs to be built",
-    index: 2,
-  },
-  {
-    id: "design",
-    label: "Design",
-    description: "Technical design and approach",
-    index: 3,
-  },
-  {
-    id: "implementation",
-    label: "Implementation",
-    description: "Plan the development work",
-    index: 4,
-  },
-  {
-    id: "testing",
-    label: "Testing",
-    description: "Define test strategy",
-    index: 5,
-  },
-  {
-    id: "review",
-    label: "Review",
-    description: "Final review before creation",
-    index: 6,
-  },
-  {
-    id: "launch",
-    label: "Launch",
-    description: "Create the feature ticket",
-    index: 7,
-  },
+  { id: 'overview', label: 'Overview', description: 'Feature name and basic info', index: 0 },
+  { id: 'research', label: 'Research', description: 'Parallel research across domains', index: 1 },
+  { id: 'requirements', label: 'Requirements', description: 'Define what needs to be built', index: 2 },
+  { id: 'design', label: 'Design', description: 'Technical design and approach', index: 3 },
+  { id: 'implementation', label: 'Implementation', description: 'Plan the development work', index: 4 },
+  { id: 'breakdown', label: 'Breakdown', description: 'Convert plan to tasks', index: 5 },
+  { id: 'qa', label: 'QA', description: 'Validate generated task plan', index: 6 },
+  { id: 'testing', label: 'Testing', description: 'Define test strategy', index: 7 },
+  { id: 'review', label: 'Review', description: 'Final review before creation', index: 8 },
+  { id: 'launch', label: 'Launch', description: 'Create the feature ticket', index: 9 },
 ]
 
 export const TOTAL_STEPS = STEPS.length

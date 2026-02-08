@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import {
@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, X, Sparkles } from "lucide-react"
+import { ChevronLeft, ChevronRight, X, Sparkles, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 import {
@@ -42,10 +42,12 @@ import {
   RequirementsStep,
   DesignStep,
   ImplementationStep,
+  TaskBreakdownStep,
   TestingStep,
   ReviewStep,
   LaunchStep,
 } from "./steps"
+import { FeatureBuilderErrorBoundary, useFeatureBuilderAnalytics } from "./feature-builder-error-boundary"
 
 interface FeatureBuilderModalProps {
   open: boolean
@@ -64,6 +66,17 @@ const INITIAL_DATA: FeatureBuilderData = {
   technicalApproach: "",
   implementationPlan: "",
   estimatedHours: 0,
+  taskBreakdown: null,
+  qaValidation: {
+    checklist: {
+      completeness: false,
+      clarity: false,
+      requirementsCoverage: false,
+      dependencies: false,
+      missingPieces: false,
+    },
+    notes: "",
+  },
   testStrategy: "",
   testCases: [],
   reviewNotes: "",
@@ -85,8 +98,63 @@ export function FeatureBuilderModal({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [hasError, setHasError] = useState(false)
+
+  const isInitialized = useRef(false)
+  const stepStartTime = useRef<number>(Date.now())
 
   const projects = useQuery(api.projects.getAll, {})
+  const { logEvent } = useFeatureBuilderAnalytics()
+
+  useEffect(() => {
+    if (open && !isInitialized.current && defaultProjectId) {
+      isInitialized.current = true
+
+      fetch("/api/feature-builder/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: defaultProjectId }),
+      })
+        .then(res => res.json())
+        .then((result) => {
+          if (result.sessionId) {
+            setSessionId(result.sessionId)
+            logEvent("session_started", { project_id: defaultProjectId, session_id: result.sessionId })
+          }
+        })
+        .catch((err) => {
+          console.error("[FeatureBuilder] Failed to create session:", err)
+        })
+    }
+  }, [open, defaultProjectId, logEvent])
+
+  useEffect(() => {
+    if (open && sessionId) {
+      const now = Date.now()
+      const duration = now - stepStartTime.current
+
+      logEvent("step_viewed", {
+        session_id: sessionId,
+        step: currentStep,
+        duration_ms: duration,
+      })
+
+      stepStartTime.current = now
+    }
+  }, [currentStep, open, sessionId, logEvent])
+
+  const resetState = useCallback(() => {
+    setCurrentStep("overview")
+    setCompletedSteps([])
+    setData({ ...INITIAL_DATA, projectId: defaultProjectId || "" })
+    setErrors({})
+    setHasChanges(false)
+    setSessionId(null)
+    setHasError(false)
+    isInitialized.current = false
+    stepStartTime.current = Date.now()
+  }, [defaultProjectId])
 
   const updateData = useCallback((updates: Partial<FeatureBuilderData>) => {
     setData((prev) => ({ ...prev, ...updates }))
@@ -100,6 +168,29 @@ export function FeatureBuilderModal({
       return newErrors
     })
   }, [])
+
+  const persistProgress = useCallback(async (
+    step: FeatureBuilderStep,
+    completed: FeatureBuilderStep[],
+    currentData: FeatureBuilderData
+  ) => {
+    if (!sessionId) return
+
+    try {
+      await fetch("/api/feature-builder/session", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: sessionId,
+          current_step: step,
+          completed_steps: completed,
+          feature_data: JSON.stringify(currentData),
+        }),
+      })
+    } catch (err) {
+      console.error("[FeatureBuilder] Failed to persist progress:", err)
+    }
+  }, [sessionId])
 
   const validateStep = useCallback(
     (step: FeatureBuilderStep): boolean => {
@@ -145,6 +236,9 @@ export function FeatureBuilderModal({
           }
           break
 
+        case "breakdown":
+          break
+
         case "testing":
           // Testing is optional but recommended
           break
@@ -164,21 +258,27 @@ export function FeatureBuilderModal({
     [data]
   )
 
-  const handleNext = useCallback(() => {
+  const handleNext = useCallback(async () => {
     if (!validateStep(currentStep)) {
+      logEvent("validation_failed", { step: currentStep, errors: Object.keys(errors) })
       return
     }
 
-    // Mark current step as completed
+    const newCompletedSteps = completedSteps.includes(currentStep)
+      ? completedSteps
+      : [...completedSteps, currentStep]
+
     if (!completedSteps.includes(currentStep)) {
-      setCompletedSteps((prev) => [...prev, currentStep])
+      setCompletedSteps(newCompletedSteps)
+      logEvent("step_completed", { step: currentStep, session_id: sessionId })
     }
 
     const nextStep = getNextStep(currentStep)
     if (nextStep) {
       setCurrentStep(nextStep)
+      await persistProgress(nextStep, newCompletedSteps, data)
     }
-  }, [currentStep, completedSteps, validateStep])
+  }, [currentStep, completedSteps, data, errors, logEvent, persistProgress, sessionId, validateStep])
 
   const handlePrevious = useCallback(() => {
     const prevStep = getPreviousStep(currentStep)
@@ -188,7 +288,7 @@ export function FeatureBuilderModal({
   }, [currentStep])
 
   const handleStepClick = useCallback(
-    (step: FeatureBuilderStep) => {
+    async (step: FeatureBuilderStep) => {
       // Only allow navigation to completed steps or the next available step
       const stepConfig = getStepConfig(step)
       const currentConfig = getStepConfig(currentStep)
@@ -205,9 +305,10 @@ export function FeatureBuilderModal({
           return
         }
         setCurrentStep(step)
+        await persistProgress(step, completedSteps, data)
       }
     },
-    [currentStep, completedSteps, validateStep]
+    [currentStep, completedSteps, data, persistProgress, validateStep]
   )
 
   const handleCancel = useCallback(() => {
@@ -217,27 +318,19 @@ export function FeatureBuilderModal({
       onOpenChange(false)
       // Reset state after close
       setTimeout(() => {
-        setCurrentStep("overview")
-        setCompletedSteps([])
-        setData({ ...INITIAL_DATA, projectId: defaultProjectId || "" })
-        setErrors({})
-        setHasChanges(false)
+        resetState()
       }, 200)
     }
-  }, [hasChanges, isSubmitting, onOpenChange, defaultProjectId])
+  }, [hasChanges, isSubmitting, onOpenChange, resetState])
 
   const handleConfirmCancel = useCallback(() => {
     setShowCancelConfirm(false)
     onOpenChange(false)
     // Reset state after close
     setTimeout(() => {
-      setCurrentStep("overview")
-      setCompletedSteps([])
-      setData({ ...INITIAL_DATA, projectId: defaultProjectId || "" })
-      setErrors({})
-      setHasChanges(false)
+      resetState()
     }, 200)
-  }, [onOpenChange, defaultProjectId])
+  }, [onOpenChange, resetState])
 
   const handleSubmit = useCallback(async () => {
     if (!validateStep(currentStep)) {
@@ -245,6 +338,7 @@ export function FeatureBuilderModal({
     }
 
     setIsSubmitting(true)
+    logEvent("feature_creation_started", { session_id: sessionId, feature_name: data.name })
 
     try {
       // TODO: Call API to create feature ticket
@@ -253,22 +347,20 @@ export function FeatureBuilderModal({
       // For now, just simulate success
       await new Promise((resolve) => setTimeout(resolve, 1000))
 
+      logEvent("feature_created", { session_id: sessionId, feature_name: data.name })
       onOpenChange(false)
       // Reset state
       setTimeout(() => {
-        setCurrentStep("overview")
-        setCompletedSteps([])
-        setData({ ...INITIAL_DATA, projectId: defaultProjectId || "" })
-        setErrors({})
-        setHasChanges(false)
+        resetState()
       }, 200)
     } catch (error) {
       console.error("Failed to create feature:", error)
       setErrors({ submit: "Failed to create feature. Please try again." })
+      logEvent("feature_creation_failed", { session_id: sessionId, error: String(error) })
     } finally {
       setIsSubmitting(false)
     }
-  }, [currentStep, defaultProjectId, onOpenChange, validateStep])
+  }, [currentStep, data.name, logEvent, onOpenChange, resetState, sessionId, validateStep])
 
   const renderStepContent = () => {
     const projectList =
@@ -317,6 +409,14 @@ export function FeatureBuilderModal({
             errors={errors}
           />
         )
+      case "breakdown":
+        return (
+          <TaskBreakdownStep
+            data={data}
+            onChange={updateData}
+            errors={errors}
+          />
+        )
       case "testing":
         return (
           <TestingStep data={data} onChange={updateData} errors={errors} />
@@ -340,7 +440,9 @@ export function FeatureBuilderModal({
   const stepConfig = getStepConfig(currentStep)
 
   return (
-    <>
+    <FeatureBuilderErrorBoundary
+      onReset={() => setHasError(false)}
+    >
       <Dialog open={open} onOpenChange={handleCancel}>
         <DialogContent
           className="sm:max-w-3xl max-h-[90vh] p-0 gap-0 overflow-hidden"
@@ -381,6 +483,16 @@ export function FeatureBuilderModal({
 
           {/* Content */}
           <div className="px-6 py-6 overflow-y-auto max-h-[50vh]">
+            {hasError && (
+              <div className="mb-4 p-4 border border-destructive/50 bg-destructive/10 rounded-lg flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                <div>
+                  <p className="text-sm font-medium text-destructive">Something went wrong</p>
+                  <p className="text-xs text-destructive/80">Please try again or contact support if the problem persists.</p>
+                </div>
+              </div>
+            )}
+
             {renderStepContent()}
 
             {errors.submit && (
@@ -473,6 +585,6 @@ export function FeatureBuilderModal({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </FeatureBuilderErrorBoundary>
   )
 }

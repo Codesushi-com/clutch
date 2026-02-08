@@ -3,6 +3,7 @@
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import type { FeatureBuilderData } from "../feature-builder-types"
+import { FeatureBuilderStepHeader } from "../feature-builder-help"
 
 interface TestingStepProps {
   data: Pick<FeatureBuilderData, "testStrategy" | "testCases">
@@ -20,12 +21,7 @@ export function TestingStep({ data, onChange, errors }: TestingStepProps) {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Testing Strategy</h3>
-        <p className="text-sm text-muted-foreground">
-          Define how this feature will be tested to ensure quality and reliability.
-        </p>
-      </div>
+      <FeatureBuilderStepHeader stepId="testing" />
 
       <div className="space-y-4">
         <div className="space-y-2">

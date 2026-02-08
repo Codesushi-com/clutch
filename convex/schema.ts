@@ -48,7 +48,8 @@ export default defineSchema({
       v.literal("pm"),
       v.literal("dev"),
       v.literal("research"),
-      v.literal("reviewer")
+      v.literal("reviewer"),
+      v.literal("conflict_resolver")
     )),
     assignee: v.optional(v.string()),
     requires_human_review: v.boolean(),
@@ -439,4 +440,208 @@ export default defineSchema({
   })
     .index("by_uuid", ["id"])
     .index("by_model", ["model"]),
+
+  // Features (Epics) - high-level feature definitions
+  features: defineTable({
+    id: v.string(), // UUID primary key
+    project_id: v.string(), // UUID ref to projects
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("planned"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("deferred")
+    ),
+    priority: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent")
+    ),
+    position: v.number(), // for ordering
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_project", ["project_id"])
+    .index("by_project_status", ["project_id", "status"])
+    .index("by_project_position", ["project_id", "position"]),
+
+  // Requirements - individual requirements belonging to features
+  requirements: defineTable({
+    id: v.string(), // UUID primary key (REQ-XXX format or UUID)
+    project_id: v.string(), // UUID ref to projects
+    feature_id: v.optional(v.string()), // UUID ref to features (optional)
+    title: v.string(),
+    description: v.optional(v.string()),
+    category: v.optional(v.string()), // e.g., "AUTH", "CONTENT", "SOCIAL"
+    status: v.union(
+      v.literal("draft"),
+      v.literal("approved"),
+      v.literal("implemented"),
+      v.literal("deferred")
+    ),
+    priority: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent")
+    ),
+    position: v.number(),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_project", ["project_id"])
+    .index("by_feature", ["feature_id"])
+    .index("by_project_category", ["project_id", "category"]),
+
+  // Roadmap Phases - GSD-style phase definitions
+  roadmapPhases: defineTable({
+    id: v.string(), // UUID primary key
+    project_id: v.string(), // UUID ref to projects
+    number: v.number(), // Phase number (1, 2, 3 or 2.1, 2.2 for insertions)
+    name: v.string(),
+    goal: v.string(), // What this phase delivers
+    description: v.optional(v.string()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("planned"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("deferred")
+    ),
+    depends_on: v.optional(v.string()), // JSON array of phase IDs
+    success_criteria: v.optional(v.string()), // JSON array of observable behaviors
+    position: v.number(), // for ordering/display
+    inserted: v.optional(v.boolean()), // true for decimal phases (2.1, 2.2)
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_project", ["project_id"])
+    .index("by_project_number", ["project_id", "number"])
+    .index("by_project_position", ["project_id", "position"]),
+
+  // Phase Requirements - many-to-many mapping between phases and requirements
+  phaseRequirements: defineTable({
+    id: v.string(), // UUID primary key
+    phase_id: v.string(), // UUID ref to roadmapPhases
+    requirement_id: v.string(), // UUID ref to requirements
+    project_id: v.string(), // UUID ref to projects (for efficient queries)
+    created_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_phase", ["phase_id"])
+    .index("by_requirement", ["requirement_id"])
+    .index("by_project", ["project_id"])
+    .index("by_phase_requirement", ["phase_id", "requirement_id"]),
+
+  // Feature Builder Sessions - track feature builder usage and sessions
+  featureBuilderSessions: defineTable({
+    id: v.string(), // UUID primary key
+    project_id: v.string(), // UUID ref to projects
+    user_id: v.optional(v.string()), // user who started the session
+    status: v.union(
+      v.literal("active"),
+      v.literal("completed"),
+      v.literal("cancelled"),
+      v.literal("error")
+    ),
+    current_step: v.string(), // current step in the flow
+    completed_steps: v.array(v.string()), // steps completed so far
+    feature_data: v.optional(v.string()), // JSON string of FeatureBuilderData
+    result_task_id: v.optional(v.string()), // UUID ref to tasks if feature was created
+    started_at: v.number(),
+    completed_at: v.optional(v.number()),
+    last_activity_at: v.number(),
+    duration_ms: v.optional(v.number()), // total duration
+    // Analytics fields
+    steps_completed_count: v.number(),
+    steps_skipped_count: v.optional(v.number()),
+    research_used: v.boolean(),
+    tasks_generated: v.optional(v.number()),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_project", ["project_id"])
+    .index("by_status", ["status"])
+    .index("by_project_status", ["project_id", "status"])
+    .index("by_started", ["started_at"])
+    .index("by_user", ["user_id"]),
+
+  // Feature Builder Analytics - aggregated metrics
+  featureBuilderAnalytics: defineTable({
+    id: v.string(), // UUID primary key (composite: project_id:period:date)
+    project_id: v.string(), // UUID ref to projects
+    period: v.union(v.literal("day"), v.literal("week"), v.literal("month"), v.literal("all_time")),
+    period_start: v.number(), // start of period
+    // Metrics
+    sessions_started: v.number(),
+    sessions_completed: v.number(),
+    sessions_cancelled: v.number(),
+    avg_session_duration_ms: v.number(),
+    avg_steps_completed: v.number(),
+    features_created: v.number(),
+    tasks_generated: v.number(),
+    // Step completion rates
+    step_completion_rates: v.optional(v.string()), // JSON: { stepId: completionCount }
+    // Errors
+    error_count: v.number(),
+    // Last updated
+    updated_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_project", ["project_id"])
+    .index("by_project_period", ["project_id", "period", "period_start"])
+    .index("by_period", ["period", "period_start"]),
+
+  // Sessions - unified tracking for all OpenClaw sessions (main, chat, agent, cron)
+  sessions: defineTable({
+    id: v.string(), // UUID primary key
+    session_key: v.string(), // e.g. "agent:main:main", "agent:main:trap:the-trap:xxx"
+    session_id: v.string(), // UUID from sessions.json
+    session_type: v.union(
+      v.literal("main"),
+      v.literal("chat"),
+      v.literal("agent"),
+      v.literal("cron")
+    ),
+    model: v.optional(v.string()), // last model used
+    provider: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("idle"),
+      v.literal("completed"),
+      v.literal("stale")
+    ),
+    // Token counts
+    tokens_input: v.optional(v.number()),
+    tokens_output: v.optional(v.number()),
+    tokens_cache_read: v.optional(v.number()),
+    tokens_cache_write: v.optional(v.number()),
+    tokens_total: v.optional(v.number()),
+    // Cost tracking (USD)
+    cost_input: v.optional(v.float64()),
+    cost_output: v.optional(v.float64()),
+    cost_cache_read: v.optional(v.float64()),
+    cost_cache_write: v.optional(v.float64()),
+    cost_total: v.optional(v.float64()),
+    last_active_at: v.optional(v.number()),
+    output_preview: v.optional(v.string()),
+    stop_reason: v.optional(v.string()),
+    // Relationships
+    task_id: v.optional(v.string()), // UUID ref to tasks
+    project_slug: v.optional(v.string()), // extracted from session_key
+    file_path: v.optional(v.string()), // path to session JSON file
+    created_at: v.optional(v.number()),
+    updated_at: v.number(),
+  })
+    .index("by_uuid", ["id"])
+    .index("by_session_key", ["session_key"])
+    .index("by_status", ["status"])
+    .index("by_project", ["project_slug"])
+    .index("by_type", ["session_type"])
+    .index("by_task", ["task_id"]),
 })

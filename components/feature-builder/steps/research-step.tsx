@@ -25,6 +25,7 @@ import type {
   ResearchThread,
   ResearchThreadStatus 
 } from "../feature-builder-types"
+import { FeatureBuilderStepHeader } from "../feature-builder-help"
 
 interface ResearchStepProps {
   data: Pick<FeatureBuilderData, "name" | "description" | "research">
@@ -353,13 +354,7 @@ export function ResearchStep({ data, onChange, errors }: ResearchStepProps) {
   
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Parallel Research</h3>
-        <p className="text-sm text-muted-foreground">
-          Multiple AI agents are researching different aspects of your feature in parallel.
-        </p>
-      </div>
+      <FeatureBuilderStepHeader stepId="research" />
       
       {/* Overall progress */}
       <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
