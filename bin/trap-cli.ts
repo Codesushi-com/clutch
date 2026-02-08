@@ -3,8 +3,8 @@
  * Trap CLI - Command line interface for Trap operations
  *
  * Usage:
- *   trap deploy convex [--project <slug>]   Deploy Convex for a project
- *   trap deploy check [--project <slug>]    Check if convex/ is dirty vs deployed
+ *   trap-cli deploy convex [--project <slug>]   Deploy Convex for a project
+ *   trap-cli deploy check [--project <slug>]    Check if convex/ is dirty vs deployed
  */
 
 import { execFileSync } from "node:child_process"
@@ -57,7 +57,7 @@ function showHelp(): void {
 Trap CLI - Manage your Trap projects
 
 Usage:
-  trap <command> [options]
+  trap-cli <command> [options]
 
 Commands:
   deploy convex [--project <slug>]   Deploy Convex schema/functions for a project
@@ -68,9 +68,9 @@ Options:
   --help, -h          Show this help message
 
 Examples:
-  trap deploy convex                    Deploy Convex for default project
-  trap deploy convex --project myapp    Deploy Convex for "myapp" project
-  trap deploy check                     Check convex/ status
+  trap-cli deploy convex                    Deploy Convex for default project
+  trap-cli deploy convex --project myapp    Deploy Convex for "myapp" project
+  trap-cli deploy check                     Check convex/ status
 `)
 }
 
@@ -218,7 +218,7 @@ async function cmdDeployCheck(
     for (const file of convexFiles) {
       console.log(`  - ${file}`)
     }
-    console.log("\nRun 'trap deploy convex' to deploy these changes.")
+    console.log("\nRun 'trap-cli deploy convex' to deploy these changes.")
     process.exit(1)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -266,7 +266,7 @@ async function main(): Promise<void> {
       break
     default:
       console.error(`Unknown command: ${command}`)
-      console.error("Run 'trap --help' for usage information.")
+      console.error("Run 'trap-cli --help' for usage information.")
       process.exit(1)
   }
 }

@@ -189,7 +189,7 @@ trap/
 ├── plugins/              # OpenClaw plugins
 │   └── trap-channel.ts   # Channel plugin for bidirectional chat
 └── bin/
-    └── trap-gate.sh      # Gate script for cron-based wakeups
+    └── trap-cli-gate.sh  # Gate script for cron-based wakeups
 ```
 
 ## Voice Chat Setup

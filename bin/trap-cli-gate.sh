@@ -1,10 +1,10 @@
 #!/bin/bash
-# trap-gate.sh — Gate script for OpenClaw cron
+# trap-cli-gate.sh — Gate script for OpenClaw cron
 #
 # Returns 0 (wake) if coordinator should process work
 # Returns 1 (sleep) if nothing needs attention
 #
-# Usage: TRAP_URL=http://localhost:3002 ./trap-gate.sh
+# Usage: TRAP_URL=http://localhost:3002 ./trap-cli-gate.sh
 
 set -e
 

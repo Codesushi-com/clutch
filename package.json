@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "bin": {
-    "trap": "./bin/trap.ts"
+    "trap-cli": "./bin/trap-cli.ts"
   },
   "scripts": {
     "dev": "volta run node ./node_modules/next/dist/bin/next dev -p 3002",
