@@ -12,7 +12,7 @@ import { api } from "../convex/_generated/api"
 import { logRun, logCycleComplete } from "./logger"
 import { agentManager } from "./agent-manager"
 import { runCleanup } from "./phases/cleanup"
-import { runReview, handleReviewerReap } from "./phases/review"
+import { runReview } from "./phases/review"
 import type { Project, WorkLoopPhase } from "../lib/types"
 import { runWork } from "./phases/work"
 import { runAnalyze } from "./phases/analyze"
@@ -258,190 +258,67 @@ async function runProjectCycle(
         // Non-fatal — task may have been deleted
       }
 
-      // Post-reap status verification:
-      // - Stale agents: move task back to ready for retry (but NOT for analyzers/reviewers —
-      //   they're observers and the task's real status should be preserved)
-      // - Finished agents: verify the task isn't orphaned in in_progress
-      if (isStale) {
-        // Analyzer and reviewer agents are observers — they don't own the task's status.
-        // If they time out, the task should stay wherever it is (usually done).
-        const isObserverRole = outcome.role === "analyzer" || outcome.role === "reviewer"
-        if (isObserverRole) {
-          console.log(
-            `[WorkLoop] Stale ${outcome.role} for task ${outcome.taskId} — ` +
-            `not moving task (observer role, task status is correct)`
-          )
-        } else {
-          try {
-            // Only move back to ready if the task is currently in_progress
-            // (prevents resurrecting done/backlog tasks)
-            const currentTasks = await convex.query(api.tasks.getByProject, {
-              projectId: project.id,
-              status: "in_progress",
-            })
-            const isInProgress = currentTasks.some((t: { id: string }) => t.id === outcome.taskId)
+      // Post-reap status verification — simplified block rule:
+      // If agent finished but task is still in_progress or in_review, move to blocked
+      try {
+        const task = await convex.query(api.tasks.getById, { id: outcome.taskId })
+        if (!task) continue
 
-            if (isInProgress) {
-              await convex.mutation(api.tasks.move, {
-                id: outcome.taskId,
-                status: "ready",
-              })
-              console.log(`[WorkLoop] Moved stale task ${outcome.taskId} back to ready`)
-            } else {
-              console.log(
-                `[WorkLoop] Stale agent for task ${outcome.taskId} but task is not in_progress — ` +
-                `leaving status as-is`
-              )
-            }
-          } catch {
-            // Non-fatal — task may already be in a different state
-          }
-        }
-      } else {
-        // Agent finished normally — check if it left the task in a bad state.
-        // Handle orphaned tasks: if agent finished without updating status, we need
-        // to recover the task based on what progress was made.
-        try {
-          const tasks = await convex.query(api.tasks.getByProject, {
+        const currentStatus = task.task.status
+
+        // Case 1: Task still in_progress after agent finished → blocked
+        if (currentStatus === "in_progress") {
+          await convex.mutation(api.tasks.move, {
+            id: outcome.taskId,
+            status: "blocked",
+          })
+          await convex.mutation(api.comments.create, {
+            taskId: outcome.taskId,
+            author: "work-loop",
+            authorType: "coordinator",
+            content: `Agent finished but task still in_progress. Moving to blocked for triage.`,
+            type: "status_change",
+          })
+          console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (finished while in_progress)`)
+          await logRun(convex, {
             projectId: project.id,
-            status: "in_progress",
-          })
-          const orphan = tasks.find((t: { id: string; agent_retry_count?: number | null; pr_number?: number | null; branch?: string | null }) => t.id === outcome.taskId)
-          if (orphan) {
-            const retries = (orphan.agent_retry_count ?? 0) + 1
-            const MAX_RETRIES = 2 // Configurable threshold
-
-            if (retries > MAX_RETRIES) {
-              // Too many retries — move to backlog with explanatory comment
-              await convex.mutation(api.tasks.move, {
-                id: orphan.id,
-                status: "backlog",
-              })
-              await convex.mutation(api.comments.create, {
-                taskId: orphan.id,
-                author: "coordinator",
-                authorType: "coordinator",
-                content: `Agent failed to complete this task after ${retries} attempts. Moving to backlog for human review.`,
-                type: "status_change",
-              })
-              console.log(`[WorkLoop] Task ${outcome.taskId} exceeded retry limit (${MAX_RETRIES}), moved to backlog`)
-              await logRun(convex, {
-                projectId: project.id,
-                cycle,
-                phase: "cleanup",
-                action: "orphan_backlogged",
-                taskId: outcome.taskId,
-                details: { retries, reason: "max_retries_exceeded" },
-              })
-            } else if (orphan.pr_number || orphan.branch) {
-              // Agent made progress — move to in_review so reviewer can pick it up
-              await convex.mutation(api.tasks.move, {
-                id: orphan.id,
-                status: "in_review",
-              })
-              console.log(`[WorkLoop] Task ${outcome.taskId} has PR/branch, moved to in_review`)
-              await logRun(convex, {
-                projectId: project.id,
-                cycle,
-                phase: "cleanup",
-                action: "orphan_moved_to_review",
-                taskId: outcome.taskId,
-                details: { pr_number: orphan.pr_number, branch: orphan.branch },
-              })
-            } else {
-              // No progress — increment retry and move back to ready
-              await convex.mutation(api.tasks.update, {
-                id: orphan.id,
-                agent_retry_count: retries,
-              })
-              await convex.mutation(api.tasks.move, {
-                id: orphan.id,
-                status: "ready",
-              })
-              console.log(`[WorkLoop] Task ${outcome.taskId} moved back to ready (retry ${retries}/${MAX_RETRIES})`)
-              await logRun(convex, {
-                projectId: project.id,
-                cycle,
-                phase: "cleanup",
-                action: "orphan_requeued",
-                taskId: outcome.taskId,
-                details: { retries, maxRetries: MAX_RETRIES },
-              })
-            }
-          }
-        } catch (err) {
-          // Non-fatal — log and continue
-          console.warn(`[WorkLoop] Failed to handle orphan task ${outcome.taskId}:`, err)
-        }
-      }
-
-      // Handle analyzer agents that were reaped without creating an analysis record
-      // This prevents infinite re-analysis loops by recording a failure analysis
-      if (outcome.role === "analyzer") {
-        try {
-          // Check if an analysis already exists for this task
-          const existingAnalysis = await convex.query(api.taskAnalyses.getByTask, {
-            task_id: outcome.taskId,
-          })
-
-          if (!existingAnalysis) {
-            // No analysis exists - create a failure record to prevent re-spawning
-            const isNoReply = outcome.reply === "completed" && !outcome.success
-            const isStale = outcome.reply === "stale_timeout"
-            const failureSummary = isStale
-              ? `Analyzer timed out after ${Math.round(outcome.durationMs / 60000)} minutes without completing analysis.`
-              : isNoReply
-                ? "Analyzer failed to produce a response (NO_REPLY)."
-                : `Analyzer failed: ${outcome.error || "unknown error"}`
-
-            await convex.mutation(api.taskAnalyses.create, {
-              task_id: outcome.taskId,
-              session_key: outcome.sessionKey,
-              role: "analyzer",
-              model: "sonnet",
-              prompt_version_id: "unknown", // We don't have access to the original prompt version here
-              outcome: "failure",
-              token_count: outcome.usage?.totalTokens ?? 0,
-              duration_ms: outcome.durationMs,
-              failure_modes: JSON.stringify(["agent_failed"]),
-              analysis_summary: failureSummary,
-              confidence: 1.0, // High confidence that the analysis failed
-            })
-
-            console.log(`[WorkLoop] Recorded failed analysis for task ${outcome.taskId}: ${isStale ? "stale" : isNoReply ? "no_reply" : "error"}`)
-            await logRun(convex, {
-              projectId: project.id,
-              cycle,
-              phase: "cleanup",
-              action: "analyzer_failure_recorded",
-              taskId: outcome.taskId,
-              details: {
-                reason: isStale ? "stale" : isNoReply ? "no_reply" : "error",
-                error: outcome.error,
-              },
-            })
-          }
-        } catch (err) {
-          // Non-fatal - log and continue
-          console.warn(`[WorkLoop] Failed to record analyzer failure for ${outcome.taskId}:`, err)
-        }
-      }
-
-      // Handle reviewer agents that finished without merging
-      // This detects "changes requested" and routes to fixer role
-      if (!isStale && outcome.role === "reviewer") {
-        try {
-          await handleReviewerReap({
-            convex,
-            outcome,
-            project,
-            log: (params) => logRun(convex, params),
             cycle,
+            phase: "cleanup",
+            action: "task_blocked",
+            taskId: outcome.taskId,
+            details: { reason: "finished_in_progress", role: outcome.role },
           })
-        } catch (err) {
-          // Non-fatal — log and continue
-          console.warn(`[WorkLoop] Failed to handle reviewer reap for ${outcome.taskId}:`, err)
         }
+        // Case 2: Reviewer finished but task still in_review → blocked
+        else if (currentStatus === "in_review" && outcome.role === "reviewer") {
+          await convex.mutation(api.tasks.move, {
+            id: outcome.taskId,
+            status: "blocked",
+          })
+          await convex.mutation(api.comments.create, {
+            taskId: outcome.taskId,
+            author: "work-loop",
+            authorType: "coordinator",
+            content: `Reviewer finished without merging. Moving to blocked for triage.`,
+            type: "status_change",
+          })
+          console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (reviewer didn't merge)`)
+          await logRun(convex, {
+            projectId: project.id,
+            cycle,
+            phase: "cleanup",
+            action: "task_blocked",
+            taskId: outcome.taskId,
+            details: { reason: "reviewer_no_merge", role: outcome.role },
+          })
+        }
+        // Case 3: Task already done/blocked → agent signaled correctly, no action
+        else {
+          console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} status is ${currentStatus} — agent signaled correctly`)
+        }
+      } catch (err) {
+        // Non-fatal — log and continue
+        console.warn(`[WorkLoop] Failed to verify task status for ${outcome.taskId}:`, err)
       }
     }
   }
