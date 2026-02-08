@@ -20,6 +20,9 @@
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
+    "@radix-ui/react-progress": "^1.1.8",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-separator": "^1.1.8",
     "@tanstack/react-table": "^8.21.3",
     "@types/diff": "^8.0.0",
     "class-variance-authority": "^0.7.1",

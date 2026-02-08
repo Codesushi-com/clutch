@@ -166,6 +166,39 @@ NEXT_PUBLIC_OPENCLAW_TOKEN=<your-gateway-token>
 # For HTTPS, WebSocket URL is auto-detected as wss://<host>/openclaw-ws
 ```
 
+## Work Loop Concurrency Tuning (Important)
+
+Trap can spawn multiple dev/reviewer agents in parallel, but **OpenClaw also has a global concurrency limit** for the `main` command lane.
+
+If you increase Trap's work loop agent limits (e.g. `WORK_LOOP_MAX_AGENTS`), you must also ensure OpenClaw can actually run that many agents concurrently, otherwise agent runs will queue and may appear to "ghost-complete" (no tokens, no JSONL transcript).
+
+### OpenClaw gateway concurrency
+
+In `~/.openclaw/openclaw.json`:
+
+- `agents.defaults.maxConcurrent` — concurrency for the `main` lane (default 4)
+
+For example, to support 6 parallel agents, set it to 8:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "maxConcurrent": 8
+    }
+  }
+}
+```
+
+### Trap reaper grace period
+
+Trap considers an agent "gone" if its session JSONL file does not appear after a grace period.
+If OpenClaw is queuing work, this grace must be large enough.
+
+See `worker/agent-manager.ts` (look for the comment: "give it time to create its session file").
+
+Recommended (when running high parallelism): **10 minutes**.
+
 ## Project Structure
 
 ```

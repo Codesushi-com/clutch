@@ -199,8 +199,8 @@ export class AgentManager {
         // Session file not found yet — agent may still be starting up.
         // Only treat as finished if the agent has been running for a while.
         const agentAgeMs = now - handle.spawnedAt
-        if (agentAgeMs < 60_000) {
-          // Agent was spawned less than 60s ago — give it time to create its session file
+        if (agentAgeMs < 10 * 60_000) {
+          // Agent was spawned less than 10min ago — give it time to create its session file
           continue
         }
         // Session file still missing after 60s — treat as failed/gone
