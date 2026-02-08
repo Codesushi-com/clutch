@@ -47,6 +47,7 @@ interface BlockedTask {
   agent_retry_count: number | null
   auto_triage_count: number | null
   triage_sent_at: number | null
+  triage_acked_at: number | null
   escalated: number | null
   updated_at: number
 }
@@ -56,22 +57,64 @@ interface BlockedTask {
 // ============================================
 
 const MAX_TRIAGE_PER_CYCLE = 2
-const MAX_AUTO_TRIAGE_ATTEMPTS = 3
+const MAX_AUTO_TRIAGE_ATTEMPTS = 5
+
+// Exponential backoff: 5min, 15min, 1hr, 4hr (baseDelay * 2^(attempt-1))
+const BACKOFF_BASE_DELAY_MS = 5 * 60 * 1000 // 5 minutes
 
 // ============================================
 // Main Triage Phase
 // ============================================
 
 /**
+ * Calculate the next eligible time for a triage retry using exponential backoff.
+ * Backoff schedule: 5min, 15min, 1hr, 4hr
+ */
+function getNextEligibleTime(triageCount: number, triageSentAt: number): number {
+  // First attempt is immediate, subsequent use exponential backoff
+  if (triageCount === 0) return 0
+  const delay = BACKOFF_BASE_DELAY_MS * Math.pow(2, triageCount - 1)
+  return triageSentAt + delay
+}
+
+/**
+ * Check if a triage needs to be retried.
+ * Returns true if:
+ * - Never been triaged before
+ * - Ack is null or older than the last triage_sent_at (message was lost)
+ * - Enough time has elapsed since last send (exponential backoff)
+ */
+function shouldRetryTriage(task: BlockedTask, now: number): boolean {
+  const triageCount = task.auto_triage_count ?? 0
+  const triageSentAt = task.triage_sent_at
+  const triageAckedAt = task.triage_acked_at
+
+  // Never been triaged - needs first attempt
+  if (!triageSentAt) return true
+
+  // Already acknowledged - don't retry
+  if (triageAckedAt && triageAckedAt >= triageSentAt) {
+    return false
+  }
+
+  // Check if enough time has elapsed (exponential backoff)
+  const nextEligible = getNextEligibleTime(triageCount, triageSentAt)
+  return now >= nextEligible
+}
+
+/**
  * Run the triage phase.
  *
  * Finds blocked tasks that need triage and sends them to Ada:
- * - Tasks with status 'blocked' where triage_sent_at is null OR auto_triage_count < 3
+ * - Tasks with status 'blocked' where triage_sent_at is null OR auto_triage_count < MAX_AUTO_TRIAGE_ATTEMPTS
+ * - Exponential backoff between retries: 5min, 15min, 1hr, 4hr
+ * - Only increments count if triage_acked_at is null (message not received)
  * - Rate limited to MAX_TRIAGE_PER_CYCLE per run
  * - Circuit breaker escalates after MAX_AUTO_TRIAGE_ATTEMPTS attempts
  */
 export async function runTriage(ctx: TriageContext): Promise<TriageResult> {
   const { convex, cycle, project, log } = ctx
+  const now = Date.now()
 
   // Get all blocked tasks for this project
   const blockedTasks = await convex.query(api.tasks.getByProject, {
@@ -79,16 +122,16 @@ export async function runTriage(ctx: TriageContext): Promise<TriageResult> {
     status: "blocked",
   })
 
-  // Filter to tasks that need triage (not yet sent, or under circuit breaker limit)
+  // Filter to tasks that need triage
   const tasksNeedingTriage = blockedTasks.filter((t: BlockedTask) => {
     // Skip already escalated tasks
     if (t.escalated) return false
 
     const triageCount = t.auto_triage_count ?? 0
-    const hasNeverBeenTriaged = !t.triage_sent_at
     const underCircuitBreaker = triageCount < MAX_AUTO_TRIAGE_ATTEMPTS
 
-    return hasNeverBeenTriaged || underCircuitBreaker
+    // Under circuit breaker and needs retry (per backoff schedule)
+    return underCircuitBreaker && shouldRetryTriage(t, now)
   })
 
   if (tasksNeedingTriage.length === 0) {
@@ -105,12 +148,11 @@ export async function runTriage(ctx: TriageContext): Promise<TriageResult> {
 
   const triagedTaskIds: string[] = []
   const escalatedIds: string[] = []
-  const now = Date.now()
 
   for (const task of tasksToProcess) {
     const triageCount = task.auto_triage_count ?? 0
 
-    // Circuit breaker check: if this would be the 3rd attempt, escalate instead
+    // Circuit breaker check: if this would be the 5th attempt, escalate instead
     if (triageCount >= MAX_AUTO_TRIAGE_ATTEMPTS - 1) {
       await escalateTask(convex, task, cycle, log, "max_auto_triage_reached", project)
       escalatedIds.push(task.id)
@@ -162,14 +204,25 @@ export async function runTriage(ctx: TriageContext): Promise<TriageResult> {
     }
 
     // Update task: set triage_sent_at and increment auto_triage_count
+    // Only increment count if triage_acked_at is null or older than triage_sent_at
+    // This prevents counting "retries" when the previous message was lost
     try {
+      const triageAckedAt = task.triage_acked_at
+      const wasAcked = triageAckedAt && triageAckedAt >= (task.triage_sent_at ?? 0)
+
+      // Only increment count if not already acknowledged
+      const newTriageCount = wasAcked ? triageCount : triageCount + 1
+
       await convex.mutation(api.tasks.update, {
         id: task.id,
         triage_sent_at: now,
-        auto_triage_count: triageCount + 1,
+        auto_triage_count: newTriageCount,
       })
 
       triagedTaskIds.push(task.id)
+
+      const nextEligible = getNextEligibleTime(newTriageCount, now)
+      const backoffMinutes = Math.round((nextEligible - now) / 60000)
 
       await log({
         projectId: project.id,
@@ -177,7 +230,11 @@ export async function runTriage(ctx: TriageContext): Promise<TriageResult> {
         phase: "triage",
         action: "triage_sent",
         taskId: task.id,
-        details: { triageCount: triageCount + 1 },
+        details: {
+          triageCount: newTriageCount,
+          wasAcked,
+          nextRetryMinutes: backoffMinutes > 0 ? backoffMinutes : null,
+        },
       })
 
       // Log task_event for triage
@@ -186,8 +243,10 @@ export async function runTriage(ctx: TriageContext): Promise<TriageResult> {
         eventType: "triage_sent",
         actor: "work-loop",
         data: JSON.stringify({
-          triage_count: triageCount + 1,
+          triage_count: newTriageCount,
           max_attempts: MAX_AUTO_TRIAGE_ATTEMPTS,
+          was_acked: wasAcked,
+          next_retry_at: nextEligible > now ? nextEligible : null,
         }),
       })
     } catch (err) {
@@ -402,7 +461,7 @@ async function buildTriageMessage(
   sections.push(`3. **Choose an action** from the options above`)
   sections.push(`4. **If unsure, escalate** — don't guess when the blocker is unclear`)
   sections.push(``)
-  sections.push(`**Note:** This is attempt ${triageCount} of ${maxAttempts}. After ${maxAttempts} attempts, the task will be auto-escalated to Dan.`)
+  sections.push(`**Note:** This is attempt ${triageCount} of ${maxAttempts}. Retries use exponential backoff (5min → 15min → 1hr → 4hr). After ${maxAttempts} attempts, the task will be auto-escalated to Dan.`)
 
   return sections.join("\n")
 }

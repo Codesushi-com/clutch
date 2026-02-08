@@ -76,6 +76,7 @@ export default defineSchema({
     agent_retry_count: v.optional(v.number()), // Track retry attempts for orphaned tasks
     // Triage tracking (when blocked tasks were reported to Ada)
     triage_sent_at: v.optional(v.number()),
+    triage_acked_at: v.optional(v.number()), // when Ada acknowledged the triage
     // Escalation tracking (for human attention)
     escalated: v.optional(v.boolean()), // flagged for human attention
     escalated_at: v.optional(v.number()), // timestamp of escalation

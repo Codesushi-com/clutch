@@ -39,6 +39,7 @@ function toTask(doc: {
   agent_output_preview?: string
   agent_retry_count?: number
   triage_sent_at?: number
+  triage_acked_at?: number
   auto_triage_count?: number
   escalated?: boolean
   escalated_at?: number
@@ -77,6 +78,7 @@ function toTask(doc: {
     agent_output_preview: doc.agent_output_preview ?? null,
     agent_retry_count: doc.agent_retry_count ?? null,
     triage_sent_at: (doc as { triage_sent_at?: number }).triage_sent_at ?? null,
+    triage_acked_at: (doc as { triage_acked_at?: number }).triage_acked_at ?? null,
     auto_triage_count: (doc as { auto_triage_count?: number }).auto_triage_count ?? null,
     escalated: (doc as { escalated?: boolean }).escalated ? 1 : 0,
     escalated_at: (doc as { escalated_at?: number }).escalated_at ?? null,
@@ -821,6 +823,7 @@ export const update = mutation({
     )),
     agent_retry_count: v.optional(v.number()),
     triage_sent_at: v.optional(v.number()),
+    triage_acked_at: v.optional(v.number()),
     auto_triage_count: v.optional(v.number()),
     escalated: v.optional(v.boolean()),
     escalated_at: v.optional(v.number()),
@@ -865,6 +868,7 @@ export const update = mutation({
     if (args.resolution !== undefined) updates.resolution = args.resolution
     if (args.agent_retry_count !== undefined) updates.agent_retry_count = args.agent_retry_count
     if (args.triage_sent_at !== undefined) updates.triage_sent_at = args.triage_sent_at
+    if (args.triage_acked_at !== undefined) updates.triage_acked_at = args.triage_acked_at
     if (args.auto_triage_count !== undefined) updates.auto_triage_count = args.auto_triage_count
     if (args.escalated !== undefined) {
       updates.escalated = args.escalated
@@ -991,6 +995,11 @@ export const move = mutation({
       agent_output_preview: undefined,
       // Reset retry count when starting fresh (in_progress), otherwise preserve it
       agent_retry_count: args.status === 'in_progress' ? 0 : existing.agent_retry_count,
+      // Reset triage state when unblocking (moving to ready)
+      // This ensures clean state if the task gets blocked again later
+      triage_sent_at: args.status === 'ready' ? undefined : existing.triage_sent_at,
+      triage_acked_at: args.status === 'ready' ? undefined : existing.triage_acked_at,
+      auto_triage_count: args.status === 'ready' ? 0 : existing.auto_triage_count,
     }
 
     // Set resolution if provided and task is being moved to done
