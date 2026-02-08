@@ -226,7 +226,9 @@ export const create = mutation({
       v.literal('agent_reaped'),
       v.literal('pr_opened'),
       v.literal('pr_merged'),
-      v.literal('comment_added')
+      v.literal('comment_added'),
+      v.literal('triage_sent'),
+      v.literal('triage_escalated')
     ),
     actor: v.optional(v.string()),
     data: v.optional(v.string()), // JSON string

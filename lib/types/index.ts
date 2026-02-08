@@ -80,6 +80,9 @@ export interface Task {
   agent_output_preview: string | null
   agent_retry_count: number | null
   triage_sent_at: number | null
+  auto_triage_count: number | null
+  escalated: number | null
+  escalated_at: number | null
   branch: string | null
   pr_number: number | null
   review_comments: string | null
