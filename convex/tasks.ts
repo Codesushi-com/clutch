@@ -71,6 +71,7 @@ function toTask(doc: {
     agent_tokens_out: doc.agent_tokens_out ?? null,
     agent_output_preview: doc.agent_output_preview ?? null,
     agent_retry_count: doc.agent_retry_count ?? null,
+    triage_sent_at: (doc as { triage_sent_at?: number }).triage_sent_at ?? null,
     branch: doc.branch ?? null,
     pr_number: doc.pr_number ?? null,
     review_comments: doc.review_comments ?? null,
@@ -809,6 +810,7 @@ export const update = mutation({
     review_comments: v.optional(v.string()),
     review_count: v.optional(v.number()),
     agent_retry_count: v.optional(v.number()),
+    triage_sent_at: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Task> => {
     const existing = await ctx.db
@@ -848,6 +850,7 @@ export const update = mutation({
     if (args.review_comments !== undefined) updates.review_comments = args.review_comments
     if (args.review_count !== undefined) updates.review_count = args.review_count
     if (args.agent_retry_count !== undefined) updates.agent_retry_count = args.agent_retry_count
+    if (args.triage_sent_at !== undefined) updates.triage_sent_at = args.triage_sent_at
 
     await ctx.db.patch(existing._id, updates)
 
@@ -1125,6 +1128,7 @@ export const clearAgentActivity = mutation({
       agent_tokens_out: undefined,
       agent_output_preview: undefined,
       agent_retry_count: undefined,
+      triage_sent_at: undefined,
       updated_at: Date.now(),
     })
   },

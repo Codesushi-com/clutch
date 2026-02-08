@@ -76,6 +76,8 @@ export default defineSchema({
     agent_tokens_out: v.optional(v.number()),
     agent_output_preview: v.optional(v.string()), // ~500 chars max
     agent_retry_count: v.optional(v.number()), // Track retry attempts for orphaned tasks
+    // Triage tracking (when blocked tasks were reported to Ada)
+    triage_sent_at: v.optional(v.number()),
     // Git/PR tracking (written by dev agents)
     branch: v.optional(v.string()),
     pr_number: v.optional(v.number()),

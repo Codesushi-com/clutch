@@ -339,6 +339,16 @@ export class GatewayRpcClient {
   }
 
   /**
+   * Send a message to a specific session via the gateway.
+   *
+   * Used for triage notifications — sends a message to Ada's main session
+   * without spawning a new agent.
+   */
+  async sendToSession(sessionKey: string, message: string): Promise<void> {
+    await this.request("sessions.send", { sessionKey, message }, 10_000)
+  }
+
+  /**
    * Get the count of pending (in-flight) agent RPC calls.
    * This represents agents that are currently running.
    */

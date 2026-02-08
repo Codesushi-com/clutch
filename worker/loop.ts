@@ -18,6 +18,7 @@ import { runWork } from "./phases/work"
 import { runAnalyze } from "./phases/analyze"
 import { runNotify } from "./phases/notify"
 import { runSignals } from "./phases/signals"
+import { runTriage } from "./phases/triage"
 import { sessionFileReader } from "./session-file-reader"
 
 // ============================================
@@ -443,6 +444,24 @@ async function runProjectCycle(
         }
       }
     }
+  }
+
+  // Run triage phase (after reap, before other phases)
+  const triageResult = await runTriage({
+    convex,
+    cycle,
+    project,
+    log: (params) => logRun(convex, params),
+  })
+
+  if (triageResult.sentCount > 0) {
+    await logRun(convex, {
+      projectId: project.id,
+      cycle,
+      phase: "work",
+      action: "triage_complete",
+      details: { sentCount: triageResult.sentCount, taskIds: triageResult.taskIds },
+    })
   }
 
   // Update state to show we're starting a cycle
