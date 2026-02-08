@@ -198,6 +198,47 @@ async function runProjectCycle(
       })
 
       // Log task event for agent completion or reap
+      // Calculate cost if we have token usage
+      let costInput: number | undefined
+      let costOutput: number | undefined
+      let costTotal: number | undefined
+
+      if (!isStale && outcome.usage) {
+        try {
+          // Get the task to find the model used
+          const task = await convex.query(api.tasks.getById, { id: outcome.taskId })
+          const model = task?.task?.agent_model
+
+          if (model) {
+            // Get pricing for this model
+            const pricing = await convex.query(api.modelPricing.getModelPricing, { model })
+
+            if (pricing) {
+              const tokensIn = outcome.usage.inputTokens ?? 0
+              const tokensOut = outcome.usage.outputTokens ?? 0
+
+              costInput = tokensIn * (pricing.input_per_1m / 1_000_000)
+              costOutput = tokensOut * (pricing.output_per_1m / 1_000_000)
+              costTotal = costInput + costOutput
+
+              console.log(
+                `[WorkLoop] Cost calculated for ${outcome.taskId.slice(0, 8)}: ` +
+                `model=${model}, tokens=${tokensIn}/${tokensOut}, cost=$${costTotal.toFixed(6)}`
+              )
+            } else {
+              console.warn(
+                `[WorkLoop] No pricing found for model ${model} on task ${outcome.taskId.slice(0, 8)}`
+              )
+            }
+          } else {
+            console.warn(`[WorkLoop] No model found for task ${outcome.taskId.slice(0, 8)}`)
+          }
+        } catch (costErr) {
+          // Non-fatal — log and continue without cost
+          console.warn(`[WorkLoop] Failed to calculate cost: ${costErr}`)
+        }
+      }
+
       try {
         if (isStale) {
           await convex.mutation(api.task_events.logAgentReaped, {
@@ -213,11 +254,27 @@ async function runProjectCycle(
             tokensOut: outcome.usage?.outputTokens,
             outputPreview: outcome.reply?.slice(0, 500), // Limit preview
             durationMs: outcome.durationMs,
+            costInput,
+            costOutput,
+            costTotal,
           })
         }
       } catch (logErr) {
         // Non-fatal — log and continue
         console.warn(`[WorkLoop] Failed to log agent event: ${logErr}`)
+      }
+
+      // Add cost to task's total cost (accumulates across retries)
+      if (costTotal !== undefined && costTotal > 0) {
+        try {
+          await convex.mutation(api.tasks.addTaskCost, {
+            task_id: outcome.taskId,
+            cost: costTotal,
+          })
+        } catch (costErr) {
+          // Non-fatal — log and continue
+          console.warn(`[WorkLoop] Failed to add task cost: ${costErr}`)
+        }
       }
 
       // For finished agents (not stale), write accurate JSONL-sourced data to Convex

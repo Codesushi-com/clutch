@@ -344,6 +344,9 @@ export const logAgentCompleted = mutation({
     tokensOut: v.optional(v.number()),
     outputPreview: v.optional(v.string()),
     durationMs: v.optional(v.number()),
+    costInput: v.optional(v.float64()),
+    costOutput: v.optional(v.float64()),
+    costTotal: v.optional(v.float64()),
   },
   handler: async (ctx, args): Promise<TaskEvent | null> => {
     const data: AgentCompletedData = {
@@ -354,15 +357,39 @@ export const logAgentCompleted = mutation({
       ...(args.durationMs !== undefined && { duration_ms: args.durationMs }),
     }
 
-    const id = await logTaskEvent(ctx, args.taskId, 'agent_completed', args.sessionKey, data)
-    if (!id) return null
+    // Get the task to verify it exists and get project_id
+    const task = await ctx.db
+      .query('tasks')
+      .withIndex('by_uuid', (q) => q.eq('id', args.taskId))
+      .unique()
+
+    if (!task) {
+      console.warn(`[TaskEvents] Cannot log event for non-existent task: ${args.taskId}`)
+      return null
+    }
+
+    const id = generateId()
+    const timestamp = Date.now()
+
+    await ctx.db.insert('task_events', {
+      id,
+      task_id: args.taskId,
+      project_id: task.project_id,
+      event_type: 'agent_completed',
+      timestamp,
+      actor: args.sessionKey,
+      data: data ? JSON.stringify(data) : undefined,
+      cost_input: args.costInput,
+      cost_output: args.costOutput,
+      cost_total: args.costTotal,
+    })
 
     return {
       id,
       task_id: args.taskId,
-      project_id: '',
+      project_id: task.project_id,
       event_type: 'agent_completed',
-      timestamp: Date.now(),
+      timestamp,
       actor: args.sessionKey,
       data: JSON.stringify(data),
     }

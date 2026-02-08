@@ -87,6 +87,20 @@ export const getModelPricing = query({
 })
 
 /**
+ * Get pricing for a model by its ID.
+ * Used when you have the internal Convex document ID.
+ */
+export const getModelPricingById = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("model_pricing")
+      .withIndex("by_uuid", (q) => q.eq("id", args.id))
+      .first()
+  },
+})
+
+/**
  * List all model pricing data.
  */
 export const listModelPricing = query({
