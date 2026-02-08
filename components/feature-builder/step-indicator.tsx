@@ -86,7 +86,8 @@ export function StepIndicator({
   return (
     <div className="w-full">
       {/* Step dots and connectors */}
-      <div className="flex items-center justify-between">
+      <div className="overflow-x-auto">
+        <div className="flex items-center justify-between min-w-[760px] pr-2">
         {STEPS.map((step, index) => (
           <div key={step.id} className="flex items-center flex-1 last:flex-initial">
             <StepDot
@@ -101,6 +102,7 @@ export function StepIndicator({
             )}
           </div>
         ))}
+        </div>
       </div>
       
       {/* Step labels - desktop */}
