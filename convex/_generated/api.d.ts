@@ -14,6 +14,7 @@ import type * as comments from "../comments.js";
 import type * as events from "../events.js";
 import type * as gate from "../gate.js";
 import type * as metrics from "../metrics.js";
+import type * as modelPricing from "../modelPricing.js";
 import type * as notifications from "../notifications.js";
 import type * as projects from "../projects.js";
 import type * as promptMetrics from "../promptMetrics.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   events: typeof events;
   gate: typeof gate;
   metrics: typeof metrics;
+  modelPricing: typeof modelPricing;
   notifications: typeof notifications;
   projects: typeof projects;
   promptMetrics: typeof promptMetrics;

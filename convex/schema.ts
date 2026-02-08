@@ -75,6 +75,10 @@ export default defineSchema({
     agent_retry_count: v.optional(v.number()), // Track retry attempts for orphaned tasks
     // Triage tracking (when blocked tasks were reported to Ada)
     triage_sent_at: v.optional(v.number()),
+    // Escalation tracking (for human attention)
+    escalated: v.optional(v.boolean()), // flagged for human attention
+    escalated_at: v.optional(v.number()), // timestamp of escalation
+    auto_triage_count: v.optional(v.number()), // times Ada has triaged this task (for circuit breaker)
     // Git/PR tracking (written by dev agents)
     branch: v.optional(v.string()),
     pr_number: v.optional(v.number()),
@@ -409,9 +413,24 @@ export default defineSchema({
     timestamp: v.number(),
     actor: v.optional(v.string()), // session key, user id, or system
     data: v.optional(v.string()), // JSON blob with event-specific fields
+    // Cost tracking (optional, USD)
+    cost_input: v.optional(v.float64()), // input token cost in USD
+    cost_output: v.optional(v.float64()), // output token cost in USD
+    cost_total: v.optional(v.float64()), // total cost in USD
   })
     .index("by_uuid", ["id"])
     .index("by_task", ["task_id"])
     .index("by_project", ["project_id"])
     .index("by_task_timestamp", ["task_id", "timestamp"]),
+
+  // Model Pricing - cost per 1M tokens for each model
+  model_pricing: defineTable({
+    id: v.string(), // UUID primary key
+    model: v.string(), // model identifier e.g. "anthropic/claude-sonnet-4-20250514"
+    input_per_1m: v.number(), // cost per 1M input tokens in USD
+    output_per_1m: v.number(), // cost per 1M output tokens in USD
+    updated_at: v.number(), // timestamp
+  })
+    .index("by_uuid", ["id"])
+    .index("by_model", ["model"]),
 })
