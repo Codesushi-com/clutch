@@ -122,11 +122,12 @@ function useMetricsData(
 
 interface PromptsTabProps {
   timeRange: TimeRange
+  lockedProjectId?: string
 }
 
-export function PromptsTab({ timeRange }: PromptsTabProps) {
-  // Project filter
-  const [selectedProject, setSelectedProject] = useState<string | null>(null)
+export function PromptsTab({ timeRange, lockedProjectId }: PromptsTabProps) {
+  // Project filter - initialized to locked project if provided
+  const [selectedProject, setSelectedProject] = useState<string | null>(lockedProjectId ?? null)
 
   // Role/Model filters
   const [selectedRole, setSelectedRole] = useState<string>('all')
@@ -197,7 +198,7 @@ export function PromptsTab({ timeRange }: PromptsTabProps) {
         </div>
 
         <div className="flex flex-wrap gap-3 items-center">
-          <ProjectFilter value={selectedProject} onChange={setSelectedProject} />
+          <ProjectFilter value={selectedProject} onChange={setSelectedProject} locked={lockedProjectId} />
           <FilterBar
             roles={data?.filterOptions.roles ?? []}
             models={data?.filterOptions.models ?? []}

@@ -22,12 +22,14 @@ interface AnalyticsTabProps {
   timeRange?: TimeRange
   /** Callback when time range changes */
   onTimeRangeChange?: (range: TimeRange) => void
+  /** If provided, locks the tab to this project */
+  lockedProjectId?: string
 }
 
-export function AnalyticsTab({ timeRange: externalTimeRange, onTimeRangeChange }: AnalyticsTabProps) {
+export function AnalyticsTab({ timeRange: externalTimeRange, onTimeRangeChange, lockedProjectId }: AnalyticsTabProps) {
   // Internal state if not controlled externally
   const [internalTimeRange, setInternalTimeRange] = useState<TimeRange>('24h')
-  const [projectFilter, setProjectFilter] = useState<string | null>(null)
+  const [projectFilter, setProjectFilter] = useState<string | null>(lockedProjectId ?? null)
 
   // Use external or internal time range
   const timeRange = externalTimeRange ?? internalTimeRange
@@ -92,7 +94,7 @@ export function AnalyticsTab({ timeRange: externalTimeRange, onTimeRangeChange }
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <ProjectFilter value={projectFilter} onChange={setProjectFilter} />
+          <ProjectFilter value={projectFilter} onChange={setProjectFilter} locked={lockedProjectId} />
           {!externalTimeRange && (
             <TimeRangeToggle value={timeRange} onChange={setTimeRange} />
           )}
