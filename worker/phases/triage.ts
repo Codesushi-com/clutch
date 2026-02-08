@@ -7,7 +7,6 @@
 
 import type { ConvexHttpClient } from "convex/browser"
 import { api } from "../../convex/_generated/api"
-import { getGatewayClient } from "../gateway-client"
 import type { LogRunParams } from "../logger"
 
 // ============================================
@@ -96,6 +95,8 @@ export async function runTriage(ctx: TriageContext): Promise<TriageResult> {
     return { sentCount: 0, escalatedCount: 0, taskIds: [], escalatedIds: [] }
   }
 
+  console.log(`[Triage] Found ${tasksNeedingTriage.length} blocked tasks needing triage for project ${project.slug}`)
+
   // Sort by oldest first (by updated_at)
   tasksNeedingTriage.sort((a: BlockedTask, b: BlockedTask) => a.updated_at - b.updated_at)
 
@@ -105,7 +106,6 @@ export async function runTriage(ctx: TriageContext): Promise<TriageResult> {
   const triagedTaskIds: string[] = []
   const escalatedIds: string[] = []
   const now = Date.now()
-  const gw = getGatewayClient()
 
   for (const task of tasksToProcess) {
     const triageCount = task.auto_triage_count ?? 0
@@ -120,12 +120,36 @@ export async function runTriage(ctx: TriageContext): Promise<TriageResult> {
     // Build triage context for Ada
     const triageMessage = await buildTriageMessage(convex, task, project)
 
-    // Send to Ada's main session
+    // Send to Ada's main session via HTTP RPC (WS client hangs on sessions.send)
     try {
-      await gw.connect()
-      await gw.sendToSession("main", triageMessage)
+      console.log(`[Triage] Sending triage for task ${task.id.slice(0, 8)} "${task.title}" to Ada (attempt ${triageCount + 1})`)
+      const proxyUrl = process.env.TRAP_URL || "http://127.0.0.1:3002"
+      const resp = await fetch(`${proxyUrl}/api/openclaw/rpc`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "req",
+          id: `triage-${task.id.slice(0, 8)}-${Date.now()}`,
+          method: "chat.send",
+          params: {
+            sessionKey: "main",
+            message: triageMessage,
+            idempotencyKey: `triage-${task.id.slice(0, 8)}-${Date.now()}`,
+          },
+        }),
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${await resp.text()}`)
+      }
+      const result = await resp.json()
+      if (result.ok === false) {
+        throw new Error(result.error?.message ?? "RPC error")
+      }
+      console.log(`[Triage] Successfully sent triage for task ${task.id.slice(0, 8)}`)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`[Triage] Failed to send triage for task ${task.id.slice(0, 8)}: ${errorMessage}`)
       await log({
         projectId: project.id,
         cycle,
