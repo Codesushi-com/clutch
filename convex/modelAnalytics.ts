@@ -283,11 +283,12 @@ export const modelComparison = query({
       .withIndex('by_status', (q) => q.eq('status', 'done'))
 
     // Filter by project if specified
-    if (args.projectId) {
+    const projectId = args.projectId
+    if (projectId) {
       tasksQuery = ctx.db
         .query('tasks')
         .withIndex('by_project_status', (q) =>
-          q.eq('project_id', args.projectId).eq('status', 'done')
+          q.eq('project_id', projectId).eq('status', 'done')
         )
     }
 
@@ -400,11 +401,12 @@ export const getModelUsageStats = query({
       .query('tasks')
       .withIndex('by_status', (q) => q.eq('status', 'done'))
 
-    if (args.projectId) {
+    const projectId = args.projectId
+    if (projectId) {
       tasksQuery = ctx.db
         .query('tasks')
         .withIndex('by_project_status', (q) =>
-          q.eq('project_id', args.projectId).eq('status', 'done')
+          q.eq('project_id', projectId).eq('status', 'done')
         )
     }
 
