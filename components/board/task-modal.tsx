@@ -112,6 +112,18 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
   // Task events (history)
   const { events: taskEvents, isLoading: loadingEvents } = useTaskEvents(task?.id || null)
 
+  // Body scroll lock when modal is open
+  useEffect(() => {
+    if (!open) return
+
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [open])
+
   // Keyboard shortcut for dependency picker and Escape to close modal
   useEffect(() => {
     if (!open || !task) return
@@ -530,12 +542,12 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     </TabsContent>
 
                     {/* Comments Tab */}
-                    <TabsContent value="comments" className="mt-0">
+                    <TabsContent value="comments" className="mt-0 h-full flex flex-col">
                       {loadingComments ? (
                         <div className="text-sm text-[var(--text-muted)]">Loading comments...</div>
                       ) : (
-                        <div className="space-y-4">
-                          <div className="max-h-[500px] overflow-y-auto">
+                        <div className="flex flex-col h-full gap-4 min-h-0">
+                          <div className="flex-1 overflow-y-auto min-h-0">
                             <CommentThread comments={comments} />
                           </div>
                           <CommentInput onSubmit={handleAddComment} />
@@ -544,12 +556,12 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     </TabsContent>
 
                     {/* Analysis Tab */}
-                    <TabsContent value="analysis" className="mt-0">
+                    <TabsContent value="analysis" className="mt-0 h-full overflow-y-auto">
                       <TaskAnalysisContent taskId={task.id} projectSlug={projectSlug} />
                     </TabsContent>
 
                     {/* History Tab */}
-                    <TabsContent value="history" className="mt-0">
+                    <TabsContent value="history" className="mt-0 h-full overflow-y-auto">
                       <TaskTimeline 
                         events={taskEvents} 
                         isLoading={loadingEvents}
