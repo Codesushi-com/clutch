@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 
 const NAVIGATION_ITEMS = [
   { id: "home", label: "Home", icon: Home, href: "/" },
-  { id: "work-loop", label: "Work Loop", icon: Repeat, href: "/work-loop" },
+  { id: "work-loop", label: "Observatory", icon: Repeat, href: "/work-loop" },
   { id: "sessions", label: "Sessions", icon: Activity, href: "/sessions" },
   { id: "agents", label: "Agents", icon: Bot, href: "/agents" },
   { id: "prompts", label: "Prompt Lab", icon: FileText, href: "/prompts" },

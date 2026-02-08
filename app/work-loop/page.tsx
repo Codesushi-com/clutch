@@ -1,50 +1,64 @@
 'use client'
 
 /**
- * Work Loop Dashboard Page
- * Real-time status of the work loop orchestrator
+ * Observatory Page
+ * Tabbed dashboard for monitoring and analyzing AI agents
+ * Replaces the old Work Loop page
  */
 
 import dynamic from 'next/dynamic'
 import { Skeleton } from '@/components/ui/skeleton'
 
-// Dynamically import WorkLoopContent to avoid SSR issues with Convex
-const WorkLoopContent = dynamic(
-  () => import('./components/work-loop-content').then(mod => ({ default: mod.WorkLoopContent })),
+// Dynamically import ObservatoryShell to avoid SSR issues
+const ObservatoryShell = dynamic(
+  () =>
+    import('@/components/observatory/observatory-shell').then((mod) => ({
+      default: mod.ObservatoryShell,
+    })),
   {
     ssr: false,
-    loading: () => <WorkLoopSkeleton />,
+    loading: () => <ObservatorySkeleton />,
   }
 )
 
-function WorkLoopSkeleton() {
+function ObservatorySkeleton() {
   return (
     <div className="space-y-6">
       {/* Header skeleton */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="h-8 w-32 bg-muted rounded animate-pulse" />
-          <div className="h-6 w-16 bg-muted rounded animate-pulse" />
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-4 w-64" />
         </div>
-        <div className="h-9 w-24 bg-muted rounded animate-pulse" />
+        <Skeleton className="h-9 w-40" />
+      </div>
+
+      {/* Tabs skeleton */}
+      <div className="flex items-center gap-1 border-b border-[var(--border)]">
+        {['Live', 'Triage', 'Analytics', 'Models', 'Prompts'].map((tab) => (
+          <div key={tab} className="px-4 py-2">
+            <Skeleton className="h-5 w-16" />
+          </div>
+        ))}
       </div>
 
       {/* Content skeleton */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 space-y-6">
-          <div className="h-48 bg-muted rounded animate-pulse" />
-          <div className="h-96 bg-muted rounded animate-pulse" />
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
         </div>
-        <div className="lg:col-span-1 min-w-0 space-y-4">
-          <div className="h-32 bg-muted rounded animate-pulse" />
-          <div className="h-32 bg-muted rounded animate-pulse" />
-          <div className="h-32 bg-muted rounded animate-pulse" />
-        </div>
+        <Skeleton className="h-64" />
       </div>
     </div>
   )
 }
 
-export default function WorkLoopPage() {
-  return <WorkLoopContent />
+export default function ObservatoryPage() {
+  return (
+    <div className="container mx-auto py-8 px-4">
+      <ObservatoryShell />
+    </div>
+  )
 }
