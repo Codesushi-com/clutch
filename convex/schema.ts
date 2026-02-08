@@ -48,7 +48,8 @@ export default defineSchema({
       v.literal("pm"),
       v.literal("dev"),
       v.literal("research"),
-      v.literal("reviewer")
+      v.literal("reviewer"),
+      v.literal("conflict_resolver")
     )),
     assignee: v.optional(v.string()),
     requires_human_review: v.boolean(),
