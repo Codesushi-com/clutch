@@ -601,7 +601,7 @@ export default defineSchema({
   // Sessions - unified tracking for all OpenClaw sessions (main, chat, agent, cron)
   sessions: defineTable({
     id: v.string(), // UUID primary key
-    session_key: v.string(), // e.g. "agent:main:main", "agent:main:trap:the-trap:xxx"
+    session_key: v.optional(v.string()), // e.g. "agent:main:main", "agent:main:trap:the-trap:xxx"
     session_id: v.string(), // UUID from sessions.json
     session_type: v.union(
       v.literal("main"),
