@@ -91,56 +91,43 @@ export function ContextIndicator({
   const displayModel = model?.split("/").pop() || model
 
   return (
-    <div className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
-      {/* Main token display with progress bar */}
-      <div className="flex items-center gap-2">
-        <span>Context:</span>
-        <span className="font-medium">
-          {formatTokenCount(tokens)}
-          {contextWindow > 0 && ` / ${formatTokenCount(contextWindow)} (${percentage}%)`}
-        </span>
+    <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+      {/* Compact single-line layout */}
+      <span className="font-medium">{formatTokenCount(tokens)}</span>
 
-        {/* Progress bar */}
-        {contextWindow > 0 && (
-          <div className="w-16 h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${getProgressColor(percentage)}`}
-              style={{ width: `${Math.min(percentage, 100)}%` }}
-            />
-          </div>
-        )}
+      {/* Progress bar */}
+      {contextWindow > 0 && (
+        <div className="w-12 h-1 bg-[var(--border)] rounded-full overflow-hidden flex-shrink-0">
+          <div
+            className={`h-full rounded-full transition-all ${getProgressColor(percentage)}`}
+            style={{ width: `${Math.min(percentage, 100)}%` }}
+          />
+        </div>
+      )}
 
-        {isLoading && (
-          <span className="text-[var(--text-muted)]/70">loading...</span>
-        )}
-      </div>
-
-      {/* Token breakdown */}
-      <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]/70">
-        <span>In: {formatTokenCount(tokensInput)}</span>
-        <span>·</span>
-        <span>Out: {formatTokenCount(tokensOutput)}</span>
+      <span className="text-[var(--text-muted)]/70">
+        {percentage}% · In {formatTokenCount(tokensInput)} · Out {formatTokenCount(tokensOutput)}
         {(tokensCacheRead > 0 || tokensCacheWrite > 0) && (
-          <>
-            <span>·</span>
-            <span>Cache: +{formatTokenCount(tokensCacheRead)}/-{formatTokenCount(tokensCacheWrite)}</span>
-          </>
+          <span> · Cache +{formatTokenCount(tokensCacheRead)}/-{formatTokenCount(tokensCacheWrite)}</span>
         )}
         {cost && cost > 0 && (
-          <>
-            <span>·</span>
-            <span className="text-green-500/80">{formatCost(cost)}</span>
-          </>
+          <span className="text-green-500/80"> · {formatCost(cost)}</span>
         )}
-      </div>
+      </span>
 
-      {/* Model info */}
+      <span className="text-[var(--text-muted)]/50">
+        ·
+      </span>
+
+      {/* Model info - compact */}
       {(displayModel || provider) && (
-        <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]/60">
-          {provider && <span>{provider}</span>}
-          {provider && displayModel && <span>/</span>}
-          {displayModel && <span className="font-mono">{displayModel}</span>}
-        </div>
+        <span className="text-[var(--text-muted)]/60 font-mono truncate max-w-[120px]">
+          {provider && `${provider}/`}{displayModel}
+        </span>
+      )}
+
+      {isLoading && (
+        <span className="text-[var(--text-muted)]/50">loading...</span>
       )}
     </div>
   )
