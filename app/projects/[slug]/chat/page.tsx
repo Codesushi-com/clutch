@@ -59,6 +59,7 @@ export default function ChatPage({ params }: PageProps) {
     typingIndicators,
     hasMoreMessages,
     fetchChats,
+    createChat,
     sendMessage: sendMessageToDb,
     setActiveChat,
     setTyping,
@@ -329,7 +330,7 @@ export default function ChatPage({ params }: PageProps) {
   // ==========================================================================
 
   const handleSlashCommand = async (result: SlashCommandResult) => {
-    if (!activeChat) return
+    if (!activeChat || !projectId) return
 
     // Show command response in chat
     if (result.response) {
@@ -344,6 +345,10 @@ export default function ChatPage({ params }: PageProps) {
     } else if (result.action === "refresh_session") {
       // Refresh session info (for /model command)
       // The session info effect will pick up the change automatically
+    } else if (result.action === "create_chat") {
+      // Create a new chat with the optional title from the /new command
+      const newChat = await createChat(projectId, result.title)
+      setActiveChat({ ...newChat, lastMessage: null })
     }
   }
 

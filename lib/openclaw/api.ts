@@ -188,9 +188,10 @@ export async function getSessionPreview(
  * Reset a session (clear all conversation history).
  *
  * @param sessionKey - The session key to reset
+ * @param title - Optional title for the new session
  */
-export async function resetSession(sessionKey: string): Promise<void> {
-  await openclawRpc<void>('sessions.reset', { key: sessionKey });
+export async function resetSession(sessionKey: string, title?: string): Promise<void> {
+  await openclawRpc<void>('sessions.reset', { key: sessionKey, title });
 }
 
 /**

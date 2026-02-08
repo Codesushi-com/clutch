@@ -11,8 +11,9 @@ import { resetSession, patchSession } from "@/lib/openclaw/api";
 export const SLASH_COMMANDS = {
   new: {
     name: "/new",
-    description: "Reset the current session (clear all history)",
-    usage: "/new",
+    description: "Create a new chat with optional title",
+    usage: "/new [title]",
+    examples: ["/new", "/new Bug fix discussion", "/new Feature planning"],
   },
   status: {
     name: "/status",
@@ -50,7 +51,9 @@ export interface SlashCommandResult {
   /** Whether the response is an error */
   isError: boolean;
   /** Action to perform after showing response */
-  action?: "clear_chat" | "refresh_session" | null;
+  action?: "clear_chat" | "refresh_session" | "create_chat" | null;
+  /** Optional title for actions that create new resources (e.g., new chat) */
+  title?: string;
 }
 
 /**
@@ -101,7 +104,7 @@ export async function executeSlashCommand(
   try {
     switch (cmd) {
       case "new":
-        return await handleNewCommand(sessionKey);
+        return await handleNewCommand(sessionKey, command.args);
 
       case "status":
         return await handleStatusCommand(sessionKey);
@@ -133,19 +136,28 @@ export async function executeSlashCommand(
 }
 
 /**
- * Handle /new - Reset the session
+ * Handle /new - Reset the session and create a new chat with optional title
  */
-async function handleNewCommand(sessionKey: string): Promise<SlashCommandResult> {
-  await resetSession(sessionKey);
+async function handleNewCommand(
+  sessionKey: string,
+  args: string[]
+): Promise<SlashCommandResult> {
+  const title = args.length > 0 ? args.join(" ") : undefined;
+  await resetSession(sessionKey, title);
+
+  const response = title
+    ? `✨ New chat created: "${title}"`
+    : "✨ New chat created.";
 
   return {
     isCommand: true,
     shouldSendMessage: false,
     command: "new",
-    args: [],
-    response: "✨ Session reset. Starting fresh conversation...",
+    args,
+    response,
     isError: false,
-    action: "clear_chat",
+    action: "create_chat",
+    title,
   };
 }
 
