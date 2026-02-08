@@ -67,6 +67,11 @@ export default function ChatPage({ params }: PageProps) {
     getLastActiveChatForProject,
   } = useChatStore()
 
+  // Reset lastSentAt when switching chats to prevent stale "No activity" banner
+  useEffect(() => {
+    setLastSentAt(null)
+  }, [activeChat?.id])
+
   // Generate session key based on project and active chat
   // Format: trap:{projectSlug}:{chatId} - includes project for context
   // Use stored session_key if available, otherwise generate dynamically

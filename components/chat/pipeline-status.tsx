@@ -73,6 +73,17 @@ export function PipelineStatus({
       return "idle"
     }
 
+    // If no session exists and we're not typing, there's nothing to wait for
+    if (!session && !isAssistantTyping) {
+      return "idle"
+    }
+
+    // If session is in a terminal state, there's nothing to wait for
+    const terminalStates = ['completed', 'error', 'cancelled', 'not_found']
+    if (session?.status && terminalStates.includes(session.status) && !isAssistantTyping) {
+      return "idle"
+    }
+
     // If assistant is actively typing, show responding state
     if (isAssistantTyping) {
       return "responding"
