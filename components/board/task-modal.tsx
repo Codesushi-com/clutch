@@ -575,7 +575,7 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                   </div>
 
               {/* Sidebar */}
-              <div className="w-64 space-y-4 flex-shrink-0">
+              <div className="w-64 space-y-4 flex-shrink-0 overflow-y-auto min-h-0">
                 {/* Status */}
                 <div>
                   <label className="text-sm font-medium text-[var(--text-secondary)] mb-1 block">

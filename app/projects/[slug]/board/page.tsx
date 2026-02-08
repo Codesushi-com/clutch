@@ -1,28 +1,29 @@
 "use client"
 
-import { useEffect, useState, use } from "react"
+import { Suspense, useEffect, useState, use } from "react"
 import { useSearchParams } from "next/navigation"
-import { Sparkles } from "lucide-react"
 import { Board } from "@/components/board/board"
 import { CreateTaskModal } from "@/components/board/create-task-modal"
-import { FeatureBuilderModal } from "@/components/board/feature-builder-modal"
 import { TaskModal } from "@/components/board/task-modal"
-import { Button } from "@/components/ui/button"
 import type { Task, TaskStatus, Project } from "@/lib/types"
 
 type PageProps = {
   params: Promise<{ slug: string }>
 }
 
-export default function BoardPage({ params }: PageProps) {
-  const { slug } = use(params)
+/**
+ * Inner component that uses useSearchParams.
+ * Must be wrapped in Suspense — Next.js App Router requires it
+ * to avoid the entire page de-opting to client-side rendering
+ * and causing double-render on hydration.
+ */
+function BoardPageInner({ slug }: { slug: string }) {
   const searchParams = useSearchParams()
   const taskIdFromUrl = searchParams.get("task")
   
   const [project, setProject] = useState<Project | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [createModalStatus, setCreateModalStatus] = useState<TaskStatus>("backlog")
-  const [featureBuilderOpen, setFeatureBuilderOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskModalOpen, setTaskModalOpen] = useState(false)
 
@@ -74,24 +75,8 @@ export default function BoardPage({ params }: PageProps) {
     )
   }
 
-  const handleTasksCreated = (count: number) => {
-    console.log(`Created ${count} tasks via Feature Builder`)
-  }
-
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Feature Builder button */}
-      <div className="flex justify-end mb-4">
-        <Button
-          onClick={() => setFeatureBuilderOpen(true)}
-          variant="outline"
-          className="flex items-center gap-2 border-[var(--accent-blue)]/30 hover:border-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10"
-        >
-          <Sparkles className="h-4 w-4 text-[var(--accent-blue)]" />
-          Feature Builder
-        </Button>
-      </div>
-
       <Board
         projectId={project.id}
         projectSlug={slug}
@@ -105,13 +90,6 @@ export default function BoardPage({ params }: PageProps) {
         projectId={project.id}
         initialStatus={createModalStatus}
       />
-
-      <FeatureBuilderModal
-        projectId={project.id}
-        open={featureBuilderOpen}
-        onOpenChange={setFeatureBuilderOpen}
-        onTasksCreated={handleTasksCreated}
-      />
       
       <TaskModal
         task={selectedTask}
@@ -119,5 +97,19 @@ export default function BoardPage({ params }: PageProps) {
         onOpenChange={setTaskModalOpen}
       />
     </div>
+  )
+}
+
+export default function BoardPage({ params }: PageProps) {
+  const { slug } = use(params)
+
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-12">
+        <div className="text-[var(--text-secondary)]">Loading board...</div>
+      </div>
+    }>
+      <BoardPageInner slug={slug} />
+    </Suspense>
   )
 }
