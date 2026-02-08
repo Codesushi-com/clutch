@@ -273,7 +273,7 @@ function EventTitle({ event, config, data }: EventTitleProps) {
       if (data.from_status && data.to_status) {
         return (
           <span className="text-sm font-medium text-[var(--text-primary)]">
-            Status → <StatusBadge status={data.to_status} />
+            Status changed: <StatusBadge status={data.from_status} /> → <StatusBadge status={data.to_status} />
           </span>
         )
       }
@@ -351,11 +351,8 @@ function EventDetails({ event, data, sessionKey, projectSlug }: EventDetailsProp
   switch (event.type) {
     case "task_moved":
       return (
-        <div className="text-xs text-[var(--text-secondary)] space-y-1">
-          {data.from_status && (
-            <div>From: <StatusBadge status={String(data.from_status)} /></div>
-          )}
-          <div>Moved by: <span className={isAgentActor(actor) ? "text-cyan-400" : ""}>{formatActorName(actor)}</span></div>
+        <div className="text-xs text-[var(--text-secondary)]">
+          By: <span className={isAgentActor(actor) ? "text-cyan-400" : ""}>{formatActorName(actor)}</span>
         </div>
       )
     
