@@ -5,6 +5,7 @@ export type FeatureBuilderStep =
   | 'design'
   | 'implementation'
   | 'breakdown'
+  | 'qa'
   | 'testing'
   | 'review'
   | 'launch'
@@ -36,6 +37,17 @@ export interface TaskBreakdown {
   error?: string
 }
 
+export interface QAValidation {
+  checklist: {
+    completeness: boolean
+    clarity: boolean
+    requirementsCoverage: boolean
+    dependencies: boolean
+    missingPieces: boolean
+  }
+  notes: string
+}
+
 export interface FeatureBuilderData {
   // Overview step
   name: string
@@ -59,6 +71,9 @@ export interface FeatureBuilderData {
 
   // Breakdown step
   taskBreakdown: TaskBreakdown | null
+
+  // QA validation step
+  qaValidation: QAValidation
 
   // Testing step
   testStrategy: string
@@ -106,9 +121,10 @@ export const STEPS: StepConfig[] = [
   { id: 'design', label: 'Design', description: 'Technical design and approach', index: 3 },
   { id: 'implementation', label: 'Implementation', description: 'Plan the development work', index: 4 },
   { id: 'breakdown', label: 'Breakdown', description: 'Convert plan to tasks', index: 5 },
-  { id: 'testing', label: 'Testing', description: 'Define test strategy', index: 6 },
-  { id: 'review', label: 'Review', description: 'Final review before creation', index: 7 },
-  { id: 'launch', label: 'Launch', description: 'Create the feature ticket', index: 8 },
+  { id: 'qa', label: 'QA', description: 'Validate generated task plan', index: 6 },
+  { id: 'testing', label: 'Testing', description: 'Define test strategy', index: 7 },
+  { id: 'review', label: 'Review', description: 'Final review before creation', index: 8 },
+  { id: 'launch', label: 'Launch', description: 'Create the feature ticket', index: 9 },
 ]
 
 export const TOTAL_STEPS = STEPS.length

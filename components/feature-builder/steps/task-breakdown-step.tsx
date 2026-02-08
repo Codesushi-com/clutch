@@ -43,8 +43,8 @@ import type {
 } from "../feature-builder-types"
 
 interface TaskBreakdownStepProps {
-  data: Pick<FeatureBuilderData, "implementationPlan" | "estimatedHours" | "taskBreakdown" | "projectId">
-  onChange: (data: Partial<Pick<FeatureBuilderData, "taskBreakdown">>) => void
+  data: Pick<FeatureBuilderData, "implementationPlan" | "estimatedHours" | "taskBreakdown" | "projectId" | "qaValidation">
+  onChange: (data: Partial<Pick<FeatureBuilderData, "taskBreakdown" | "qaValidation">>) => void
   errors?: Record<string, string>
 }
 
@@ -565,6 +565,20 @@ export function TaskBreakdownStep({ data, onChange, errors }: TaskBreakdownStepP
 
   // Initialize task generation
   const handleGenerate = useCallback(() => {
+    // Any change to breakdown should reset QA gate.
+    onChange({
+      qaValidation: {
+        ...data.qaValidation,
+        checklist: {
+          completeness: false,
+          clarity: false,
+          requirementsCoverage: false,
+          dependencies: false,
+          missingPieces: false,
+        },
+      },
+    })
+
     if (!data.implementationPlan.trim()) {
       onChange({
         taskBreakdown: {

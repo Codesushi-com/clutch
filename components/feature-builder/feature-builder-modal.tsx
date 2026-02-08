@@ -42,6 +42,7 @@ import {
   DesignStep,
   ImplementationStep,
   TaskBreakdownStep,
+  QAStep,
   TestingStep,
   ReviewStep,
   LaunchStep,
@@ -65,6 +66,16 @@ const INITIAL_DATA: FeatureBuilderData = {
   implementationPlan: "",
   estimatedHours: 0,
   taskBreakdown: null,
+  qaValidation: {
+    checklist: {
+      completeness: false,
+      clarity: false,
+      requirementsCoverage: false,
+      dependencies: false,
+      missingPieces: false,
+    },
+    notes: "",
+  },
   testStrategy: "",
   testCases: [],
   reviewNotes: "",
@@ -145,6 +156,19 @@ export function FeatureBuilderModal({
       case "breakdown":
         // Breakdown is auto-generated but user can skip if needed
         break
+
+      case "qa":
+        // QA step is a quality gate before proceeding
+        break
+
+      case "qa": {
+        const checks = data.qaValidation.checklist
+        const allChecked = Object.values(checks).every(Boolean)
+        if (!allChecked) {
+          newErrors.qaValidation = "Complete the QA checklist before proceeding"
+        }
+        break
+      }
 
       case "testing":
         // Testing is optional but recommended
@@ -316,6 +340,13 @@ export function FeatureBuilderModal({
             errors={errors}
           />
         )
+      case "qa":
+        return (
+          <QAStep
+            data={data}
+            onChange={updateData}
+          />
+        )
       case "testing":
         return (
           <TestingStep
@@ -392,6 +423,12 @@ export function FeatureBuilderModal({
           <div className="px-6 py-6 overflow-y-auto max-h-[50vh]">
             {renderStepContent()}
             
+            {errors.qaValidation && (
+              <div className="mt-4 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
+                {errors.qaValidation}
+              </div>
+            )}
+
             {errors.submit && (
               <div className="mt-4 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
                 {errors.submit}
