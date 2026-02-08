@@ -23,7 +23,20 @@ export interface SessionFileInfo {
     model: string
     provider: string
     stopReason: string
-    usage: { input: number; output: number; total: number }
+    usage: {
+      input: number
+      output: number
+      cacheRead: number
+      cacheWrite: number
+      total: number
+      cost: {
+        input: number
+        output: number
+        cacheRead: number
+        cacheWrite: number
+        total: number
+      }
+    }
     textPreview: string
     timestamp: number
   } | null
@@ -59,7 +72,16 @@ interface SessionMessage {
     usage?: {
       input?: number
       output?: number
+      cacheRead?: number
+      cacheWrite?: number
       totalTokens?: number
+      cost?: {
+        input?: number
+        output?: number
+        cacheRead?: number
+        cacheWrite?: number
+        total?: number
+      }
     }
     stopReason?: string
     timestamp?: number
@@ -280,7 +302,16 @@ export class SessionFileReader {
         usage: {
           input: usage?.input ?? 0,
           output: usage?.output ?? 0,
+          cacheRead: usage?.cacheRead ?? 0,
+          cacheWrite: usage?.cacheWrite ?? 0,
           total: usage?.totalTokens ?? 0,
+          cost: {
+            input: usage?.cost?.input ?? 0,
+            output: usage?.cost?.output ?? 0,
+            cacheRead: usage?.cost?.cacheRead ?? 0,
+            cacheWrite: usage?.cost?.cacheWrite ?? 0,
+            total: usage?.cost?.total ?? 0,
+          },
         },
         textPreview: this.extractTextPreview(lastMessage),
         timestamp: msg.timestamp ?? 0,

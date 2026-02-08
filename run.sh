@@ -10,6 +10,7 @@
 #   ./run.sh logs       - tail server logs (journald)
 #   ./run.sh loop-logs  - tail work loop logs (journald)
 #   ./run.sh bridge-logs- tail chat bridge logs (journald)
+#   ./run.sh watcher-logs - tail session watcher logs (journald)
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -20,6 +21,7 @@ PORT="${PORT:-3002}"
 SERVER_SERVICE="trap-server"
 LOOP_SERVICE="trap-loop"
 BRIDGE_SERVICE="trap-bridge"
+WATCHER_SERVICE="trap-session-watcher"
 
 build() {
   echo "[trap] Building..."
@@ -30,7 +32,7 @@ build() {
 install_services() {
   # Copy unit files to user systemd directory if they don't exist or are different
   mkdir -p ~/.config/systemd/user/
-  for service in "$SERVER_SERVICE" "$LOOP_SERVICE" "$BRIDGE_SERVICE"; do
+  for service in "$SERVER_SERVICE" "$LOOP_SERVICE" "$BRIDGE_SERVICE" "$WATCHER_SERVICE"; do
     if [[ ! -f "systemd/${service}.service" ]]; then
       echo "[trap] Error: systemd/${service}.service not found"
       exit 1
@@ -44,21 +46,22 @@ install_services() {
 start_services() {
   echo "[trap] Starting services..."
   systemctl --user start "$SERVER_SERVICE"
-  # Loop and bridge have After=trap-server.service, but we still wait a moment
+  # Loop, bridge, and watcher have After=trap-server.service, but we still wait a moment
   sleep 1
   systemctl --user start "$BRIDGE_SERVICE"
   systemctl --user start "$LOOP_SERVICE"
+  systemctl --user start "$WATCHER_SERVICE"
   echo "[trap] Services started"
 }
 
 stop_services() {
   echo "[trap] Stopping services..."
-  systemctl --user stop "$LOOP_SERVICE" "$BRIDGE_SERVICE" "$SERVER_SERVICE" 2>/dev/null || true
+  systemctl --user stop "$WATCHER_SERVICE" "$LOOP_SERVICE" "$BRIDGE_SERVICE" "$SERVER_SERVICE" 2>/dev/null || true
   echo "[trap] Services stopped"
 }
 
 enable_services() {
-  systemctl --user enable "$SERVER_SERVICE" "$BRIDGE_SERVICE" "$LOOP_SERVICE"
+  systemctl --user enable "$SERVER_SERVICE" "$BRIDGE_SERVICE" "$LOOP_SERVICE" "$WATCHER_SERVICE"
   echo "[trap] Services enabled (will start on boot/login)"
 }
 
@@ -70,6 +73,8 @@ status() {
   systemctl --user status "$LOOP_SERVICE" --no-pager -o short 2>/dev/null || echo "Loop: not found"
   echo ""
   systemctl --user status "$BRIDGE_SERVICE" --no-pager -o short 2>/dev/null || echo "Bridge: not found"
+  echo ""
+  systemctl --user status "$WATCHER_SERVICE" --no-pager -o short 2>/dev/null || echo "Watcher: not found"
 }
 
 logs() {
@@ -85,7 +90,11 @@ bridge_logs() {
 }
 
 all_logs() {
-  journalctl --user -u "$SERVER_SERVICE" -u "$LOOP_SERVICE" -u "$BRIDGE_SERVICE" -f
+  journalctl --user -u "$SERVER_SERVICE" -u "$LOOP_SERVICE" -u "$BRIDGE_SERVICE" -u "$WATCHER_SERVICE" -f
+}
+
+watcher_logs() {
+  journalctl --user -u "$WATCHER_SERVICE" -f
 }
 
 # Legacy watch mode (still uses PID files for git-based auto-rebuild)
@@ -218,7 +227,7 @@ clean() {
   echo "[trap] Killing all trap-related processes..."
   stop_services 2>/dev/null || true
   local pids
-  pids=$(ps aux | grep -E 'trap.*(loop|bridge|next|chat-bridge)' | grep -v grep | awk '{print $2}')
+  pids=$(ps aux | grep -E 'trap.*(loop|bridge|next|chat-bridge|session-watcher)' | grep -v grep | awk '{print $2}')
   if [[ -n "$pids" ]]; then
     echo "$pids" | xargs kill 2>/dev/null || true
     sleep 1
@@ -263,6 +272,9 @@ case "${1:-status}" in
   bridge-logs|bridge-log)
     bridge_logs
     ;;
+  watcher-logs|watcher-log)
+    watcher_logs
+    ;;
   all-logs)
     all_logs
     ;;
@@ -277,7 +289,7 @@ case "${1:-status}" in
     clean
     ;;
   *)
-    echo "Usage: $0 {start|stop|restart|watch|status|logs|loop-logs|bridge-logs|all-logs|enable|install|clean}"
+    echo "Usage: $0 {start|stop|restart|watch|status|logs|loop-logs|bridge-logs|watcher-logs|all-logs|enable|install|clean}"
     exit 1
     ;;
 esac
