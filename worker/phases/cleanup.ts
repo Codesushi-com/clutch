@@ -4,8 +4,10 @@
  * Runs at the start of each work loop cycle to keep state clean.
  * Handles the items that agent reaping (in loop.ts) doesn't cover:
  *
- * 1. Ghost agent fields — tasks in in_review with no active agent but still
- *    have agent_* fields set. Clear them (reaping handles in_progress).
+ * 1. Ghost agent fields — tasks in in_progress or in_review with no active
+ *    agent handle but still have agent_* fields set. Happens after loop
+ *    restarts when AgentManager loses its in-memory map. Clear them and
+ *    move in_progress ghosts back to ready for re-assignment.
  * 2. Stale agent fields — tasks in done/ready that still have agent_*
  *    fields set. Clear them.
  * 3. Orphan worktrees — worktrees for tasks that are done. Remove them.
@@ -95,21 +97,29 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   })
 
   // ------------------------------------------------------------------
-  // 1. Clear ghost agent fields on in_review tasks with no active agent
+  // 1. Clear ghost agent fields on in_progress / in_review tasks with
+  //    no active agent handle in the current loop run.
   //
-  //     After reaping, in_review tasks may retain agent_* fields even
-  //     though no agent is running. This causes the UI to show ghost agents.
+  //    After a loop restart, the AgentManager starts with an empty map.
+  //    Tasks that had agents in the previous loop instance still carry
+  //    agent_* fields. Without this cleanup they show as stale ghosts
+  //    in the UI sidebar forever.
+  //
+  //    For in_progress ghosts: clear fields AND move to ready so the
+  //    loop can re-assign. For in_review ghosts: just clear fields
+  //    (task already has a PR; reviewer will pick it up again).
   // ------------------------------------------------------------------
   const inReviewTasks = await convex.query(api.tasks.getByProject, {
     projectId: project.id,
     status: "in_review",
   })
 
-  for (const task of inReviewTasks) {
-    if (!task.agent_session_key) continue
-    if (agents.has(task.id)) continue // agent is actually running
+  const ghostTasks = [...inProgressTasks, ...inReviewTasks].filter(
+    (task) => task.agent_session_key && !agents.has(task.id),
+  )
 
-    // Agent fields present but no active agent — clear them
+  for (const task of ghostTasks) {
+    // Clear agent fields
     try {
       await convex.mutation(api.tasks.clearAgentActivity, {
         task_id: task.id,
@@ -118,13 +128,28 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
       continue
     }
 
+    // For in_progress ghosts, move back to ready so the loop re-assigns
+    if (task.status === "in_progress") {
+      try {
+        await convex.mutation(api.tasks.move, {
+          id: task.id,
+          status: "ready",
+        })
+      } catch {
+        // Non-fatal — task may have been moved already
+      }
+    }
+
     await log({
       projectId: project.id,
       cycle,
       phase: "cleanup",
-      action: "clear_ghost_agent_in_review",
+      action: task.status === "in_progress"
+        ? "clear_ghost_agent_in_progress"
+        : "clear_ghost_agent_in_review",
       taskId: task.id,
       details: {
+        status: task.status,
         agentSessionKey: task.agent_session_key,
         agentModel: task.agent_model,
       },
