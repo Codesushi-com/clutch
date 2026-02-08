@@ -289,6 +289,18 @@ export function ChatThread({
             // Determine if this is the user's own message based on layout
             const isOwnMessage = chatLayout === 'imessage' && message.author === currentUser
             
+            // Find the previous message for generation time calculation
+            // Need to look across groups to find the immediately preceding message
+            let prevMessage: ChatMessage | undefined = undefined
+            if (msgIndex > 0) {
+              // Previous message in same group
+              prevMessage = group.messages[msgIndex - 1]
+            } else if (groupIndex > 0) {
+              // Last message of previous group
+              const prevGroup = groupedMessages[groupIndex - 1]
+              prevMessage = prevGroup.messages[prevGroup.messages.length - 1]
+            }
+            
             return (
               <MessageBubble
                 key={message.id}
@@ -298,6 +310,7 @@ export function ChatThread({
                 onCreateTask={onCreateTask}
                 activeCrons={activeCrons}
                 projectSlug={projectSlug}
+                prevMessage={prevMessage}
               />
             )
           })}

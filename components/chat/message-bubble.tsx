@@ -29,6 +29,7 @@ interface MessageBubbleProps {
   onCreateTask?: (message: ChatMessage) => void
   activeCrons?: SubAgentDetails[]
   projectSlug?: string
+  prevMessage?: ChatMessage
 }
 
 const AUTHOR_NAMES: Record<string, string> = {
@@ -39,6 +40,23 @@ const AUTHOR_NAMES: Record<string, string> = {
   dan: "Dan",
 }
 
+/**
+ * Format generation time in human-readable format.
+ * - Under 60s: "4.2s"
+ * - Over 60s: "1m 12s"
+ * Returns null if cannot calculate.
+ */
+function formatGenerationTime(ms: number): string | null {
+  if (ms < 0) return null
+  const seconds = ms / 1000
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}s`
+  }
+  const mins = Math.floor(seconds / 60)
+  const remainingSecs = Math.round(seconds % 60)
+  return `${mins}m ${remainingSecs}s`
+}
+
 export function MessageBubble({ 
   message, 
   isOwnMessage = false, 
@@ -46,9 +64,28 @@ export function MessageBubble({
   onCreateTask,
   activeCrons = [],
   projectSlug: _projectSlug, // eslint-disable-line @typescript-eslint/no-unused-vars
+  prevMessage,
 }: MessageBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const authorName = AUTHOR_NAMES[message.author] || message.author
+
+  // Calculate generation time for assistant messages
+  const generationTime = useMemo(() => {
+    // Only show for assistant messages (not user, not system)
+    const isAssistant = message.author === "ada" || 
+                        message.author === "kimi-coder" || 
+                        message.author === "sonnet-reviewer" || 
+                        message.author === "haiku-triage" ||
+                        message.is_automated === 1
+    if (!isAssistant) return null
+    
+    // Need previous message to calculate
+    if (!prevMessage) return null
+    
+    // Calculate time difference
+    const diff = message.created_at - prevMessage.created_at
+    return formatGenerationTime(diff)
+  }, [message, prevMessage])
 
   // Check if this is an automated (cron/sub-agent) message
   const isAutomatedMessage = useMemo(() => {
@@ -146,6 +183,13 @@ export function MessageBubble({
                 {formatDistanceToNow(message.created_at, { addSuffix: true })}
               </span>
               
+              {/* Generation time */}
+              {generationTime && (
+                <span className="text-xs text-[var(--text-muted)] italic">
+                  {generationTime}
+                </span>
+              )}
+              
               {/* Actions */}
               {onCreateTask && (
                 <MessageActions 
@@ -232,6 +276,13 @@ export function MessageBubble({
             <span className="text-xs text-[var(--text-muted)]">
               {formatDistanceToNow(message.created_at, { addSuffix: true })}
             </span>
+            
+            {/* Generation time */}
+            {generationTime && (
+              <span className="text-xs text-[var(--text-muted)] italic">
+                {generationTime}
+              </span>
+            )}
             
             {/* Actions */}
             {onCreateTask && (
