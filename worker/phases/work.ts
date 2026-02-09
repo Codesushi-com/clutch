@@ -415,6 +415,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
       const handle = await agents.spawn({
         taskId: task.id,
         projectId: project.id,
+        projectSlug: project.slug,
         role,
         message: prompt,
         model,

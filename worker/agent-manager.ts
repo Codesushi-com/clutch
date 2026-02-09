@@ -44,6 +44,7 @@ export interface AgentOutcome {
 export interface SpawnAgentParams {
   taskId: string
   projectId: string
+  projectSlug: string
   role: string
   message: string
   model?: string
@@ -79,7 +80,7 @@ export class AgentManager {
     // Ensure gateway connection
     await this.gateway.connect()
 
-    const sessionKey = `agent:main:clutch:${params.role}:${params.taskId.slice(0, 8)}`
+    const sessionKey = `agent:main:${params.projectSlug}:${params.role}:${params.taskId.slice(0, 8)}`
     const now = Date.now()
 
     // Create the long-running RPC promise
