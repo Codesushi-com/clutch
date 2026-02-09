@@ -334,6 +334,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       const handle = await agents.spawn({
         taskId: task.id,
         projectId: project.id,
+        projectSlug: project.slug,
         role: "conflict_resolver",
         message: prompt,
         model: "kimi",  // Use Kimi for reliable execution
@@ -449,6 +450,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
     const handle = await agents.spawn({
       taskId: task.id,
       projectId: project.id,
+      projectSlug: project.slug,
       role: "reviewer",
       message: prompt,
       model: "gpt",
