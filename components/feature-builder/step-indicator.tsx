@@ -85,47 +85,38 @@ export function StepIndicator({
 }: StepIndicatorProps) {
   return (
     <div className="w-full">
-      {/* Step dots and connectors */}
+      {/* Step dots and labels - unified layout */}
       <div className="overflow-x-auto">
-        <div className="flex items-center justify-between min-w-[760px] pr-2">
-        {STEPS.map((step, index) => (
-          <div key={step.id} className="flex items-center flex-1 last:flex-initial">
-            <StepDot
-              step={step}
-              currentStep={currentStep}
-              isCompleted={completedSteps.includes(step.id)}
-              isClickable={allowNavigation && completedSteps.includes(step.id)}
-              onClick={() => onStepClick?.(step.id)}
-            />
-            {index < STEPS.length - 1 && (
-              <StepConnector isCompleted={completedSteps.includes(step.id)} />
-            )}
-          </div>
-        ))}
+        <div className="flex items-start justify-between min-w-[760px] pr-2">
+          {STEPS.map((step, index) => (
+            <div key={step.id} className="flex flex-1 items-center">
+              {/* Step container with dot and label */}
+              <div className="flex flex-col items-center flex-1">
+                <StepDot
+                  step={step}
+                  currentStep={currentStep}
+                  isCompleted={completedSteps.includes(step.id)}
+                  isClickable={allowNavigation && completedSteps.includes(step.id)}
+                  onClick={() => onStepClick?.(step.id)}
+                />
+                {/* Label directly below dot */}
+                <div
+                  className={cn(
+                    "mt-2 text-xs text-center whitespace-nowrap",
+                    step.id === currentStep && "text-primary font-medium",
+                    step.id !== currentStep && "text-muted-foreground"
+                  )}
+                >
+                  {step.label}
+                </div>
+              </div>
+              {/* Connector between steps */}
+              {index < STEPS.length - 1 && (
+                <StepConnector isCompleted={completedSteps.includes(step.id)} />
+              )}
+            </div>
+          ))}
         </div>
-      </div>
-      
-      {/* Step labels - desktop */}
-      <div className="hidden md:flex justify-between mt-3 px-1">
-        {STEPS.map((step) => (
-          <div
-            key={step.id}
-            className={cn(
-              "text-xs text-center flex-1",
-              step.index === 0 && "text-left",
-              step.index === STEPS.length - 1 && "text-right flex-initial",
-              step.id === currentStep && "text-primary font-medium",
-              step.id !== currentStep && "text-muted-foreground"
-            )}
-            style={{ 
-              flex: step.index === 0 || step.index === STEPS.length - 1 ? "initial" : "1",
-              marginLeft: step.index === 0 ? "0" : undefined,
-              marginRight: step.index === STEPS.length - 1 ? "0" : undefined,
-            }}
-          >
-            <div className="truncate max-w-[80px] mx-auto">{step.label}</div>
-          </div>
-        ))}
       </div>
       
       {/* Current step description - mobile */}
