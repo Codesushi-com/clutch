@@ -29,7 +29,7 @@ Statuses: `backlog` → `ready` → `in_progress` → `in_review` → `done`
 
 **`read` tool — ALWAYS pass a `path` parameter:**
 ```
-read(path="/home/dan/src/trap/some/file.ts")
+read(path="/home/dan/src/openclutch/some/file.ts")
 ```
 Never call `read()` with no arguments — it will fail. If you need to explore the project structure, use `exec` with `fd`, `rg`, or `cat` instead.
 
@@ -38,37 +38,37 @@ Never call `read()` with no arguments — it will fail. If you need to explore t
 **Common patterns:**
 ```bash
 # Find files by name (fd is available)
-fd "\.tsx$" /home/dan/src/trap/app
+fd "\.tsx$" /home/dan/src/openclutch/app
 
 # Search for code (rg is available — use it instead of grep)
 # NOTE: -t ts covers .ts AND .tsx. Do NOT use -t tsx (doesn't exist)
-rg "functionName" /home/dan/src/trap/app -t ts
+rg "functionName" /home/dan/src/openclutch/app -t ts
 
 # Read a file
-cat /home/dan/src/trap/app/page.tsx
+cat /home/dan/src/openclutch/app/page.tsx
 
 # IMPORTANT: Quote paths with brackets (Next.js [slug] dirs)
-cat '/home/dan/src/trap/app/projects/[slug]/page.tsx'
+cat '/home/dan/src/openclutch/app/projects/[slug]/page.tsx'
 
 # List directory
-ls /home/dan/src/trap/app/
+ls /home/dan/src/openclutch/app/
 ```
 
 ## Git Worktrees (REQUIRED)
 
-**NEVER switch branches in `/home/dan/src/trap`** — the dev server runs there on `main`.
+**NEVER switch branches in `/home/dan/src/openclutch`** — the dev server runs there on `main`.
 
 **For ALL feature work:**
 ```bash
 # Create worktree for your task
-cd /home/dan/src/trap
-git worktree add /home/dan/src/trap-worktrees/<branch-name> -b <branch-name>
+cd /home/dan/src/openclutch
+git worktree add /home/dan/src/openclutch-worktrees/<branch-name> -b <branch-name>
 
 # Work in the worktree
-cd /home/dan/src/trap-worktrees/<branch-name>
+cd /home/dan/src/openclutch-worktrees/<branch-name>
 
 # When done (after PR merged), clean up
-git worktree remove /home/dan/src/trap-worktrees/<branch-name>
+git worktree remove /home/dan/src/openclutch-worktrees/<branch-name>
 ```
 
 Branch naming: `fix/<ticket-id-prefix>-<short-desc>` or `feat/<ticket-id-prefix>-<short-desc>`

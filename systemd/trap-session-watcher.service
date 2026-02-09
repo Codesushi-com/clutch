@@ -7,8 +7,8 @@ Wants=trap-server.service
 [Service]
 Type=simple
 User=dan
-WorkingDirectory=/home/dan/src/trap
-EnvironmentFile=/home/dan/src/trap/.env.local
+WorkingDirectory=/home/dan/src/openclutch
+EnvironmentFile=/home/dan/src/openclutch/.env.local
 ExecStart=/home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/.bin/tsx worker/session-watcher.ts
 Restart=on-failure
 RestartSec=5

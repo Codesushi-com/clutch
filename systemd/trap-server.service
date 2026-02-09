@@ -5,8 +5,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/dan/src/trap
-EnvironmentFile=/home/dan/src/trap/.env.local
+WorkingDirectory=/home/dan/src/openclutch
+EnvironmentFile=/home/dan/src/openclutch/.env.local
 Environment=NODE_ENV=production
 Environment=PORT=3002
 ExecStart=/home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/next/dist/bin/next start -p 3002

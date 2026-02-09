@@ -1,0 +1,12 @@
+[Unit]
+Description=Trap auto-deploy (pull/build/restart) from /home/dan/src/openclutch
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/dan/src/openclutch
+ExecStart=/home/dan/.local/bin/trap-auto-deploy.sh
+# Keep output in journal
+StandardOutput=journal
+StandardError=journal

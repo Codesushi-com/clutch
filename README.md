@@ -447,13 +447,13 @@ Pre-commit hooks run lint and typecheck. **Never use `--no-verify`** - fix any f
 
 ### Git Worktrees
 
-**Never switch branches in `/home/dan/src/trap`** - the dev server runs there on `main`.
+**Never switch branches in `/home/dan/src/openclutch`** - the dev server runs there on `main`.
 
 For feature work:
 ```bash
-cd /home/dan/src/trap
-git worktree add /home/dan/src/trap-worktrees/fix/<ticket-id> -b fix/<ticket-id>
-cd /home/dan/src/trap-worktrees/fix/<ticket-id>
+cd /home/dan/src/openclutch
+git worktree add /home/dan/src/openclutch-worktrees/fix/<ticket-id> -b fix/<ticket-id>
+cd /home/dan/src/openclutch-worktrees/fix/<ticket-id>
 # ... work ...
 ```
 
