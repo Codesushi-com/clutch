@@ -622,6 +622,72 @@ export const remove = mutation({
 })
 
 /**
+ * Clean up old completed sessions.
+ * Deletes sessions that are:
+ * 1. Status is 'completed' AND
+ * 2. Either: updated_at is > 24h ago, OR task_id is set and task is 'done'
+ */
+export const cleanupCompleted = mutation({
+  args: {
+    dryRun: v.optional(v.boolean()), // If true, return count without deleting
+  },
+  handler: async (ctx, args): Promise<{ deleted: number; sessionKeys: string[] }> => {
+    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000)
+
+    // Get all completed sessions
+    const completedSessions = await ctx.db
+      .query('sessions')
+      .withIndex('by_status', (q) => q.eq('status', 'completed'))
+      .collect()
+
+    const toDelete: typeof completedSessions = []
+
+    for (const session of completedSessions) {
+      // Always delete if > 24h old
+      if (session.updated_at < twentyFourHoursAgo) {
+        toDelete.push(session)
+        continue
+      }
+
+      // If task_id is set, check if task is done
+      const taskId = session.task_id
+      if (taskId) {
+        try {
+          const task = await ctx.db
+            .query('tasks')
+            .withIndex('by_uuid', (q) => q.eq('id', taskId))
+            .unique()
+
+          if (task?.status === 'done') {
+            toDelete.push(session)
+          }
+        } catch {
+          // If task lookup fails, keep the session (safer)
+        }
+      }
+    }
+
+    const sessionKeys: string[] = []
+
+    if (!args.dryRun) {
+      for (const session of toDelete) {
+        await ctx.db.delete(session._id)
+        sessionKeys.push(session.session_key ?? session.id ?? '')
+      }
+    } else {
+      for (const session of toDelete) {
+        sessionKeys.push(session.session_key ?? session.id ?? '')
+      }
+    }
+
+    return {
+      deleted: toDelete.length,
+      sessionKeys,
+    }
+  },
+})
+
+/**
  * Remove stale sessions (not updated in N hours)
  */
 export const removeStale = mutation({

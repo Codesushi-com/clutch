@@ -33,8 +33,8 @@ const SESSIONS_JSON_PATH = join(
 // Debounce interval for batching Convex writes (ms)
 const FLUSH_INTERVAL_MS = 3000
 
-// Max age for watching completed sessions (5 minutes - evict quickly)
-const COMPLETED_SESSION_MAX_AGE_MS = 5 * 60 * 1000
+// Max age for watching completed sessions (2 hours - allow time for review)
+const COMPLETED_SESSION_MAX_AGE_MS = 2 * 60 * 60 * 1000
 
 // Stale threshold (5 minutes of inactivity)
 const STALE_THRESHOLD_MS = 5 * 60 * 1000
@@ -44,6 +44,9 @@ const MAX_WATCHED_FILES = 250
 
 // Re-scan sessions.json every N flush cycles to pick up new sessions
 const RESCAN_INTERVAL_FLUSHES = 5
+
+// Clean up old completed sessions every N flush cycles (every ~5 minutes)
+const CLEANUP_INTERVAL_FLUSHES = 100
 
 // ============================================
 // Types
@@ -551,7 +554,22 @@ class SessionWatcher {
   }
 
   /**
-   * Evict completed sessions that have been idle for > 5min.
+   * Clean up old completed sessions from Convex.
+   * Runs periodically to prevent unbounded growth.
+   */
+  private async cleanupOldCompletedSessions(): Promise<void> {
+    try {
+      const result = await this.convex.mutation(api.sessions.cleanupCompleted, {})
+      if (result.deleted > 0) {
+        console.log(`[SessionWatcher] Cleaned up ${result.deleted} old completed sessions`)
+      }
+    } catch (error) {
+      console.error("[SessionWatcher] Failed to cleanup old sessions:", error)
+    }
+  }
+
+  /**
+   * Evict completed sessions that have been idle.
    */
   private evictIdleCompletedSessions(): void {
     const now = Date.now()
@@ -598,7 +616,12 @@ class SessionWatcher {
       this.handleSessionsJsonChange()
     }
 
-    // Evict completed sessions that have been idle for > 5min
+    // Periodic cleanup of old completed sessions
+    if (this.flushCycleCount % CLEANUP_INTERVAL_FLUSHES === 0) {
+      await this.cleanupOldCompletedSessions()
+    }
+
+    // Evict completed sessions that have been idle
     this.evictIdleCompletedSessions()
 
     if (this.dirtySessions.size === 0) {
