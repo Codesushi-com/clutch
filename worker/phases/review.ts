@@ -215,6 +215,62 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       }
     }
 
+    // Check if task has been in review for > 60 seconds with no PR
+    // This catches agents that signaled review but never opened a PR
+    const now = Date.now()
+    const timeInReviewMs = now - task.updated_at
+    const sixtySecondsMs = 60 * 1000
+
+    if (timeInReviewMs > sixtySecondsMs) {
+      const newRetryCount = (task.agent_retry_count ?? 0) + 1
+      console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} has no PR after ${Math.round(timeInReviewMs / 1000)}s in review — moving back to ready for retry (attempt ${newRetryCount})`)
+
+      try {
+        // Update retry count first
+        await convex.mutation(api.tasks.update, {
+          id: task.id,
+          agent_retry_count: newRetryCount,
+        })
+
+        // Move task back to ready
+        await convex.mutation(api.tasks.move, {
+          id: task.id,
+          status: "ready",
+        })
+
+        // Log status change event
+        await convex.mutation(api.task_events.logStatusChange, {
+          taskId: task.id,
+          from: 'in_review',
+          to: 'ready',
+          actor: 'work-loop',
+          reason: 'no_pr_after_timeout',
+        })
+
+        // Add comment explaining the recovery
+        await convex.mutation(api.comments.create, {
+          taskId: task.id,
+          author: "work-loop",
+          authorType: "coordinator",
+          content: `Task was in review for ${Math.round(timeInReviewMs / 1000)}s with no PR found. Moving back to ready for retry (attempt ${newRetryCount}).`,
+          type: "status_change",
+        })
+      } catch (err) {
+        console.error(`[ReviewPhase] Failed to move task back to ready:`, err)
+      }
+
+      return {
+        spawned: false,
+        details: {
+          reason: "no_pr_timeout_recovered",
+          taskId: task.id,
+          branch: branchName,
+          timeInReviewMs,
+          retryCount: newRetryCount,
+        },
+      }
+    }
+
     return {
       spawned: false,
       details: {
