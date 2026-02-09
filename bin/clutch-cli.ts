@@ -1,18 +1,18 @@
 #!/usr/bin/env tsx
 /**
- * Trap CLI - Command line interface for Trap operations
+ * Clutch CLI - Command line interface for Clutch operations
  *
  * Usage:
- *   trap agents list                           List active agents and their tasks
- *   trap agents get <session-key>              Get agent detail + last output
- *   trap sessions list [--active]              List sessions
- *   trap sessions status                       OpenClaw session status
- *   trap dispatch pending [--project <slug>]   Show pending dispatch queue
- *   trap metrics [--project <slug>]            Task metrics / velocity
- *   trap signals list [--pending]              Pending signals
- *   trap signals respond <id> "msg"            Respond to a signal
- *   trap deploy convex [--project <slug>]      Deploy Convex for a project
- *   trap deploy check [--project <slug>]       Check if convex/ is dirty vs deployed
+ *   clutch agents list                           List active agents and their tasks
+ *   clutch agents get <session-key>              Get agent detail + last output
+ *   clutch sessions list [--active]              List sessions
+ *   clutch sessions status                       OpenClaw session status
+ *   clutch dispatch pending [--project <slug>]   Show pending dispatch queue
+ *   clutch metrics [--project <slug>]            Task metrics / velocity
+ *   clutch signals list [--pending]              Pending signals
+ *   clutch signals respond <id> "msg"            Respond to a signal
+ *   clutch deploy convex [--project <slug>]      Deploy Convex for a project
+ *   clutch deploy check [--project <slug>]       Check if convex/ is dirty vs deployed
  */
 
 import { execFileSync } from "node:child_process"
@@ -121,7 +121,7 @@ function showHelp(): void {
 OpenClutch CLI - Manage your OpenClutch projects
 
 Usage:
-  trap <command> [options]
+  clutch <command> [options]
 
 Agent Commands:
   agents list                         List active agents and their tasks
@@ -146,17 +146,17 @@ Deploy Commands:
   deploy check [--project <slug>]     Check if convex/ is dirty vs deployed
 
 Options:
-  --project <slug>    Target project slug (defaults to "trap" or auto-detected)
+  --project <slug>    Target project slug (defaults to "clutch" or auto-detected)
   --help, -h          Show this help message
 
 Examples:
-  trap agents list                          Show all active agents
-  trap agents get agent:main:trap:dev:abc   Get agent details
-  trap sessions list --active               Show only active sessions
-  trap dispatch pending --project trader    Show pending for trader project
-  trap signals list --pending               Show pending signals
-  trap signals respond abc-123 "LGTM"       Respond to a signal
-  trap metrics --project trap               Show metrics for trap project
+  clutch agents list                          Show all active agents
+  clutch agents get agent:main:clutch:dev:abc   Get agent details
+  clutch sessions list --active               Show only active sessions
+  clutch dispatch pending --project trader    Show pending for trader project
+  clutch signals list --pending               Show pending signals
+  clutch signals respond abc-123 "LGTM"       Respond to a signal
+  clutch metrics --project clutch               Show metrics for clutch project
 `)
 }
 
@@ -242,10 +242,10 @@ async function resolveProject(
     }
   }
 
-  // Fall back to "trap" project
-  const trapProject = await convex.query(api.projects.getBySlug, { slug: "trap" })
-  if (trapProject) {
-    return trapProject
+  // Fall back to "clutch" project
+  const clutchProject = await convex.query(api.projects.getBySlug, { slug: "clutch" })
+  if (clutchProject) {
+    return clutchProject
   }
 
   // Last resort: return first project with local_path
@@ -721,7 +721,7 @@ async function cmdDeployCheck(
     for (const file of convexFiles) {
       console.log(`  - ${file}`)
     }
-    console.log("\nRun 'trap deploy convex' to deploy these changes.")
+    console.log("\nRun 'clutch deploy convex' to deploy these changes.")
     process.exit(1)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -815,7 +815,7 @@ async function main(): Promise<void> {
 
     default:
       console.error(`Unknown command: ${command}`)
-      console.error("Run 'trap --help' for usage information.")
+      console.error("Run 'clutch --help' for usage information.")
       process.exit(1)
   }
 }

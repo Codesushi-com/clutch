@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "bin": {
-    "clutch": "./bin/trap-cli.ts",
-    "clutch-cli": "./bin/trap-cli.ts"
+    "clutch": "./bin/clutch-cli.ts",
+    "clutch-cli": "./bin/clutch-cli.ts"
   },
   "scripts": {
     "dev": "volta run node ./node_modules/next/dist/bin/next dev -p 3002",

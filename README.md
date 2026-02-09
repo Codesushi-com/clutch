@@ -361,7 +361,7 @@ trap/
 │   ├── trap-channel.ts           # Channel plugin for chat
 │   └── trap-signal.ts            # Signal plugin for notifications
 ├── bin/                          # CLI tools
-│   └── trap-cli.ts               # OpenClutch CLI
+│   └── clutch-cli.ts               # OpenClutch CLI
 ├── scripts/                      # Utility scripts
 ├── systemd/                      # Systemd service files
 ├── run.sh                        # Process management script

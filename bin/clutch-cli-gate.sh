@@ -1,17 +1,17 @@
 #!/bin/bash
-# trap-cli-gate.sh — Gate script for OpenClaw cron
+# clutch-cli-gate.sh — Gate script for OpenClaw cron
 #
 # Returns 0 (wake) if coordinator should process work
 # Returns 1 (sleep) if nothing needs attention
 #
-# Usage: TRAP_URL=http://localhost:3002 ./trap-cli-gate.sh
+# Usage: CLUTCH_URL=http://localhost:3002 ./clutch-cli-gate.sh
 
 set -e
 
-TRAP_URL="${TRAP_URL:-http://localhost:3002}"
+CLUTCH_URL="${CLUTCH_URL:-http://localhost:3002}"
 
 # Fetch gate status
-response=$(curl -s --max-time 5 "$TRAP_URL/api/gate" 2>/dev/null || echo '{"needsAttention":false,"error":"failed to connect"}')
+response=$(curl -s --max-time 5 "$CLUTCH_URL/api/gate" 2>/dev/null || echo '{"needsAttention":false,"error":"failed to connect"}')
 
 # Check for errors
 if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
