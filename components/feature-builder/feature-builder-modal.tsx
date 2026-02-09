@@ -498,11 +498,11 @@ export function FeatureBuilderModal({
     <FeatureBuilderErrorBoundary onReset={() => setHasError(false)} onClose={handleCancel}>
       <>
         <Dialog open={open} onOpenChange={handleCancel}>
-          <DialogContent 
-            className="sm:max-w-4xl lg:max-w-5xl max-h-[90vh] p-0 gap-0 overflow-hidden"
+          <DialogContent
+            className="sm:max-w-4xl lg:max-w-5xl max-h-[90vh] p-0 gap-0"
             showCloseButton={false}
           >
-            <DialogHeader className="px-8 pt-7 pb-4 border-b">
+            <DialogHeader className="px-8 pt-8 pb-4 border-b">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-primary" />
@@ -524,7 +524,7 @@ export function FeatureBuilderModal({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="px-8 py-4 border-b bg-muted/30">
+            <div className="px-8 py-4 border-b bg-muted/50">
               <StepIndicator
                 currentStep={currentStep}
                 completedSteps={completedSteps}
