@@ -1,0 +1,13 @@
+#!/bin/sh
+
+echo "Running pre-commit checks..."
+
+# Typecheck
+echo "→ Typechecking..."
+pnpm exec tsc --noEmit || exit 1
+
+# Lint
+echo "→ Linting..."
+pnpm lint || exit 1
+
+echo "✓ All checks passed"
