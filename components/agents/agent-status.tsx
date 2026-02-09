@@ -154,7 +154,6 @@ export function AgentStatus({
   const displayStatus = getDisplayStatus(session)
   const modelName = formatModelShort(session?.model)
   const totalTokens = session?.tokens_total ?? 0
-  const cost = session?.cost_total
 
   if (variant === "compact") {
     // Compact variant for sidebar (single line)
@@ -173,12 +172,6 @@ export function AgentStatus({
             <>
               {" · "}
               {formatTokenCount(totalTokens)} tokens
-            </>
-          )}
-          {cost && cost > 0 && (
-            <>
-              {" · "}
-              {formatCost(cost)}
             </>
           )}
         </span>
@@ -200,12 +193,6 @@ export function AgentStatus({
           <>
             {" · "}
             {formatTokenCount(totalTokens)} tokens
-          </>
-        )}
-        {cost && cost > 0 && (
-          <>
-            {" · "}
-            {formatCost(cost)}
           </>
         )}
         {session?.last_active_at && (

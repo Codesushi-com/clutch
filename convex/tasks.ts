@@ -1434,3 +1434,22 @@ export const getUnanalyzed = query({
     return sorted
   },
 })
+
+/**
+ * Find a task by its agent_session_key.
+ * Used by the session watcher to resolve session keys to task IDs.
+ */
+export const getByAgentSessionKey = query({
+  args: { agentSessionKey: v.string() },
+  handler: async (ctx, args): Promise<Task | null> => {
+    const doc = await ctx.db
+      .query('tasks')
+      .withIndex('by_agent_session_key', (q) =>
+        q.eq('agent_session_key', args.agentSessionKey)
+      )
+      .first()
+
+    if (!doc) return null
+    return toTask(doc as Parameters<typeof toTask>[0])
+  },
+})

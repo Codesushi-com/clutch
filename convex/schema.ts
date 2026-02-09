@@ -99,7 +99,8 @@ export default defineSchema({
     .index("by_assignee", ["assignee"])
     .index("by_project_position", ["project_id", "status", "position"])
     .index("by_session_id", ["session_id"])
-    .index("by_dispatch_status", ["dispatch_status"]),
+    .index("by_dispatch_status", ["dispatch_status"])
+    .index("by_agent_session_key", ["agent_session_key"]),
 
   // Comments
   comments: defineTable({

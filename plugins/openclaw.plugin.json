@@ -1,0 +1,11 @@
+{
+  "id": "clutch-channel",
+  "name": "Clutch Channel",
+  "version": "1.0.0",
+  "description": "Bidirectional channel integration between OpenClaw and the OpenClutch orchestration UI",
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  }
+}

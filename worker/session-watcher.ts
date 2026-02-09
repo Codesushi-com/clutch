@@ -75,6 +75,23 @@ interface WatchedSession {
 type SessionType = "main" | "chat" | "agent" | "cron"
 
 /**
+ * Known agent roles from the work loop.
+ * Used to distinguish agent sessions from chat sessions
+ * when both share the agent:main:clutch:* prefix.
+ */
+const AGENT_ROLES = new Set([
+  "dev",
+  "reviewer",
+  "pm",
+  "research",
+  "conflict_resolver",
+  "analyzer",
+  "fixer",
+  "qa",
+  "security",
+])
+
+/**
  * Detect session type from session key pattern.
  */
 function detectSessionType(sessionKey: string): SessionType {
@@ -83,18 +100,24 @@ function detectSessionType(sessionKey: string): SessionType {
     return "main"
   }
 
-  // agent:main:clutch:{slug}:{chatId} → type chat
-  if (sessionKey.match(/^agent:main:clutch:[^:]+:/)) {
-    return "chat"
-  }
-
-  // agent:main:cron:*:clutch-{taskIdPrefix} → type agent (work loop agent)
-  if (sessionKey.match(/^agent:main:cron:.*:clutch-/)) {
+  // agent:main:clutch:{role}:{taskIdPrefix} → type agent (work loop)
+  // agent:main:trap:{role}:{taskIdPrefix}  → type agent (legacy pre-rename)
+  // Distinguished from chat by checking if segment is a known role.
+  const agentMatch = sessionKey.match(
+    /^agent:main:(?:clutch|trap):([^:]+):([a-f0-9]{8})$/
+  )
+  if (agentMatch && AGENT_ROLES.has(agentMatch[1])) {
     return "agent"
   }
 
-  // agent:main:cron:*:clutch-pr-review-* → type agent (reviewer)
-  if (sessionKey.match(/^agent:main:cron:.*:clutch-pr-review-/)) {
+  // agent:main:clutch:{slug}:{chatId} → type chat
+  if (sessionKey.match(/^agent:main:(?:clutch|trap):[^:]+:/)) {
+    return "chat"
+  }
+
+  // agent:main:cron:*:clutch-{taskIdPrefix} → type agent (old cron-based spawning)
+  // agent:main:cron:*:trap-{taskIdPrefix}   → type agent (legacy)
+  if (sessionKey.match(/^agent:main:cron:.*:(?:clutch|trap)-/)) {
     return "agent"
   }
 
@@ -109,30 +132,40 @@ function detectSessionType(sessionKey: string): SessionType {
 
 /**
  * Extract project slug from session key (for chat/agent types).
+ *
+ * For agent sessions (agent:main:clutch:{role}:{taskPrefix}), the slug
+ * comes from the "clutch" or "trap" segment, not from the role. We look
+ * up the full task in Convex to get the real project slug.
+ *
+ * For chat sessions (agent:main:clutch:{slug}:{chatId}), the slug IS
+ * the first variable segment.
+ *
+ * For legacy cron-based sessions, we extract from the label prefix.
  */
 function extractProjectSlug(sessionKey: string): string | undefined {
-  // agent:main:clutch:{slug}:{chatId}
-  const match = sessionKey.match(/^agent:main:clutch:([^:]+):/)
-  if (match) {
-    return match[1]
-  }
-  return undefined
-}
-
-/**
- * Extract task ID from session key (for agent types).
- */
-function extractTaskId(sessionKey: string): string | undefined {
-  // agent:main:cron:*:clutch-{taskId}
-  const match = sessionKey.match(/:clutch-([a-f0-9-]+)$/)
-  if (match) {
-    return match[1]
+  // agent:main:clutch:{role}:{taskPrefix} → slug is "clutch" project
+  // agent:main:trap:{role}:{taskPrefix}   → slug is "trap"/"clutch" project
+  const agentMatch = sessionKey.match(
+    /^agent:main:(clutch|trap):([^:]+):([a-f0-9]{8})$/
+  )
+  if (agentMatch && AGENT_ROLES.has(agentMatch[2])) {
+    // Agent sessions: the project is "clutch" (or "trader" etc)
+    // We can't determine the exact project from the key alone since the
+    // key embeds the product name, not the project slug. Return "clutch"
+    // for clutch keys, or look it up from the task.
+    // For now, return undefined and let the task_id join handle it.
+    return undefined
   }
 
-  // agent:main:cron:*:clutch-pr-review-{taskId}
-  const reviewMatch = sessionKey.match(/:clutch-pr-review-([a-f0-9-]+)$/)
-  if (reviewMatch) {
-    return reviewMatch[1]
+  // agent:main:clutch:{slug}:{chatId} or agent:main:trap:{slug}:{chatId}
+  const chatMatch = sessionKey.match(/^agent:main:(?:clutch|trap):([^:]+):/)
+  if (chatMatch) {
+    return chatMatch[1]
+  }
+
+  // agent:main:cron:*:clutch-* or agent:main:cron:*:trap-*
+  if (sessionKey.match(/:(?:clutch|trap)-/)) {
+    return "clutch"
   }
 
   return undefined
@@ -598,7 +631,23 @@ class SessionWatcher {
       // Detect type and extract metadata
       const sessionType = detectSessionType(sessionKey)
       const projectSlug = extractProjectSlug(sessionKey)
-      const taskId = extractTaskId(sessionKey)
+      // Resolve task ID: look up tasks where agent_session_key matches
+      // this session key. The task stores the full session key, so we
+      // can match exactly without needing to expand the 8-char prefix.
+      let taskId: string | undefined
+      if (sessionType === "agent") {
+        try {
+          const task = await this.convex.query(api.tasks.getByAgentSessionKey, {
+            agentSessionKey: sessionKey,
+          })
+          if (task) {
+            taskId = task.id
+          }
+        } catch {
+          // Non-fatal: task lookup failed, taskId stays undefined
+          // The sidebar can still join via agent_session_key on the task
+        }
+      }
 
       // Build session input for Convex (using camelCase as per the API)
       sessionInputs.push({

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { AlertTriangle, ExternalLink, Clock, Activity } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { useSessionsByTask } from "@/lib/hooks/use-sessions"
+import { useSessionsByTask, useSession } from "@/lib/hooks/use-sessions"
 import type { Task } from "@/lib/types"
 
 interface AgentCardProps {
@@ -97,9 +97,14 @@ function getIdleColor(minutes: number): string {
 }
 
 export function AgentCard({ task, projectSlug }: AgentCardProps) {
-  // Get session data from the new sessions table via task_id
-  const { sessions, isLoading: isSessionLoading } = useSessionsByTask(task.id)
-  const session = sessions?.[0] // Get the first (most recent) session for this task
+  // Get session data: try by task_id first, fall back to agent_session_key
+  const { sessions, isLoading: isTaskSessionLoading } = useSessionsByTask(task.id)
+  const { session: keySession, isLoading: isKeySessionLoading } = useSession(
+    task.agent_session_key ?? ""
+  )
+  // Prefer task_id match, fall back to session_key match
+  const session = sessions?.[0] ?? keySession
+  const isSessionLoading = isTaskSessionLoading && isKeySessionLoading
 
   // Track current time for live updates
   const [now, setNow] = useState(() => Date.now())

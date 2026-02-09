@@ -12,6 +12,7 @@ import { useConvexTasks } from "@/lib/hooks/use-convex-tasks"
 import { AgentStatus, formatDuration } from "@/components/agents/agent-status"
 import { AgentCard } from "@/components/agents/agent-card"
 import { useSessions } from "@/lib/hooks/use-sessions"
+import { useActiveAgentSessions } from "@/lib/hooks/use-work-loop"
 import type { Task } from "@/lib/types"
 
 interface ChatSidebarProps {
@@ -55,39 +56,46 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
   // Reactive Convex subscription for blocked tasks - separate query for sidebar widget
   const { tasks: blockedTasks } = useConvexTasks(projectId ?? "", "blocked")
 
-  // Reactive Convex subscription for agent sessions - no polling needed
-  // Use the new sessions table to find sessions with task associations
+  // Reactive Convex subscription for active agent tasks + their sessions.
+  // Uses getWithActiveAgentSessions which joins tasks → sessions via agent_session_key.
+  // This is more reliable than filtering the sessions table by type/project.
+  const { data: activeAgentData } = useActiveAgentSessions(projectId)
+
+  // Extract active tasks (in_progress or in_review with agent)
+  const activeAgentTasks = useMemo(() => {
+    if (!activeAgentData) return []
+    return activeAgentData
+      .filter(
+        (d) =>
+          d.task.status === "in_progress" || d.task.status === "in_review"
+      )
+      .map((d) => d.task)
+  }, [activeAgentData])
+
+  // Create lookup map: task_id -> session from the joined data
+  const sessionByTaskId = useMemo(() => {
+    const map = new Map()
+    if (!activeAgentData) return map
+    for (const d of activeAgentData) {
+      if (d.session) {
+        map.set(d.task.id, d.session)
+      }
+    }
+    return map
+  }, [activeAgentData])
+
+  // Also subscribe to sessions for the work queue AgentStatus components
   const { sessions: agentSessions } = useSessions(
-    { sessionType: "agent", projectSlug: projectSlug || undefined },
-    50
+    { projectSlug: projectSlug || undefined },
+    100
   )
 
-  // Derive active tasks from sessions (tasks that have active agent sessions)
-  const activeAgentTasks = useMemo(() => {
-    if (!agentSessions || !allTasks) return []
-
-    // Get task IDs from sessions
-    const sessionTaskIds = new Set(
-      agentSessions
-        .filter((s) => s.status === "active" || s.status === "idle")
-        .map((s) => s.task_id)
-        .filter(Boolean)
-    )
-
-    // Find corresponding tasks
-    return allTasks.filter((t) => t.agent_session_key && sessionTaskIds.has(t.id))
-  }, [agentSessions, allTasks])
-
-  // Create a lookup map of task_id -> session for quick access
-  const sessionByTaskId = useMemo(() => {
-    if (!agentSessions) return new Map()
-
+  // Lookup: session_key -> session for work queue items
+  const sessionByKey = useMemo(() => {
     const map = new Map()
-    for (const session of agentSessions) {
-      if (session.task_id && !map.has(session.task_id)) {
-        // Keep the first (most recent) session for each task
-        map.set(session.task_id, session)
-      }
+    if (!agentSessions) return map
+    for (const s of agentSessions) {
+      map.set(s.session_key, s)
     }
     return map
   }, [agentSessions])
@@ -708,7 +716,7 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
                             {(section.status === "in_progress" || section.status === "in_review") && (
                               <AgentStatus
                                 task={task}
-                                session={sessionByTaskId.get(task.id)}
+                                session={sessionByTaskId.get(task.id) ?? (task.agent_session_key ? sessionByKey.get(task.agent_session_key) : undefined)}
                                 variant="compact"
                               />
                             )}

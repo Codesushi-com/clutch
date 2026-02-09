@@ -80,6 +80,22 @@ interface PRStatus {
   state: string
 }
 
+interface PRExpandedStatus {
+  mergeable: string
+  reviewDecision: string
+  state: string
+  statusCheckRollup: Array<{
+    state: string
+    context?: string
+  }>
+  reviews: Array<{
+    state: string
+    author: {
+      login: string
+    }
+  }>
+}
+
 /**
  * Check if a PR is approved and mergeable.
  * Returns PR status or null on error.
@@ -99,6 +115,29 @@ function getPRStatus(prNumber: number, project: ProjectInfo): PRStatus | null {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.warn(`[WorkLoop] Failed to check PR #${prNumber} status: ${message}`)
+    return null
+  }
+}
+
+/**
+ * Get expanded PR status including CI checks and review details.
+ * Returns PR status or null on error.
+ */
+function getPRExpandedStatus(prNumber: number, project: ProjectInfo): PRExpandedStatus | null {
+  try {
+    const result = execFileSync(
+      "gh",
+      ["pr", "view", String(prNumber), "--json", "mergeable,reviewDecision,state,statusCheckRollup,reviews"],
+      {
+        encoding: "utf-8",
+        timeout: 15_000,
+        cwd: project.local_path!,
+      }
+    )
+    return JSON.parse(result) as PRExpandedStatus
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`[WorkLoop] Failed to check PR #${prNumber} expanded status: ${message}`)
     return null
   }
 }
@@ -124,6 +163,124 @@ function autoMergePR(prNumber: number, project: ProjectInfo): boolean {
     console.warn(`[WorkLoop] Auto-merge failed for PR #${prNumber}: ${message}`)
     return false
   }
+}
+
+/**
+ * Positive signals indicating reviewer approves but forgot to merge
+ */
+const POSITIVE_REVIEW_SIGNALS = [
+  /lgmt/i,
+  /looks good/i,
+  /looks great/i,
+  /approved/i,
+  /approving/i,
+  /merging/i,
+  /no issues/i,
+  /no problems/i,
+  /ship it/i,
+  /\blgtm\b/i,
+  /ready to merge/i,
+  /good to merge/i,
+  /merge this/i,
+  /clean merge/i,
+  /well done/i,
+  /nice work/i,
+  /great job/i,
+]
+
+/**
+ * Negative signals indicating reviewer wants changes
+ */
+const NEGATIVE_REVIEW_SIGNALS = [
+  /request changes/i,
+  /changes requested/i,
+  /needs work/i,
+  /needs fixing/i,
+  /needs to be fixed/i,
+  /should fix/i,
+  /must fix/i,
+  /blocking/i,
+  /reject/i,
+  /not ready/i,
+  /don't merge/i,
+  /do not merge/i,
+  /issues found/i,
+  /problems found/i,
+  /concerns/i,
+  /problematic/i,
+  /broken/i,
+  /fails/i,
+  /failing/i,
+  /error in/i,
+  /bug in/i,
+  /needs refactor/i,
+  /should refactor/i,
+]
+
+/**
+ * Analyze reviewer output to determine sentiment.
+ * Returns: 'positive' | 'negative' | 'neutral'
+ */
+function analyzeReviewerOutput(output: string): 'positive' | 'negative' | 'neutral' {
+  const lowerOutput = output.toLowerCase()
+
+  // Check for negative signals first (more specific/important)
+  for (const pattern of NEGATIVE_REVIEW_SIGNALS) {
+    if (pattern.test(lowerOutput)) {
+      return 'negative'
+    }
+  }
+
+  // Check for positive signals
+  for (const pattern of POSITIVE_REVIEW_SIGNALS) {
+    if (pattern.test(lowerOutput)) {
+      return 'positive'
+    }
+  }
+
+  return 'neutral'
+}
+
+/**
+ * Check if CI checks pass (or no required checks).
+ * Returns true if safe to auto-merge from CI perspective.
+ */
+function checksPass(status: PRExpandedStatus): boolean {
+  if (!status.statusCheckRollup || status.statusCheckRollup.length === 0) {
+    return true // No checks configured
+  }
+
+  // All checks must be SUCCESS or NEUTRAL (not FAILURE or PENDING)
+  for (const check of status.statusCheckRollup) {
+    const state = check.state.toUpperCase()
+    if (state === 'FAILURE' || state === 'ERROR' || state === 'TIMED_OUT') {
+      return false
+    }
+    // PENDING, EXPECTED, or STARTED means checks are still running
+    if (state === 'PENDING' || state === 'EXPECTED' || state === 'STARTED') {
+      return false
+    }
+  }
+
+  return true
+}
+
+/**
+ * Check if PR has any changes_requested reviews.
+ * Returns true if no changes requested (safe to auto-merge).
+ */
+function noChangesRequested(status: PRExpandedStatus): boolean {
+  if (!status.reviews || status.reviews.length === 0) {
+    return true
+  }
+
+  for (const review of status.reviews) {
+    if (review.state.toUpperCase() === 'CHANGES_REQUESTED') {
+      return false
+    }
+  }
+
+  return true
 }
 
 // ============================================
@@ -356,78 +513,184 @@ async function runProjectCycle(
             details: { reason: "finished_in_progress", role: outcome.role },
           })
         }
-        // Case 2: Reviewer finished but task still in_review → try auto-merge fallback, then block
+        // Case 2: Reviewer finished but task still in_review → try auto-merge fallback, then retry/block
         else if (currentStatus === "in_review" && outcome.role === "reviewer") {
           const prNumber = task.task.pr_number
           let autoMerged = false
+          const reviewerOutput = outcome.reply ?? ""
+          const reviewerSentiment = analyzeReviewerOutput(reviewerOutput)
+          const retryCount = task.task.agent_retry_count ?? 0
+          const maxReviewerRetries = 2 // Max 2 reviewer attempts before blocking
 
-          // Auto-merge fallback: if PR is approved and mergeable, merge it instead of blocking
+          // Step 1: Try expanded auto-merge criteria (even without explicit GitHub approval)
           if (prNumber && project.local_path) {
-            const prStatus = getPRStatus(prNumber, project)
-            if (prStatus?.state === "OPEN" && prStatus?.reviewDecision === "APPROVED" && prStatus?.mergeable === "MERGEABLE") {
-              console.log(`[WorkLoop] PR #${prNumber} is approved and mergeable — attempting auto-merge`)
-              const mergeSuccess = autoMergePR(prNumber, project)
-              if (mergeSuccess) {
-                await convex.mutation(api.tasks.move, {
-                  id: outcome.taskId,
-                  status: "done",
-                })
-                await convex.mutation(api.comments.create, {
-                  taskId: outcome.taskId,
-                  author: "work-loop",
-                  authorType: "coordinator",
-                  content: `Reviewer finished without merging, but PR #${prNumber} was approved and mergeable — auto-merged successfully.`,
-                  type: "status_change",
-                })
-                await convex.mutation(api.task_events.logPRMerged, {
-                  taskId: outcome.taskId,
-                  prNumber: prNumber,
-                  mergedBy: "work-loop (auto-merge fallback)",
-                })
-                console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} auto-merged PR #${prNumber} and marked done`)
-                await logRun(convex, {
-                  projectId: project.id,
-                  cycle,
-                  phase: "cleanup",
-                  action: "task_auto_merged",
-                  taskId: outcome.taskId,
-                  details: { reason: "reviewer_no_merge_but_approved", prNumber, role: outcome.role },
-                })
-                autoMerged = true
+            const prStatus = getPRExpandedStatus(prNumber, project)
+
+            if (prStatus?.state === "OPEN" && prStatus?.mergeable === "MERGEABLE") {
+              // Standard auto-merge: explicitly approved
+              const isExplicitlyApproved = prStatus?.reviewDecision === "APPROVED"
+              // Expanded auto-merge: no changes requested + CI passes + positive/neutral reviewer sentiment
+              const noChangesReq = noChangesRequested(prStatus)
+              const ciPasses = checksPass(prStatus)
+              const sentimentAllows = reviewerSentiment !== 'negative'
+
+              if (isExplicitlyApproved) {
+                // Original behavior: PR was explicitly approved via gh pr review
+                console.log(`[WorkLoop] PR #${prNumber} is approved and mergeable — attempting auto-merge`)
+                const mergeSuccess = autoMergePR(prNumber, project)
+                if (mergeSuccess) {
+                  await convex.mutation(api.tasks.move, {
+                    id: outcome.taskId,
+                    status: "done",
+                  })
+                  await convex.mutation(api.comments.create, {
+                    taskId: outcome.taskId,
+                    author: "work-loop",
+                    authorType: "coordinator",
+                    content: `Reviewer finished without merging, but PR #${prNumber} was approved and mergeable — auto-merged successfully.`,
+                    type: "status_change",
+                  })
+                  await convex.mutation(api.task_events.logPRMerged, {
+                    taskId: outcome.taskId,
+                    prNumber: prNumber,
+                    mergedBy: "work-loop (auto-merge fallback)",
+                  })
+                  console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} auto-merged PR #${prNumber} and marked done`)
+                  await logRun(convex, {
+                    projectId: project.id,
+                    cycle,
+                    phase: "cleanup",
+                    action: "task_auto_merged",
+                    taskId: outcome.taskId,
+                    details: { reason: "reviewer_no_merge_but_approved", prNumber, role: outcome.role },
+                  })
+                  autoMerged = true
+                } else {
+                  console.log(`[WorkLoop] Auto-merge failed for PR #${prNumber} — will check for retry eligibility`)
+                }
+              } else if (noChangesReq && ciPasses && sentimentAllows) {
+                // Expanded auto-merge: reviewer said LGTM but forgot to approve/merge
+                console.log(`[WorkLoop] PR #${prNumber} eligible for expanded auto-merge: no_changes_requested=${noChangesReq}, ci_passes=${ciPasses}, sentiment=${reviewerSentiment}`)
+                const mergeSuccess = autoMergePR(prNumber, project)
+                if (mergeSuccess) {
+                  await convex.mutation(api.tasks.move, {
+                    id: outcome.taskId,
+                    status: "done",
+                  })
+                  await convex.mutation(api.comments.create, {
+                    taskId: outcome.taskId,
+                    author: "work-loop",
+                    authorType: "coordinator",
+                    content: `Reviewer finished without merging, but their review was positive (no issues found, CI passing). Auto-merged PR #${prNumber}.`,
+                    type: "status_change",
+                  })
+                  await convex.mutation(api.task_events.logPRMerged, {
+                    taskId: outcome.taskId,
+                    prNumber: prNumber,
+                    mergedBy: "work-loop (expanded auto-merge)",
+                  })
+                  console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} auto-merged PR #${prNumber} via expanded criteria and marked done`)
+                  await logRun(convex, {
+                    projectId: project.id,
+                    cycle,
+                    phase: "cleanup",
+                    action: "task_auto_merged",
+                    taskId: outcome.taskId,
+                    details: { reason: "reviewer_positive_but_forgot_merge", prNumber, role: outcome.role, sentiment: reviewerSentiment },
+                  })
+                  autoMerged = true
+                } else {
+                  console.log(`[WorkLoop] Expanded auto-merge failed for PR #${prNumber} — will check for retry eligibility`)
+                }
               } else {
-                console.log(`[WorkLoop] Auto-merge failed for PR #${prNumber} — will block for triage`)
+                console.log(`[WorkLoop] PR #${prNumber} not eligible for auto-merge: approved=${isExplicitlyApproved}, no_changes=${noChangesReq}, ci_passes=${ciPasses}, sentiment=${reviewerSentiment}`)
               }
             } else {
-              console.log(`[WorkLoop] PR #${prNumber} not eligible for auto-merge: state=${prStatus?.state}, decision=${prStatus?.reviewDecision}, mergeable=${prStatus?.mergeable}`)
+              console.log(`[WorkLoop] PR #${prNumber} not eligible for auto-merge: state=${prStatus?.state}, mergeable=${prStatus?.mergeable}`)
             }
           }
 
-          // If auto-merge didn't happen, block for triage
+          // Step 2: If auto-merge didn't happen, decide between retry vs block
           if (!autoMerged) {
-            await convex.mutation(api.tasks.move, {
-              id: outcome.taskId,
-              status: "blocked",
-            })
-            const reviewerOutput = outcome.reply?.slice(0, 500)
-            const reviewBlockReason = reviewerOutput
-              ? `Reviewer finished without merging. Moving to blocked for triage.\n\n**Reviewer's last output:**\n> ${reviewerOutput}`
-              : `Reviewer finished without merging (no output captured). Moving to blocked for triage.`
-            await convex.mutation(api.comments.create, {
-              taskId: outcome.taskId,
-              author: "work-loop",
-              authorType: "coordinator",
-              content: reviewBlockReason,
-              type: "status_change",
-            })
-            console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (reviewer didn't merge)`)
-            await logRun(convex, {
-              projectId: project.id,
-              cycle,
-              phase: "cleanup",
-              action: "task_blocked",
-              taskId: outcome.taskId,
-              details: { reason: "reviewer_no_merge", role: outcome.role },
-            })
+            if (reviewerSentiment === 'negative') {
+              // Reviewer found issues — block for triage (correct behavior)
+              await convex.mutation(api.tasks.move, {
+                id: outcome.taskId,
+                status: "blocked",
+              })
+              const reviewerOutputPreview = reviewerOutput.slice(0, 500)
+              const reviewBlockReason = reviewerOutputPreview
+                ? `Reviewer finished with concerns. Moving to blocked for triage.\n\n**Reviewer's last output:**\n> ${reviewerOutputPreview}`
+                : `Reviewer finished with concerns (no output captured). Moving to blocked for triage.`
+              await convex.mutation(api.comments.create, {
+                taskId: outcome.taskId,
+                author: "work-loop",
+                authorType: "coordinator",
+                content: reviewBlockReason,
+                type: "status_change",
+              })
+              console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (reviewer found issues)`)
+              await logRun(convex, {
+                projectId: project.id,
+                cycle,
+                phase: "cleanup",
+                action: "task_blocked",
+                taskId: outcome.taskId,
+                details: { reason: "reviewer_negative_feedback", role: outcome.role, sentiment: reviewerSentiment },
+              })
+            } else if (retryCount < maxReviewerRetries) {
+              // Positive/neutral sentiment and retries remaining — re-queue for another review
+              const newRetryCount = retryCount + 1
+              console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} reviewer sentiment=${reviewerSentiment}, retry ${newRetryCount}/${maxReviewerRetries} — re-queueing for another review`)
+
+              await convex.mutation(api.tasks.update, {
+                id: outcome.taskId,
+                agent_retry_count: newRetryCount,
+              })
+
+              await convex.mutation(api.comments.create, {
+                taskId: outcome.taskId,
+                author: "work-loop",
+                authorType: "coordinator",
+                content: `Reviewer finished without merging (sentiment: ${reviewerSentiment}). Re-queueing for review attempt ${newRetryCount}/${maxReviewerRetries}.`,
+                type: "status_change",
+              })
+
+              await logRun(convex, {
+                projectId: project.id,
+                cycle,
+                phase: "cleanup",
+                action: "task_requeued_for_review",
+                taskId: outcome.taskId,
+                details: { reason: "reviewer_no_merge", role: outcome.role, sentiment: reviewerSentiment, retryCount: newRetryCount, maxRetries: maxReviewerRetries },
+              })
+            } else {
+              // Max retries exceeded — block for triage
+              await convex.mutation(api.tasks.move, {
+                id: outcome.taskId,
+                status: "blocked",
+              })
+              const reviewerOutputPreview = reviewerOutput.slice(0, 500)
+              const reviewBlockReason = reviewerOutputPreview
+                ? `Reviewer finished without merging after ${maxReviewerRetries} attempts. Moving to blocked for triage.\n\n**Reviewer's last output:**\n> ${reviewerOutputPreview}`
+                : `Reviewer finished without merging after ${maxReviewerRetries} attempts (no output captured). Moving to blocked for triage.`
+              await convex.mutation(api.comments.create, {
+                taskId: outcome.taskId,
+                author: "work-loop",
+                authorType: "coordinator",
+                content: reviewBlockReason,
+                type: "status_change",
+              })
+              console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (reviewer didn't merge after ${maxReviewerRetries} attempts)`)
+              await logRun(convex, {
+                projectId: project.id,
+                cycle,
+                phase: "cleanup",
+                action: "task_blocked",
+                taskId: outcome.taskId,
+                details: { reason: "reviewer_no_merge_max_retries", role: outcome.role, retryCount, maxRetries: maxReviewerRetries },
+              })
+            }
           }
         }
         // Case 3: Task already done/blocked → agent signaled correctly, no action

@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenClutch Chat Bridge
+Documentation=https://github.com/dbachelder/clutch
+After=clutch-server.service
+Wants=clutch-server.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/dan/src/clutch
+EnvironmentFile=/home/dan/src/clutch/.env.local
+ExecStart=/home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/tsx/dist/cli.cjs worker/chat-bridge.ts
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clutch-bridge
+
+[Install]
+WantedBy=default.target
