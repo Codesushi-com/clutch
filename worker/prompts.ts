@@ -38,7 +38,7 @@ export interface PromptParams {
   signalResponses?: Array<{ question: string; response: string }>
   /** Optional image URLs for the PM to analyze */
   imageUrls?: string[]
-  /** Optional PR number (for conflict_resolver role) */
+  /** Optional PR number (for reviewer and conflict_resolver roles) */
   prNumber?: number | null
   /** Optional branch name (for conflict_resolver role) */
   branch?: string | null
@@ -146,6 +146,7 @@ ${params.taskDescription}${commentsSection}
  */
 function buildReviewerTaskContext(params: PromptParams): string {
   const commentsSection = formatCommentsSection(params.comments)
+  const prNumber = params.prNumber ?? "<number>"
 
   return `## Task: ${params.taskTitle}
 
@@ -161,14 +162,20 @@ ${params.taskDescription}${commentsSection}
 **Your job:** Review the PR for this ticket.
 
 **Worktree Path:** ${params.worktreeDir}
+**PR Number:** #${prNumber}
 
 **Review steps:**
-1. Check the diff: \`gh pr diff <number>\`
-2. Verify types: \`cd ${params.worktreeDir} && pnpm typecheck\`
-3. Verify lint: \`cd ${params.worktreeDir} && pnpm lint\`
-4. **You do NOT have browser access.** If UI changes need visual verification, note it in your review comment
+1. Read the ticket description above
+2. Check the diff: \`gh pr diff ${prNumber}\`
+3. Run typecheck: \`cd ${params.worktreeDir} && pnpm install && pnpm typecheck\`
+4. Run lint: \`cd ${params.worktreeDir} && pnpm lint\`
+5. If all checks pass → MERGE: \`gh pr merge ${prNumber} --squash --delete-branch\`
+6. If issues found → leave review comment with actionable feedback
 
-**CRITICAL:** Approving a PR without merging it will cause the task to be blocked. You MUST run \`gh pr merge\` after your review passes.`
+You do NOT have browser access. If UI changes need visual verification, note it in your review comment.
+
+**Your session MUST end with either step 5 (merge) or step 6 (rejection comment).
+Finishing without either will block the task and waste a triage cycle.**`
 }
 
 /**
