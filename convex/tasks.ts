@@ -1442,14 +1442,27 @@ export const getUnanalyzed = query({
 export const getByAgentSessionKey = query({
   args: { agentSessionKey: v.string() },
   handler: async (ctx, args): Promise<Task | null> => {
-    const doc = await ctx.db
+    // BUG FIX #3: Session keys are reused across retries, so we may match a DONE task.
+    // Collect all matching tasks and prefer active ones (in_progress/in_review) over done.
+    const docs = await ctx.db
       .query('tasks')
       .withIndex('by_agent_session_key', (q) =>
         q.eq('agent_session_key', args.agentSessionKey)
       )
-      .first()
+      .collect()
 
-    if (!doc) return null
-    return toTask(doc as Parameters<typeof toTask>[0])
+    if (docs.length === 0) return null
+
+    // Prefer active statuses over done
+    const activeStatuses = new Set<TaskStatus>(['in_progress', 'in_review', 'blocked', 'ready'])
+    const activeTask = docs.find((doc) => activeStatuses.has(doc.status as TaskStatus))
+
+    if (activeTask) {
+      return toTask(activeTask as Parameters<typeof toTask>[0])
+    }
+
+    // All tasks are done (or backlog) - return null to indicate no active task
+    // This prevents linking a completed session to a done task
+    return null
   },
 })
