@@ -56,14 +56,6 @@ function formatTokenCount(count: number | null | undefined): string {
   return count.toString()
 }
 
-// Format cost
-function formatCost(cost: number | null | undefined): string {
-  if (!cost) return ""
-  if (cost >= 1) return `$${cost.toFixed(2)}`
-  if (cost >= 0.01) return `$${cost.toFixed(3)}`
-  return `$${cost.toFixed(4)}`
-}
-
 // Format model name to short form
 function formatModelShort(model: string | null | undefined): string {
   if (!model) return "unknown"
@@ -121,7 +113,6 @@ export function AgentCard({ task, projectSlug }: AgentCardProps) {
     const createdAt = session?.created_at
     const updatedAt = session?.last_active_at ?? session?.updated_at
     const totalTokens = session?.tokens_total ?? 0
-    const cost = session?.cost_total
     const model = session?.model
 
     // Context window varies by model, use 200k as default
@@ -140,7 +131,6 @@ export function AgentCard({ task, projectSlug }: AgentCardProps) {
       totalTokens,
       contextPercent,
       isStuck: idleMinutes >= 5,
-      cost,
       model,
       status: session?.status ?? 'idle',
     }
@@ -206,12 +196,6 @@ export function AgentCard({ task, projectSlug }: AgentCardProps) {
           >
             ({metrics.contextPercent}%)
           </span>
-        )}
-        {metrics.cost != null && metrics.cost > 0 && (
-          <>
-            <span>·</span>
-            <span className="text-green-500/80">{formatCost(metrics.cost)}</span>
-          </>
         )}
       </div>
 
