@@ -42,10 +42,10 @@ PORT=3002 pnpm start
 
 OpenClutch runs as **4 separate processes** managed by `run.sh`:
 
-1. **Next.js Server** (`trap-server`) - Serves web UI and API routes (port 3002)
-2. **Work Loop** (`trap-loop`) - Agent orchestration, task scheduling, triage
-3. **Chat Bridge** (`trap-bridge`) - WebSocket client syncing OpenClaw ↔ Convex
-4. **Session Watcher** (`trap-session-watcher`) - Reads OpenClaw JSONL files, upserts to Convex `sessions` table
+1. **Next.js Server** (`clutch-server`) - Serves web UI and API routes (port 3002)
+2. **Work Loop** (`clutch-loop`) - Agent orchestration, task scheduling, triage
+3. **Chat Bridge** (`clutch-bridge`) - WebSocket client syncing OpenClaw ↔ Convex
+4. **Session Watcher** (`clutch-session-watcher`) - Reads OpenClaw JSONL files, upserts to Convex `sessions` table
 
 **Why split:** Running work loop + WebSocket client in Next.js blocked the event loop, causing 30s+ page loads.
 
@@ -302,7 +302,7 @@ PORT=3002
 ## Project Structure
 
 ```
-trap/
+openclutch/
 ├── app/                          # Next.js app router
 │   ├── api/                      # API routes
 │   │   ├── chats/                # Chat CRUD

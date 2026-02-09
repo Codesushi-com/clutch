@@ -106,8 +106,8 @@ export function MessageBubble({
     
     const hasWorkLoopIndicators = message.content.toLowerCase().includes("cron:") ||
                                    message.content.toLowerCase().includes("work-loop") ||
-                                   message.content.toLowerCase().includes("trap-work-loop") ||
-                                   (message.content.toLowerCase().includes("task:") && message.content.toLowerCase().includes("trap ticket"))
+                                   message.content.toLowerCase().includes("clutch-work-loop") ||
+                                   (message.content.toLowerCase().includes("task:") && message.content.toLowerCase().includes("openclutch ticket"))
 
     return hasWorkLoopIndicators
   }, [message.content, message.run_id, message.author, message.is_automated])
@@ -127,8 +127,8 @@ export function MessageBubble({
     }
     
     // Look for ticket ID patterns
-    if (content.includes("Trap ticket ID:")) {
-      const ticketMatch = content.match(/Trap ticket ID: `([^`]+)`/m)
+    if (content.includes("OpenClutch ticket ID:")) {
+      const ticketMatch = content.match(/OpenClutch ticket ID: `([^`]+)`/m)
       const taskMatch = content.match(/## Task: (.+?)(?:\n|$)/m)
       if (ticketMatch && taskMatch) {
         return `Automated: ${taskMatch[1]}`

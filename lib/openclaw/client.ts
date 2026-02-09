@@ -1,6 +1,6 @@
 /**
  * OpenClaw Backend WebSocket Client
- * Persistent connection from Trap server to OpenClaw for reliable message handling
+ * Persistent connection from OpenClutch server to OpenClaw for reliable message handling
  */
 
 import WebSocket from 'ws'
