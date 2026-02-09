@@ -64,7 +64,7 @@ interface PRInfo {
  * reviewer sub-agents to review them.
  *
  * Logic:
- * 1. Query tasks with status=in_review from Trap API
+ * 1. Query tasks with status=in_review from OpenClutch API
  * 2. For each task:
  *    a. Derive branch name: fix/<task-id-prefix> (first 8 chars)
  *    b. Check if open PR exists via gh CLI

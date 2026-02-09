@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Smoke test the Trap UI for a given project using Vercel agent-browser.
+# Smoke test the OpenClutch UI for a given project using Vercel agent-browser.
 #
 # Usage:
 #   ./scripts/qa-smoke-agent-browser.sh <project-slug> [base-url]
 #
 # Example:
-#   ./scripts/qa-smoke-agent-browser.sh the-trap http://192.168.7.200:3002
+#   ./scripts/qa-smoke-agent-browser.sh the-clutch http://192.168.7.200:3002
 
 SLUG="${1:-}"
-BASE_URL="${2:-${TRAP_URL:-http://192.168.7.200:3002}}"
+BASE_URL="${2:-${CLUTCH_URL:-http://192.168.7.200:3002}}"
 
 if [[ -z "$SLUG" ]]; then
   echo "Usage: $0 <project-slug> [base-url]" >&2
@@ -61,7 +61,7 @@ ab find role button click --name "Create Task" >/dev/null
 ab wait --text "${TITLE}" >/dev/null
 
 # 6) Screenshot for evidence
-OUT="/tmp/trap-qa-smoke-${SLUG}.png"
+OUT="/tmp/clutch-qa-smoke-${SLUG}.png"
 ab screenshot "$OUT" >/dev/null
 
 echo "OK: smoke test passed for project '${SLUG}'"

@@ -234,8 +234,8 @@ async function cleanStaleBrowserTabs(ctx: BrowserCleanupContext): Promise<number
 
     const tabs = data.tabs ?? []
 
-    // Close tabs that look like agent-opened pages (localhost:3002, trap URLs)
-    // Keep about:blank, chrome://, extension pages, and non-trap URLs
+    // Close tabs that look like agent-opened pages (localhost:3002, clutch URLs)
+    // Keep about:blank, chrome://, extension pages, and non-clutch URLs
     const stalePatterns = [
       /localhost:3002/,
       /192\.168\.7\.200:3002/,

@@ -165,7 +165,7 @@ export async function runTriage(ctx: TriageContext): Promise<TriageResult> {
     // Send to Ada's main session via HTTP RPC (WS client hangs on sessions.send)
     try {
       console.log(`[Triage] Sending triage for task ${task.id.slice(0, 8)} "${task.title}" to Ada (attempt ${triageCount + 1})`)
-      const proxyUrl = process.env.TRAP_URL || "http://127.0.0.1:3002"
+      const proxyUrl = process.env.CLUTCH_URL || "http://127.0.0.1:3002"
       const resp = await fetch(`${proxyUrl}/api/openclaw/rpc`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -314,7 +314,7 @@ async function escalateTask(
     // table that nobody reads.
     try {
       const triageCount = task.auto_triage_count ?? 0
-      const proxyUrl = process.env.TRAP_URL || "http://127.0.0.1:3002"
+      const proxyUrl = process.env.CLUTCH_URL || "http://127.0.0.1:3002"
       await fetch(`${proxyUrl}/api/openclaw/rpc`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -431,7 +431,7 @@ async function buildTriageMessage(
   sections.push(``)
   sections.push(`## Available Actions`)
   sections.push(``)
-  sections.push(`You can take action via the Trap API. Here are the available options:`)
+  sections.push(`You can take action via the OpenClutch API. Here are the available options:`)
   sections.push(``)
 
   // Build curl examples using regular string concatenation to avoid escaping issues

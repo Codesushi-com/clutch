@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Trap production server + work loop (systemd-managed)
+# OpenClutch production server + work loop (systemd-managed)
 #
 # Usage:
 #   ./run.sh start      - build + enable/start all services
@@ -24,9 +24,9 @@ BRIDGE_SERVICE="trap-bridge"
 WATCHER_SERVICE="trap-session-watcher"
 
 build() {
-  echo "[trap] Building..."
+  echo "[clutch] Building..."
   pnpm build 2>&1 | tail -5
-  echo "[trap] Build complete"
+  echo "[clutch] Build complete"
 }
 
 install_services() {
@@ -34,39 +34,39 @@ install_services() {
   mkdir -p ~/.config/systemd/user/
   for service in "$SERVER_SERVICE" "$LOOP_SERVICE" "$BRIDGE_SERVICE" "$WATCHER_SERVICE"; do
     if [[ ! -f "systemd/${service}.service" ]]; then
-      echo "[trap] Error: systemd/${service}.service not found"
+      echo "[clutch] Error: systemd/${service}.service not found"
       exit 1
     fi
     cp "systemd/${service}.service" ~/.config/systemd/user/
   done
   systemctl --user daemon-reload
-  echo "[trap] Systemd unit files installed"
+  echo "[clutch] Systemd unit files installed"
 }
 
 start_services() {
-  echo "[trap] Starting services..."
+  echo "[clutch] Starting services..."
   systemctl --user start "$SERVER_SERVICE"
-  # Loop, bridge, and watcher have After=trap-server.service, but we still wait a moment
+  # Loop, bridge, and watcher have After=clutch-server.service, but we still wait a moment
   sleep 1
   systemctl --user start "$BRIDGE_SERVICE"
   systemctl --user start "$LOOP_SERVICE"
   systemctl --user start "$WATCHER_SERVICE"
-  echo "[trap] Services started"
+  echo "[clutch] Services started"
 }
 
 stop_services() {
-  echo "[trap] Stopping services..."
+  echo "[clutch] Stopping services..."
   systemctl --user stop "$WATCHER_SERVICE" "$LOOP_SERVICE" "$BRIDGE_SERVICE" "$SERVER_SERVICE" 2>/dev/null || true
-  echo "[trap] Services stopped"
+  echo "[clutch] Services stopped"
 }
 
 enable_services() {
   systemctl --user enable "$SERVER_SERVICE" "$BRIDGE_SERVICE" "$LOOP_SERVICE" "$WATCHER_SERVICE"
-  echo "[trap] Services enabled (will start on boot/login)"
+  echo "[clutch] Services enabled (will start on boot/login)"
 }
 
 status() {
-  echo "=== Trap Systemd Status ==="
+  echo "=== OpenClutch Systemd Status ==="
   echo ""
   systemctl --user status "$SERVER_SERVICE" --no-pager -o short 2>/dev/null || echo "Server: not found"
   echo ""
@@ -98,12 +98,12 @@ watcher_logs() {
 }
 
 # Legacy watch mode (still uses PID files for git-based auto-rebuild)
-SERVER_LOG="/tmp/trap-prod.log"
-LOOP_LOG="/tmp/trap-loop.log"
-BRIDGE_LOG="/tmp/trap-bridge.log"
-SERVER_PID="/tmp/trap-server.pid"
-LOOP_PID="/tmp/trap-loop.pid"
-BRIDGE_PID="/tmp/trap-bridge.pid"
+SERVER_LOG="/tmp/clutch-prod.log"
+LOOP_LOG="/tmp/clutch-loop.log"
+BRIDGE_LOG="/tmp/clutch-bridge.log"
+SERVER_PID="/tmp/clutch-server.pid"
+LOOP_PID="/tmp/clutch-loop.pid"
+BRIDGE_PID="/tmp/clutch-bridge.pid"
 
 kill_tree() {
   local pid="$1"
@@ -154,7 +154,7 @@ stop_bridge_pid() {
 
 start_server_pid() {
   stop_server_pid 2>/dev/null || true
-  echo "[trap] Starting production server on port $PORT (watch mode)"
+  echo "[clutch] Starting production server on port $PORT (watch mode)"
   NODE_ENV=production setsid nohup /home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/next/dist/bin/next start -p "$PORT" > "$SERVER_LOG" 2>&1 &
   echo $! > "$SERVER_PID"
 }
@@ -162,20 +162,20 @@ start_server_pid() {
 start_loop_pid() {
   stop_loop_pid 2>/dev/null || true
   if grep -q "WORK_LOOP_ENABLED=true" .env.local 2>/dev/null; then
-    echo "[trap] Starting work loop (watch mode)"
+    echo "[clutch] Starting work loop (watch mode)"
     set -a
     source <(grep -v '^#' .env.local)
     set +a
     setsid nohup /home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/.bin/tsx worker/loop.ts > "$LOOP_LOG" 2>&1 &
     echo $! > "$LOOP_PID"
   else
-    echo "[trap] Work loop disabled (WORK_LOOP_ENABLED != true)"
+    echo "[clutch] Work loop disabled (WORK_LOOP_ENABLED != true)"
   fi
 }
 
 start_bridge_pid() {
   stop_bridge_pid 2>/dev/null || true
-  echo "[trap] Starting chat bridge (watch mode)"
+  echo "[clutch] Starting chat bridge (watch mode)"
   set -a
   source <(grep -v '^#' .env.local)
   set +a
@@ -189,7 +189,7 @@ watch_and_rebuild() {
   start_bridge_pid
   start_loop_pid
 
-  echo "[trap] Watching for git changes on main..."
+  echo "[clutch] Watching for git changes on main..."
   local last_hash
   last_hash=$(git rev-parse HEAD)
 
@@ -200,10 +200,10 @@ watch_and_rebuild() {
     remote_hash=$(git rev-parse origin/main 2>/dev/null || echo "$last_hash")
 
     if [[ "$remote_hash" != "$last_hash" ]]; then
-      echo "[trap] main updated: ${last_hash:0:7} → ${remote_hash:0:7}"
+      echo "[clutch] main updated: ${last_hash:0:7} → ${remote_hash:0:7}"
       if git pull --ff-only --quiet 2>/dev/null; then
         last_hash="$remote_hash"
-        echo "[trap] Rebuilding..."
+        echo "[clutch] Rebuilding..."
         if build; then
           stop_server_pid
           start_server_pid
@@ -211,23 +211,23 @@ watch_and_rebuild() {
           start_bridge_pid
           stop_loop_pid
           start_loop_pid
-          echo "[trap] Restarted at $(date '+%H:%M:%S')"
+          echo "[clutch] Restarted at $(date '+%H:%M:%S')"
         else
-          echo "[trap] BUILD FAILED — server still running old version"
+          echo "[clutch] BUILD FAILED — server still running old version"
         fi
       else
-        echo "[trap] Pull failed (dirty state?), skipping"
+        echo "[clutch] Pull failed (dirty state?), skipping"
       fi
     fi
   done
 }
 
-# Legacy clean command (kill all trap processes)
+# Legacy clean command (kill all clutch processes)
 clean() {
-  echo "[trap] Killing all trap-related processes..."
+  echo "[clutch] Killing all clutch-related processes..."
   stop_services 2>/dev/null || true
   local pids
-  pids=$(ps aux | grep -E 'trap.*(loop|bridge|next|chat-bridge|session-watcher)' | grep -v grep | awk '{print $2}')
+  pids=$(ps aux | grep -E 'clutch.*(loop|bridge|next|chat-bridge|session-watcher)' | grep -v grep | awk '{print $2}')
   if [[ -n "$pids" ]]; then
     echo "$pids" | xargs kill 2>/dev/null || true
     sleep 1
@@ -235,7 +235,7 @@ clean() {
   fi
   rm -f "$SERVER_PID" "$LOOP_PID" "$BRIDGE_PID"
   fuser -k "$PORT/tcp" 2>/dev/null || true
-  echo "[trap] Clean complete"
+  echo "[clutch] Clean complete"
 }
 
 # Main command dispatch

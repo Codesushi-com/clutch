@@ -40,7 +40,7 @@ async function main() {
       })
 
       if (!chat) {
-        // Not a Trap chat session, ignore
+        // Not an OpenClutch chat session, ignore
         return
       }
 
