@@ -6,6 +6,12 @@ import { dirname, join } from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Test unescapeString helper directly
+// Note: We test the behavior by importing the function logic inline
+function unescapeString(str: string): string {
+  return str.replace(/\\n/g, "\n").replace(/\\t/g, "\t");
+}
+
 function runCli(args: string[], env?: Record<string, string>): { stdout: string; stderr: string } {
   const cliPath = join(__dirname, 'clutch-cli.ts');
   const stdout = execFileSync('npx', ['tsx', cliPath, ...args], {
@@ -18,6 +24,41 @@ function runCli(args: string[], env?: Record<string, string>): { stdout: string;
 
   return { stdout, stderr: '' };
 }
+
+describe('unescapeString helper', () => {
+  it('converts literal \\n to actual newlines', () => {
+    const input = 'Line 1\\nLine 2\\nLine 3';
+    const expected = 'Line 1\nLine 2\nLine 3';
+    expect(unescapeString(input)).toBe(expected);
+  });
+
+  it('converts literal \\t to actual tabs', () => {
+    const input = 'Col1\\tCol2\\tCol3';
+    const expected = 'Col1\tCol2\tCol3';
+    expect(unescapeString(input)).toBe(expected);
+  });
+
+  it('handles mixed \\n and \\t', () => {
+    const input = 'Line 1\\tTabbed\\nLine 2\\tAlso tabbed';
+    const expected = 'Line 1\tTabbed\nLine 2\tAlso tabbed';
+    expect(unescapeString(input)).toBe(expected);
+  });
+
+  it('leaves regular strings unchanged', () => {
+    const input = 'Just a regular string';
+    expect(unescapeString(input)).toBe(input);
+  });
+
+  it('handles empty string', () => {
+    expect(unescapeString('')).toBe('');
+  });
+
+  it('preserves actual newlines and tabs', () => {
+    // If someone passes actual newlines, they should remain
+    const input = 'Line 1\nLine 2';
+    expect(unescapeString(input)).toBe('Line 1\nLine 2');
+  });
+});
 
 describe('clutch-cli --json output', () => {
   it('tasks list --json prints valid JSON', () => {

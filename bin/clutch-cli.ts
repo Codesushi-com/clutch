@@ -156,7 +156,7 @@ Options:
   --help, -h          Show this help message
 
 Task Create Options:
-  --description "..."  Task description
+  --description "..."  Task description (use \\n for newlines)
   --status <status>    Initial status (default: ready)
   --priority <level>   Priority: low/medium/high/urgent (default: medium)
   --role <role>        Role: pm/dev/research/reviewer/conflict_resolver
@@ -164,6 +164,7 @@ Task Create Options:
 
 Task Update Options:
   --title "..."        New title
+  --description "..."  New description (supports \\n for newlines)
   --status <status>    New status
   --priority <level>   New priority
   --role <role>        New role
@@ -331,6 +332,14 @@ function formatTimeAgo(timestamp: number): string {
 function formatTokens(tokens: number): string {
   if (tokens < 1000) return `${tokens}`
   return `${(tokens / 1000).toFixed(1)}k`
+}
+
+/**
+ * Unescape literal \n and \t sequences into actual newlines and tabs.
+ * This handles shell-escaped strings passed via --description flags.
+ */
+function unescapeString(str: string): string {
+  return str.replace(/\\n/g, "\n").replace(/\\t/g, "\t")
 }
 
 // ============================================
@@ -899,7 +908,7 @@ async function cmdTasksCreate(
     process.exit(1)
   }
 
-  const description = typeof flags.description === "string" ? flags.description : undefined
+  const description = typeof flags.description === "string" ? unescapeString(flags.description) : undefined
   const status = (typeof flags.status === "string" ? flags.status : "ready") as Task["status"]
   const priority = (typeof flags.priority === "string" ? flags.priority : "medium") as Task["priority"]
   const role = typeof flags.role === "string" ? flags.role : undefined
@@ -967,6 +976,11 @@ async function cmdTasksUpdate(
     updatedFields.push(`title: "${flags.title}"`)
   }
 
+  if (typeof flags.description === "string") {
+    updates.description = unescapeString(flags.description)
+    updatedFields.push(`description: updated`)
+  }
+
   if (typeof flags.status === "string") {
     if (!VALID_STATUSES.includes(flags.status as typeof VALID_STATUSES[number])) {
       console.error(`Error: Invalid status "${flags.status}". Must be one of: ${VALID_STATUSES.join(", ")}`)
@@ -995,7 +1009,7 @@ async function cmdTasksUpdate(
   }
 
   if (Object.keys(updates).length === 0) {
-    console.error("Error: No fields to update. Provide at least one of: --title, --status, --priority, --role")
+    console.error("Error: No fields to update. Provide at least one of: --title, --description, --status, --priority, --role")
     process.exit(1)
   }
 
