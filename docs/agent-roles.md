@@ -1,6 +1,6 @@
 # Agent Roles System
 
-Trap supports specialized agent roles through SOUL templates that define behavior, expertise, and decision-making patterns for ephemeral agents.
+OpenClutch supports specialized agent roles through SOUL templates that define behavior, expertise, and decision-making patterns for ephemeral agents.
 
 ## Available Roles
 
@@ -13,7 +13,7 @@ Role templates are stored in `/home/dan/clawd/roles/` and can be injected into a
 | **QA Engineer** | `qa.md` | Testing strategy, bug identification, quality validation |
 | **Research Specialist** | `researcher.md` | Market research, technical investigation, competitive analysis |
 
-## Usage in Trap
+## Usage in OpenClutch
 
 ### Role Assignment
 When spawning agents, specify role template to inject specialized behavior:
@@ -45,7 +45,7 @@ Each role defines specific quality bars that must be met before work progresses:
 ## Integration Points
 
 ### Task Routing
-Trap can automatically route work to appropriate role agents based on task type:
+OpenClutch can automatically route work to appropriate role agents based on task type:
 - Code architecture → PE role
 - Feature breakdown → PM role
 - Testing requirements → QA role

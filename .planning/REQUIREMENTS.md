@@ -1,4 +1,4 @@
-# Requirements: The Trap
+# Requirements: OpenClutch
 
 **Defined:** 2026-02-02
 **Core Value:** See what OpenClaw is doing, kill what needs killing, and keep work organized — without juggling Discord, the built-in UI, and spreadsheets.

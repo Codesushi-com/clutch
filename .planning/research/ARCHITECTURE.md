@@ -6,7 +6,7 @@
 
 ## Recommended Architecture
 
-The Trap is fundamentally a **WebSocket-first client application** that consumes OpenClaw's gateway API. Unlike typical Next.js CRUD apps that rely on server-side rendering and database queries, The Trap's primary data source is a persistent WebSocket connection delivering real-time events and handling 80+ RPC methods.
+OpenClutch is fundamentally a **WebSocket-first client application** that consumes OpenClaw's gateway API. Unlike typical Next.js CRUD apps that rely on server-side rendering and database queries, OpenClutch's primary data source is a persistent WebSocket connection delivering real-time events and handling 80+ RPC methods.
 
 ### System Overview
 
@@ -575,7 +575,7 @@ src/
 
 **Why last:** Requires coordination with OpenClaw architecture, may need upstream changes.
 
-**Validation:** Ada creates task via chat, appears in The Trap's task board.
+**Validation:** Ada creates task via chat, appears in the OpenClutch board.
 
 ---
 

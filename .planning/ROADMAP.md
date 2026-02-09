@@ -1,8 +1,8 @@
-# Roadmap: The Trap
+# Roadmap: OpenClutch
 
 ## Overview
 
-The Trap is a WebSocket-driven real-time dashboard for OpenClaw AI agents. The roadmap starts with foundation-first architecture (WebSocket lifecycle, state management, Next.js caching config) to prevent critical pitfalls, then builds core monitoring features (sessions, cron, analytics, chat), and finishes with differentiating features (task management, project organization) that tie everything together. Each phase delivers observable user capabilities backed by comprehensive infrastructure.
+OpenClutch is a WebSocket-driven real-time dashboard for OpenClaw AI agents. The roadmap starts with foundation-first architecture (WebSocket lifecycle, state management, Next.js caching config) to prevent critical pitfalls, then builds core monitoring features (sessions, cron, analytics, chat), and finishes with differentiating features (task management, project organization) that tie everything together. Each phase delivers observable user capabilities backed by comprehensive infrastructure.
 
 ## Phases
 

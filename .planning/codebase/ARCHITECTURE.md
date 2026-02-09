@@ -143,7 +143,7 @@
 
 **Background worker / CLI:**
 - Work loop process: `worker/loop.ts` (run standalone via `npx tsx worker/loop.ts`)
-- CLI tool: `bin/trap.ts` (registered as `trap` bin in `package.json`)
+- CLI tool: `bin/clutch.ts` (registered as `clutch` bin in `package.json`)
 
 ## Error Handling
 

@@ -1,10 +1,10 @@
-# AGENTS.md - Trap Workspace
+# AGENTS.md - OpenClutch Workspace
 
 ## Dev Server
 - **Running on port 3002** — do NOT start another
 - Turbopack hot-reloads on save
 - Check status: `curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/`
-- If dead: `rm -f .next/dev/lock && PORT=3002 nohup pnpm dev > /tmp/trap-next.log 2>&1 &`
+- If dead: `rm -f .next/dev/lock && PORT=3002 nohup pnpm dev > /tmp/clutch-next.log 2>&1 &`
 
 ## Commands
 - `pnpm build` — production build

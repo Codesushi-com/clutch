@@ -54,7 +54,7 @@ None yet.
 
 **From research:**
 - Phase 5 (Analytics): Recharts performance with real OpenClaw data volume is uncertain - may need to prototype early or research alternatives if performance ceiling is hit
-- Phase 7 (Task Management): Integration approach with OpenClaw needs research - how to store tasks in OpenClaw domain so they're accessible from any interface (chat, Slack, The Trap)
+- Phase 7 (Task Management): Integration approach with OpenClaw needs research - how to store tasks in OpenClaw domain so they're accessible from any interface (chat, Slack, OpenClutch)
 - Overall: Deployment target unknown (Vercel edge vs self-hosted vs client-only) - affects database choice for task/project persistence
 
 ## Session Continuity

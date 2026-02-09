@@ -5,11 +5,11 @@
 ## Languages
 
 **Primary:**
-- TypeScript (TS/TSX) - Application code in `app/**`, `components/**`, `lib/**`, `worker/**`, `convex/**`, `bin/trap.ts`
+- TypeScript (TS/TSX) - Application code in `app/**`, `components/**`, `lib/**`, `worker/**`, `convex/**`, `bin/clutch.ts`
 
 **Secondary:**
 - CSS - Global styles in `app/globals.css` (Tailwind v4 + tw-animate)
-- Shell (bash/sh) - Ops scripts in `run.sh`, `bin/trap-gate.sh`, `scripts/qa-smoke-agent-browser.sh`
+- Shell (bash/sh) - Ops scripts in `run.sh`, `bin/clutch-gate.sh`, `scripts/qa-smoke-agent-browser.sh`
 
 ## Runtime
 
@@ -47,7 +47,7 @@
 - `zustand` ^5.0.11 - client state management (stores in `lib/stores/**`)
 
 **Infrastructure:**
-- `tsx` ^4.21.0 - run TS worker/CLI processes (used by `bin/trap.ts` shebang and `run.sh` to run `worker/loop.ts` / `worker/chat-bridge.ts`)
+- `tsx` ^4.21.0 - run TS worker/CLI processes (used by `bin/clutch.ts` shebang and `run.sh` to run `worker/loop.ts` / `worker/chat-bridge.ts`)
 - `tailwindcss` ^4 + `tailwind-merge` ^3.4.0 - styling utilities (`app/globals.css`, `components.json`)
 - shadcn/ui (generated components) - UI primitives in `components/ui/**` and config in `components.json`
 - `radix-ui` ^1.4.3 - UI primitives used by shadcn components (dependency in `package.json`)

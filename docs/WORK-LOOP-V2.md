@@ -63,7 +63,7 @@ The loop becomes a dumb state machine. All intelligence moves to the agents (who
 
 ## Agent Signal Contract
 
-Agents communicate via the Trap API. Every agent MUST do one of these before finishing:
+Agents communicate via the OpenClutch API. Every agent MUST do one of these before finishing:
 
 ### 1. Done — task complete
 ```bash

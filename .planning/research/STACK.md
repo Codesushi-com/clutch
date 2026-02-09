@@ -1,6 +1,6 @@
 # Technology Stack
 
-**Project:** The Trap - Real-time AI Agent Dashboard
+**Project:** OpenClutch - Real-time AI Agent Dashboard
 **Researched:** 2026-02-02
 **Overall Confidence:** HIGH
 
@@ -166,7 +166,7 @@ npm install -D vite-tsconfig-paths  # For TypeScript path mapping
 
 ### Next.js 15 + WebSocket
 
-**IMPORTANT:** Next.js doesn't support hosting WebSocket servers on Vercel. However, **connecting to external WebSocket servers from the client works fine**. For The Trap:
+**IMPORTANT:** Next.js doesn't support hosting WebSocket servers on Vercel. However, **connecting to external WebSocket servers from the client works fine**. For OpenClutch:
 - OpenClaw gateway runs separately (WebSocket server)
 - Next.js dashboard connects via native browser WebSocket API (client-side)
 - No Next.js server involvement needed

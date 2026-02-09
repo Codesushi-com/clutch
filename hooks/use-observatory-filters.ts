@@ -24,7 +24,7 @@ const DEFAULT_TIME_RANGE: TimeRange = "7d"
  * Hook for managing Observatory filter state (project + time range).
  * 
  * Persists filter state to URL search params:
- * - `?project=the-trap&range=7d`
+ * - `?project=clutch&range=7d`
  * - `?range=24h` (no project = All Projects)
  * 
  * Use this hook across all Observatory tabs to maintain filter

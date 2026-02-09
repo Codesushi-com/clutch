@@ -1,4 +1,4 @@
-# The Trap — Comprehensive Build Plan
+# OpenClutch — Comprehensive Build Plan
 
 > AI Agent Orchestration Dashboard for OpenClaw
 > 
@@ -8,7 +8,7 @@
 
 ## Vision
 
-The Trap is the control center for a coordinated AI agent system. It's where:
+OpenClutch is the control center for a coordinated AI agent system. It's where:
 - **Ada** (the coordinator) manages work across projects
 - **Specialized agents** execute tasks with clear handoffs
 - **Dan** has full visibility into what's happening
@@ -40,7 +40,7 @@ The Trap is the control center for a coordinated AI agent system. It's where:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        THE TRAP (UI)                            │
+│                     OPENCLUTCH (UI)                             │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                    Project View                          │   │
 │  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐    │   │
@@ -424,7 +424,7 @@ These become OpenClaw tools available to agent sessions.
 **Goal**: Efficient heartbeat that only wakes when needed
 
 **Deliverables**:
-- `bin/trap-gate.sh` — Reads board state
+- `bin/clutch-gate.sh` — Reads board state
 - Wake conditions:
   - Tasks in Ready with no assignee
   - Comments requesting input
@@ -478,7 +478,7 @@ These become OpenClaw tools available to agent sessions.
 ## File Structure
 
 ```
-trap/
+clutch/
 ├── app/
 │   ├── api/
 │   │   ├── projects/
@@ -536,11 +536,11 @@ trap/
    - *Current thinking*: Single-user for now, add later if needed
 
 2. **Persistence**: SQLite file location?
-   - *Current thinking*: `~/.trap/trap.db`
+   - *Current thinking*: `~/.clutch/clutch.db`
 
 3. **Project context files**: Where do they live?
-   - *Current thinking*: `~/.trap/projects/{slug}/`
+   - *Current thinking*: `~/.clutch/projects/{slug}/`
 
 ---
 
-*This document is the source of truth for The Trap build.*
+*This document is the source of truth for the OpenClutch build.*

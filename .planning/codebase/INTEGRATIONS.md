@@ -62,8 +62,8 @@
 - None detected (no Sentry/etc in `package.json`; logging uses `console.*` across server/worker code)
 
 **Logs:**
-- Next.js server logs: stdout/stderr (managed by `run.sh` into `/tmp/trap-prod.log`)
-- Worker logs: stdout/stderr (managed by `run.sh` into `/tmp/trap-loop.log` and `/tmp/trap-bridge.log`)
+- Next.js server logs: stdout/stderr (managed by `run.sh` into `/tmp/clutch-prod.log`)
+- Worker logs: stdout/stderr (managed by `run.sh` into `/tmp/clutch-loop.log` and `/tmp/clutch-bridge.log`)
 
 ## CI/CD & Deployment
 
@@ -79,7 +79,7 @@
 
 **Required env vars:**
 - Convex:
-  - `CONVEX_URL` (server/worker Convex HTTP client) used in `lib/convex/server.ts`, `worker/loop.ts`, `worker/chat-bridge.ts`, `bin/trap.ts`
+  - `CONVEX_URL` (server/worker Convex HTTP client) used in `lib/convex/server.ts`, `worker/loop.ts`, `worker/chat-bridge.ts`, `bin/clutch.ts`
   - `NEXT_PUBLIC_CONVEX_URL` (browser Convex React client) used in `lib/convex/client.ts`
   - `CONVEX_SELF_HOSTED_URL` / `NEXT_PUBLIC_CONVEX_SELF_HOSTED_URL` (alternate Convex config) used in `lib/convex-server.ts`
 - OpenClaw:
@@ -91,25 +91,25 @@
   - `NEXT_PUBLIC_OPENCLAW_API_URL` (OpenClaw REST API base) used in `lib/api/client.ts`
 - Work loop:
   - `WORK_LOOP_ENABLED`, `WORK_LOOP_CYCLE_MS`, `WORK_LOOP_MAX_AGENTS_PER_PROJECT`, `WORK_LOOP_MAX_AGENTS`, `WORK_LOOP_MAX_DEV_AGENTS`, `WORK_LOOP_MAX_REVIEWER_AGENTS`, `WORK_LOOP_STALE_TASK_MINUTES`, `WORK_LOOP_STALE_REVIEW_MINUTES` used in `worker/config.ts`
-- Trap (used by OpenClaw plugins / scripts):
-  - `TRAP_URL` (base URL for Trap) used in `plugins/trap-signal.ts`, `bin/trap-gate.sh`, `scripts/qa-smoke-agent-browser.sh`
-  - `TRAP_API_URL` (alternate name) used in `plugins/trap-channel.ts`
+- OpenClutch (used by OpenClaw plugins / scripts):
+  - `CLUTCH_URL` (base URL for OpenClutch) used in `plugins/clutch-signal.ts`, `bin/clutch-gate.sh`, `scripts/qa-smoke-agent-browser.sh`
+  - `CLUTCH_API_URL` (alternate name) used in `plugins/clutch-channel.ts`
 
 **Secrets location:**
 - Local development uses `.env.local` (loaded by `run.sh`; referenced in `README.md`).
-- OpenClaw plugin environment uses OpenClaw config env (`plugins/trap-channel.ts` reads `api.config.env`).
+- OpenClaw plugin environment uses OpenClaw config env (`plugins/clutch-channel.ts` reads `api.config.env`).
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- OpenClaw → Trap (plugin callbacks via HTTP POST):
-  - Persist assistant responses: `plugins/trap-channel.ts` → `POST /api/chats/:chatId/messages` (implemented by `app/api/chats/[id]/messages/route.ts`)
-  - Typing indicator updates: `plugins/trap-channel.ts` → `POST /api/chats/:chatId/typing` (implemented by `app/api/chats/[id]/typing/route.ts`)
-  - Agent signals and completion: `plugins/trap-signal.ts` → `POST /api/signal` and `POST /api/tasks/:id/complete` (implemented by `app/api/signal/route.ts`, `app/api/tasks/[id]/complete/route.ts`)
+- OpenClaw → OpenClutch (plugin callbacks via HTTP POST):
+  - Persist assistant responses: `plugins/clutch-channel.ts` → `POST /api/chats/:chatId/messages` (implemented by `app/api/chats/[id]/messages/route.ts`)
+  - Typing indicator updates: `plugins/clutch-channel.ts` → `POST /api/chats/:chatId/typing` (implemented by `app/api/chats/[id]/typing/route.ts`)
+  - Agent signals and completion: `plugins/clutch-signal.ts` → `POST /api/signal` and `POST /api/tasks/:id/complete` (implemented by `app/api/signal/route.ts`, `app/api/tasks/[id]/complete/route.ts`)
 
 **Outgoing:**
-- Trap → GitHub public API for repo validation: `app/api/validate/github/route.ts`
-- Trap → OpenClaw gateway WS RPC via proxy: `app/api/openclaw/rpc/route.ts` → `lib/openclaw/client.ts`
+- OpenClutch → GitHub public API for repo validation: `app/api/validate/github/route.ts`
+- OpenClutch → OpenClaw gateway WS RPC via proxy: `app/api/openclaw/rpc/route.ts` → `lib/openclaw/client.ts`
 
 ---
 

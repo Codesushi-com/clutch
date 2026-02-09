@@ -1,13 +1,13 @@
 # Project Research Summary
 
-**Project:** The Trap - Real-time AI Agent Dashboard
+**Project:** OpenClutch - Real-time AI Agent Dashboard
 **Domain:** Real-time dashboard/control center with WebSocket-driven architecture
 **Researched:** 2026-02-02
 **Confidence:** HIGH
 
 ## Executive Summary
 
-The Trap is a single-user operational dashboard for OpenClaw AI agents, fundamentally different from typical Next.js CRUD apps. Unlike multi-tenant observability platforms (LangSmith, AgentOps), The Trap combines real-time monitoring with direct control in a project-centric workflow. The architecture centers on a persistent WebSocket connection to OpenClaw's gateway (80+ RPC methods, real-time event streams), not traditional REST APIs or database queries.
+OpenClutch is a single-user operational dashboard for OpenClaw AI agents, fundamentally different from typical Next.js CRUD apps. Unlike multi-tenant observability platforms (LangSmith, AgentOps), OpenClutch combines real-time monitoring with direct control in a project-centric workflow. The architecture centers on a persistent WebSocket connection to OpenClaw's gateway (80+ RPC methods, real-time event streams), not traditional REST APIs or database queries.
 
 The recommended approach: Build a **WebSocket-first client application** using Next.js 15 App Router with a clear client/server boundary. Use native browser WebSocket API (not Socket.IO) for the OpenClaw connection, TanStack Query for server state caching, Zustand for local UI state, and Vercel AI Elements for chat with rich widgets. The foundation (WebSocket singleton, reconnection logic, event dispatcher) must be solid before building features, as everything depends on real-time data flows.
 
@@ -17,7 +17,7 @@ Key risks center on WebSocket lifecycle management: memory leaks from improper c
 
 ### Recommended Stack
 
-The stack is optimized for **WebSocket-driven real-time updates** with structured AI chat, not traditional server-side rendered pages. Critical insight: Next.js limitations on hosting WebSocket servers don't matter because OpenClaw runs its own gateway - The Trap only needs to connect as a client.
+The stack is optimized for **WebSocket-driven real-time updates** with structured AI chat, not traditional server-side rendered pages. Critical insight: Next.js limitations on hosting WebSocket servers don't matter because OpenClaw runs its own gateway - OpenClutch only needs to connect as a client.
 
 **Core technologies:**
 - **Next.js 15 (App Router):** Web framework - Server Components for static shell, Client Components for real-time views. Use `dynamic = 'force-dynamic'` to prevent over-caching.
@@ -62,7 +62,7 @@ Research reveals a sharp divide between **table stakes** (expected by 2026) and 
 
 ### Architecture Approach
 
-The Trap is a **client-island architecture** where Server Components provide static shell/layout, and a single Client Component island manages the WebSocket connection with event distribution to child components. Unlike REST-based dashboards that refetch on navigation, The Trap maintains persistent connection state and updates views reactively via events.
+OpenClutch is a **client-island architecture** where Server Components provide static shell/layout, and a single Client Component island manages the WebSocket connection with event distribution to child components. Unlike REST-based dashboards that refetch on navigation, OpenClutch maintains persistent connection state and updates views reactively via events.
 
 **Major components:**
 1. **WebSocketProvider (singleton)** — Manages single WebSocket connection lifecycle, reconnection with exponential backoff (1s to 30s), heartbeat monitoring. Created once in root layout, shared via Context. ALL data flows through this component.

@@ -28,7 +28,7 @@
 │   └── types/           # Type definitions grouped by domain
 ├── worker/              # Background work-loop process + gateway client + phases
 │   └── phases/          # Phase implementations (work/review/analyze/cleanup/notify/signals)
-├── bin/                 # Executables (e.g., trap CLI)
+├── bin/                 # Executables (e.g., clutch CLI)
 ├── plugins/             # Optional plugin integrations (excluded from TS project build)
 ├── test/                # Vitest tests + setup
 ├── public/              # Static assets served by Next.js
@@ -93,11 +93,11 @@
 
 **`bin/`:**
 - Purpose: executable entry points.
-- Key files: `bin/trap.ts` (registered as `trap` in `package.json`).
+- Key files: `bin/clutch.ts` (registered as `clutch` in `package.json`).
 
 **`plugins/`:**
 - Purpose: optional plugin integrations.
-- Key files: `plugins/trap-channel.ts`, `plugins/trap-signal.ts`.
+- Key files: `plugins/clutch-channel.ts`, `plugins/clutch-signal.ts`.
 - Note: excluded from main TS config (`tsconfig.json` excludes `plugins`).
 
 **`test/`:**
@@ -110,7 +110,7 @@
 - `app/layout.tsx`: root HTML shell + providers.
 - `app/page.tsx`: root page (client-only wrapper for `app/home-content.tsx`).
 - `worker/loop.ts`: work-loop process entry (standalone or imported).
-- `bin/trap.ts`: CLI entry.
+- `bin/clutch.ts`: CLI entry.
 
 **Configuration:**
 - `next.config.ts`: Next.js config.

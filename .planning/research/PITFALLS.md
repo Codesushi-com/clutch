@@ -205,7 +205,7 @@ const handleKill = useCallback((sessionId) => {
 **Prevention:**
 ```typescript
 // Pattern 1: Use BroadcastChannel API for cross-tab sync
-const channel = new BroadcastChannel('trap-state');
+const channel = new BroadcastChannel('clutch-state');
 
 channel.addEventListener('message', (event) => {
   // Update local state when other tabs broadcast changes

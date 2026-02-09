@@ -1,4 +1,4 @@
-# The Trap
+# OpenClutch
 
 ## What This Is
 
@@ -42,7 +42,7 @@ See what OpenClaw is doing, kill what needs killing, and keep work organized —
 - **OpenClaw API**: Comprehensive WebSocket API on port 18789 with 80+ methods covering sessions, cron, chat, config, usage/costs, agents, nodes, and more. Also has OpenAI-compatible REST endpoints.
 - **Existing UI**: OpenClaw has a built-in Control UI (Lit/TypeScript, served from gateway). It's functional but ugly, slow, and missing key features like session cancellation and cost tracking.
 - **Plugin system**: OpenClaw has an extensible plugin architecture — plugins can register gateway methods, HTTP handlers, tools, channels, services, and CLI commands. This may be useful for the task/todo system.
-- **Task data question**: Tasks need to be accessible from any OpenClaw interface (chat, Slack, The Trap), not just The Trap. Options include OpenClaw's memory system, a dedicated plugin, or native OpenClaw task support. Research needed.
+- **Task data question**: Tasks need to be accessible from any OpenClaw interface (chat, Slack, OpenClutch), not just OpenClutch. Options include OpenClaw's memory system, a dedicated plugin, or native OpenClaw task support. Research needed.
 - **Project concept**: A "project" is an organizing layer that groups tasks, cron jobs, and chats. Things get associated via context (start a chat "in" a project) or manual tagging.
 - **OpenClaw source**: Available at ~/src/openclaw for reference.
 
@@ -52,7 +52,7 @@ See what OpenClaw is doing, kill what needs killing, and keep work organized —
 - **Data transport**: WebSocket client connecting to OpenClaw gateway (ws://localhost:18789)
 - **Hosting**: Local on byteFORCE initially
 - **Code quality**: Test coverage, CI, precommit hooks, documentation — built to release quality from day one
-- **Data ownership**: Prefer data to live in OpenClaw's domain (accessible from any interface) rather than siloed in The Trap's database
+- **Data ownership**: Prefer data to live in OpenClaw's domain (accessible from any interface) rather than siloed in OpenClutch's database
 
 ## Key Decisions
 

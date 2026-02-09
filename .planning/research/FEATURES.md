@@ -11,7 +11,7 @@ AI agent dashboards in 2026 fall into two categories:
 1. **Multi-tenant observability platforms** (LangSmith, AgentOps, Helicone) - Focus on production monitoring, team collaboration, usage analytics
 2. **Single-user control centers** (OpenAI Dashboard, local dev tools) - Focus on direct control, session management, and real-time interaction
 
-The Trap falls into category 2 but with unique characteristics: it's a **single-user operational dashboard** that combines observability features (cost tracking, session monitoring) with direct control features (kill sessions, manage cron jobs, chat interface). The project-based organization pattern is differentiating - most dashboards organize by time/user/model, not by logical project groupings.
+OpenClutch falls into category 2 but with unique characteristics: it's a **single-user operational dashboard** that combines observability features (cost tracking, session monitoring) with direct control features (kill sessions, manage cron jobs, chat interface). The project-based organization pattern is differentiating - most dashboards organize by time/user/model, not by logical project groupings.
 
 Key insight: **Table stakes have shifted dramatically in 2026**. Session tracing, cost tracking, and real-time monitoring were differentiators in 2024-2025 but are now expected. Differentiators in 2026 are: AI-powered insights, bidirectional task management, advanced failure recovery, and rich interactive UIs beyond text-only chat.
 
@@ -109,7 +109,7 @@ Features users expect. Missing these = product feels broken or incomplete.
 
 ## Differentiators
 
-Features that set The Trap apart. Not expected, but highly valued. These create competitive advantage.
+Features that set OpenClutch apart. Not expected, but highly valued. These create competitive advantage.
 
 ### Project-Based Organization
 
@@ -213,12 +213,12 @@ Features to explicitly **NOT** build. Common mistakes in this domain.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| **User authentication system** | Trap is single-user; auth adds complexity with zero value | Assume localhost access = trusted user |
+| **User authentication system** | OpenClutch is single-user; auth adds complexity with zero value | Assume localhost access = trusted user |
 | **Role-based access control** | No multi-user means no roles needed | Single global permission level (full control) |
 | **Team collaboration features** | Not a team tool; adding this dilutes focus | Keep it single-user, suggest LangSmith for teams |
 | **Public sharing of sessions** | Security risk; no use case for single user | Sessions are private by default, no sharing |
 
-**Rationale:** LangSmith, AgentOps, Helicone are multi-tenant SaaS platforms. Their complexity stems from supporting teams. The Trap is explicitly single-user, local-first. Adding auth/teams would be **massive scope creep** and compete with established platforms. Stay in the lane of "personal dev dashboard."
+**Rationale:** LangSmith, AgentOps, Helicone are multi-tenant SaaS platforms. Their complexity stems from supporting teams. OpenClutch is explicitly single-user, local-first. Adding auth/teams would be **massive scope creep** and compete with established platforms. Stay in the lane of "personal dev dashboard."
 
 **Sources:**
 - [Personal Dashboards - Awesome Self-hosted](https://awesome-selfhosted.net/tags/personal-dashboards.html)
@@ -233,7 +233,7 @@ Features to explicitly **NOT** build. Common mistakes in this domain.
 | **Custom alerting rules engine** | Complex feature with low ROI for single user | Simple threshold alerts (e.g., cost > $X) hardcoded |
 | **Log aggregation across services** | No microservices architecture here | Single log stream from OpenClaw, display in UI |
 
-**Rationale:** Production observability platforms (Datadog, New Relic, Dynatrace) handle distributed systems with thousands of services. The Trap is a single-user app on one machine. Don't import enterprise complexity. Keep it simple: SQLite for storage, WebSocket for real-time updates, basic charts.
+**Rationale:** Production observability platforms (Datadog, New Relic, Dynatrace) handle distributed systems with thousands of services. OpenClutch is a single-user app on one machine. Don't import enterprise complexity. Keep it simple: SQLite for storage, WebSocket for real-time updates, basic charts.
 
 **Sources:**
 - [AI Observability Anti-Patterns 2026](https://composio.dev/blog/why-ai-agent-pilots-fail-2026-integration-roadmap)
@@ -248,7 +248,7 @@ Features to explicitly **NOT** build. Common mistakes in this domain.
 | **White-label/theming engine** | Not a product for resale | Single default theme, maybe dark mode toggle |
 | **API for third-party integrations** | No third parties in single-user app | Direct DB access if automation needed |
 
-**Rationale:** These are features for **platforms** (products other people build on). The Trap is a **tool** (single purpose, single user). Generalization costs time and creates maintenance burden. Build exactly what's needed for OpenClaw, no more.
+**Rationale:** These are features for **platforms** (products other people build on). OpenClutch is a **tool** (single purpose, single user). Generalization costs time and creates maintenance burden. Build exactly what's needed for OpenClaw, no more.
 
 ### "Dumb RAG" - Bad Memory Management
 
@@ -393,7 +393,7 @@ These unknowns should be answered in **Phase 1: OpenClaw Integration Research**.
 - Monolithic agents (shifting to specialized micro-agents)
 - No observability (2026 requires built-in monitoring)
 
-**Strategic positioning:** The Trap should embrace 2026 trends (project-based organization, bidirectional tasks) while nailing table stakes. Avoid competing on features where LangSmith/AgentOps already excel (multi-tenant observability, team collaboration). Double down on **single-user dev experience** with **project-centric workflow**.
+**Strategic positioning:** OpenClutch should embrace 2026 trends (project-based organization, bidirectional tasks) while nailing table stakes. Avoid competing on features where LangSmith/AgentOps already excel (multi-tenant observability, team collaboration). Double down on **single-user dev experience** with **project-centric workflow**.
 
 ---
 
