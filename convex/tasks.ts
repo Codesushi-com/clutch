@@ -421,6 +421,7 @@ export interface ActiveAgentSession {
   stop_reason: string | null
   created_at: number | null
   updated_at: number
+  completed_at: number | null
 }
 
 /**
@@ -499,6 +500,7 @@ export const getWithActiveAgentSessions = query({
             stop_reason: sessionDoc.stop_reason ?? null,
             created_at: sessionDoc.created_at ?? null,
             updated_at: sessionDoc.updated_at,
+            completed_at: sessionDoc.completed_at ?? null,
           }
         }
       }
@@ -547,6 +549,75 @@ export const getAgentHistory = query({
     return tasks
       .sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0))
       .map((t) => toTask(t as Parameters<typeof toTask>[0]))
+  },
+})
+
+/**
+ * Get agent activity history with session data for a project
+ * Returns all tasks that have been worked on by agents, joined with their session data
+ * Used by the Agents page to show token counts, costs, models, and duration
+ */
+export const getAgentHistoryWithSessions = query({
+  args: { projectId: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<TaskWithAgentSession[]> => {
+    let tasks
+
+    if (args.projectId) {
+      // Get tasks with agent_session_key for specific project
+      tasks = await ctx.db
+        .query('tasks')
+        .withIndex('by_project', (q) => q.eq('project_id', args.projectId!))
+        .filter((q) => q.neq('agent_session_key', null))
+        .collect()
+    } else {
+      // Get all tasks with agent_session_key across all projects
+      tasks = await ctx.db
+        .query('tasks')
+        .filter((q) => q.neq('agent_session_key', null))
+        .collect()
+    }
+
+    // Sort by most recently updated first
+    const sortedTasks = tasks.sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0))
+
+    // Fetch session data for each task
+    const results: TaskWithAgentSession[] = []
+
+    for (const task of sortedTasks) {
+      const taskObj = toTask(task as Parameters<typeof toTask>[0])
+      let session: ActiveAgentSession | null = null
+
+      // Look up session by session_key
+      if (task.agent_session_key) {
+        const sessionDoc = await ctx.db
+          .query('sessions')
+          .withIndex('by_session_key', (q) => q.eq('session_key', task.agent_session_key!))
+          .unique()
+
+        if (sessionDoc) {
+          session = {
+            session_key: sessionDoc.session_key ?? sessionDoc.id ?? '',
+            model: sessionDoc.model ?? null,
+            provider: sessionDoc.provider ?? null,
+            status: sessionDoc.status ?? 'idle',
+            tokens_input: sessionDoc.tokens_input ?? null,
+            tokens_output: sessionDoc.tokens_output ?? null,
+            tokens_total: sessionDoc.tokens_total ?? null,
+            cost_total: sessionDoc.cost_total ?? null,
+            last_active_at: sessionDoc.last_active_at ?? null,
+            output_preview: sessionDoc.output_preview ?? null,
+            stop_reason: sessionDoc.stop_reason ?? null,
+            created_at: sessionDoc.created_at ?? null,
+            updated_at: sessionDoc.updated_at,
+            completed_at: sessionDoc.completed_at ?? null,
+          }
+        }
+      }
+
+      results.push({ task: taskObj, session })
+    }
+
+    return results
   },
 })
 

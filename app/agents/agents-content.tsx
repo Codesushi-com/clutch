@@ -6,15 +6,13 @@
  */
 
 import { useMemo } from 'react';
-import { Bot, Activity, Clock, Cpu, TrendingUp } from 'lucide-react';
+import { Bot, Activity, Clock, Cpu, TrendingUp, DollarSign } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useQuery } from 'convex/react';
-import { api } from '@/convex/_generated/api';
-import Link from 'next/link';
-import type { Task } from '@/lib/types';
 import { useAgentHistory } from '@/lib/hooks/use-work-loop';
+import Link from 'next/link';
+import type { TaskWithAgentSession } from '@/convex/tasks';
 
 interface AgentStats {
   role: string;
@@ -22,31 +20,18 @@ interface AgentStats {
   totalTokensIn: number;
   totalTokensOut: number;
   avgDuration: number;
+  costTotal: number;
   models: Map<string, number>;
 }
 
-/**
- * Finds the first project with work_loop_enabled from the projects list.
- */
-function useWorkLoopProject(): { projectId: string; projectSlug: string } | null {
-  const projects = useQuery(api.projects.getAll, {});
-
-  if (!projects) return null;
-
-  const enabled = projects.find((p) => p.work_loop_enabled);
-  if (!enabled) return null;
-
-  return { projectId: enabled.id, projectSlug: enabled.slug };
-}
-
-function calculateStats(tasks: Task[] | null): AgentStats[] {
-  if (!tasks || tasks.length === 0) return [];
+function calculateStats(data: TaskWithAgentSession[] | null): AgentStats[] {
+  if (!data || data.length === 0) return [];
 
   const roleMap = new Map<string, AgentStats>();
 
-  for (const task of tasks) {
+  for (const { task, session } of data) {
     const role = task.role || 'any';
-    
+
     if (!roleMap.has(role)) {
       roleMap.set(role, {
         role,
@@ -54,26 +39,43 @@ function calculateStats(tasks: Task[] | null): AgentStats[] {
         totalTokensIn: 0,
         totalTokensOut: 0,
         avgDuration: 0,
+        costTotal: 0,
         models: new Map(),
       });
     }
 
     const stats = roleMap.get(role)!;
     stats.count++;
-    // Note: Token data now comes from sessions table
-    // stats.totalTokensIn += task.agent_tokens_in || 0;
-    // stats.totalTokensOut += task.agent_tokens_out || 0;
 
-    // Track model usage - now from sessions table
-    // const model = task.agent_model || 'unknown';
-    // stats.models.set(model, (stats.models.get(model) || 0) + 1);
+    // Aggregate session data
+    if (session) {
+      stats.totalTokensIn += session.tokens_input ?? 0;
+      stats.totalTokensOut += session.tokens_output ?? 0;
+      stats.costTotal += session.cost_total ?? 0;
+
+      // Track model usage
+      const model = session.model || 'unknown';
+      stats.models.set(model, (stats.models.get(model) || 0) + 1);
+    }
   }
 
-  // Note: Duration data now comes from sessions table
   // Calculate average duration for each role
   for (const stats of roleMap.values()) {
-    // Duration tracking moved to sessions table
-    stats.avgDuration = 0;
+    const tasksWithDuration = data.filter(
+      ({ task, session }) =>
+        task.role === stats.role &&
+        session?.created_at &&
+        (session?.completed_at || session?.updated_at)
+    );
+
+    if (tasksWithDuration.length > 0) {
+      const totalDuration = tasksWithDuration.reduce((sum, { session }) => {
+        const start = session!.created_at!;
+        const end = session!.completed_at || session!.updated_at;
+        return sum + (end - start);
+      }, 0);
+      stats.avgDuration = Math.round(totalDuration / tasksWithDuration.length);
+    }
   }
 
   return Array.from(roleMap.values()).sort((a, b) => b.count - a.count);
@@ -94,6 +96,12 @@ function formatTokens(tokens: number): string {
   return tokens.toString();
 }
 
+function formatCost(cost: number): string {
+  if (cost === 0) return '$0.00';
+  if (cost < 0.01) return '<$0.01';
+  return `$${cost.toFixed(2)}`;
+}
+
 const roleColors: Record<string, string> = {
   dev: 'bg-blue-500/20 text-blue-600 border-blue-500/30',
   reviewer: 'bg-purple-500/20 text-purple-600 border-purple-500/30',
@@ -101,6 +109,7 @@ const roleColors: Record<string, string> = {
   pm: 'bg-green-500/20 text-green-600 border-green-500/30',
   research: 'bg-cyan-500/20 text-cyan-600 border-cyan-500/30',
   security: 'bg-red-500/20 text-red-600 border-red-500/30',
+  conflict_resolver: 'bg-red-500/20 text-red-600 border-red-500/30',
   any: 'bg-gray-500/20 text-gray-600 border-gray-500/30',
 };
 
@@ -111,6 +120,7 @@ const roleLabels: Record<string, string> = {
   pm: 'Project Manager',
   research: 'Researcher',
   security: 'Security',
+  conflict_resolver: 'Conflict Resolver',
   any: 'General',
 };
 
@@ -154,19 +164,35 @@ function AgentRoleCard({ stats }: { stats: AgentStats }) {
             </div>
             <div className="text-lg font-semibold">{formatDuration(stats.avgDuration)}</div>
           </div>
+          <div className="rounded-lg bg-muted p-3">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+              <DollarSign className="h-3 w-3" />
+              Total Cost
+            </div>
+            <div className="text-lg font-semibold text-green-600">{formatCost(stats.costTotal)}</div>
+          </div>
+          <div className="rounded-lg bg-muted p-3">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+              <Cpu className="h-3 w-3" />
+              Models
+            </div>
+            <div className="text-lg font-semibold">{stats.models.size}</div>
+          </div>
         </div>
 
         {/* Models Used */}
-        <div>
-          <div className="text-xs text-muted-foreground mb-2">Models Used</div>
-          <div className="flex flex-wrap gap-2">
-            {Array.from(stats.models.entries()).map(([model, count]) => (
-              <Badge key={model} variant="outline" className="text-xs font-mono">
-                {model.split('/').pop()} ({count})
-              </Badge>
-            ))}
+        {stats.models.size > 0 && (
+          <div>
+            <div className="text-xs text-muted-foreground mb-2">Models Used</div>
+            <div className="flex flex-wrap gap-2">
+              {Array.from(stats.models.entries()).map(([model, count]) => (
+                <Badge key={model} variant="outline" className="text-xs font-mono">
+                  {model.split('/').pop()} ({count})
+                </Badge>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -197,18 +223,28 @@ function AgentsPageSkeleton() {
 }
 
 export default function AgentsPage() {
-  const project = useWorkLoopProject();
-  const { tasks, isLoading } = useAgentHistory(project?.projectId ?? null);
+  // Get agent history across ALL projects (null = no project filter)
+  const { tasks: data, isLoading } = useAgentHistory(null);
 
-  const stats = useMemo(() => calculateStats(tasks), [tasks]);
+  const stats = useMemo(() => calculateStats(data), [data]);
 
-  const totalTasks = tasks?.length || 0;
-  // Note: Token counts now come from sessions table
-  const totalTokensIn = 0;
-  const totalTokensOut = 0;
-  const activeAgents = tasks?.filter(t => t.agent_session_key && !t.completed_at).length || 0;
+  // Calculate overview stats from session data
+  const totalTasks = data?.length || 0;
+  const activeAgents = data?.filter(({ task, session }) =>
+    task.agent_session_key &&
+    session?.status === 'active'
+  ).length || 0;
 
-  if (isLoading || !project) {
+  const totalTokensIn = data?.reduce((sum, { session }) =>
+    sum + (session?.tokens_input ?? 0), 0) || 0;
+
+  const totalTokensOut = data?.reduce((sum, { session }) =>
+    sum + (session?.tokens_output ?? 0), 0) || 0;
+
+  const totalCost = data?.reduce((sum, { session }) =>
+    sum + (session?.cost_total ?? 0), 0) || 0;
+
+  if (isLoading) {
     return <AgentsPageSkeleton />;
   }
 
@@ -222,7 +258,7 @@ export default function AgentsPage() {
             Agents
           </h1>
           <p className="text-muted-foreground mt-1">
-            Work loop agent analytics grouped by role
+            Work loop agent analytics grouped by role across all projects
           </p>
         </div>
       </div>
@@ -235,7 +271,7 @@ export default function AgentsPage() {
             <div className="text-2xl font-bold mt-1">{totalTasks}</div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm font-medium text-muted-foreground">Active Agents</div>
@@ -244,12 +280,12 @@ export default function AgentsPage() {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="pt-6">
-            <div className="text-sm font-medium text-muted-foreground">Total Roles</div>
+            <div className="text-sm font-medium text-muted-foreground">Total Cost</div>
             <div className="text-2xl font-bold mt-1 text-blue-600">
-              {stats.length}
+              {formatCost(totalCost)}
             </div>
           </CardContent>
         </Card>
@@ -281,7 +317,7 @@ export default function AgentsPage() {
               <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <h3 className="text-lg font-semibold mb-2">No agent activity yet</h3>
               <p className="max-w-md mx-auto">
-                Agents will appear here once the work loop starts dispatching tasks. 
+                Agents will appear here once the work loop starts dispatching tasks.
                 Enable the work loop in project settings to get started.
               </p>
             </div>
@@ -292,8 +328,8 @@ export default function AgentsPage() {
       {/* Recent Activity Link */}
       {stats.length > 0 && (
         <div className="mt-8 text-center">
-          <Link 
-            href="/work-loop" 
+          <Link
+            href="/work-loop"
             className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-2"
           >
             <Activity className="h-4 w-4" />

@@ -139,19 +139,21 @@ export function useActiveAgentSessions(
 /**
  * Reactive Convex subscription for agent activity history.
  *
- * Returns all tasks that have been worked on by agents (have agent_started_at),
- * sorted by most recently started first. Used by the Agents page.
+ * Returns all tasks that have been worked on by agents, joined with their session data
+ * (tokens, cost, model, duration). Used by the Agents page.
+ *
+ * @param projectId - Optional project filter. Pass null to get data across ALL projects.
  */
 export function useAgentHistory(
   projectId: string | null
 ): {
-  tasks: Task[] | null
+  tasks: TaskWithAgentSession[] | null
   isLoading: boolean
   error: Error | null
 } {
   const result = useQuery(
-    api.tasks.getAgentHistory,
-    projectId ? { projectId } : "skip"
+    api.tasks.getAgentHistoryWithSessions,
+    projectId === null ? {} : { projectId }
   )
 
   return {
