@@ -254,23 +254,43 @@ export class SessionFileReader {
    * - The session key is not found in sessions.json
    * - The JSONL file does not exist
    *
+   * BUG FIX: Optional filePath parameter allows caller to bypass the cached
+   * sessions.json lookup. This prevents race conditions where the watcher and
+   * file reader might see different versions of sessions.json.
+   *
    * @param sessionKey - The session key to look up
    * @param staleThresholdMs - Threshold in ms for considering a session stale (default: 5 minutes)
+   * @param filePath - Optional override file path (bypasses sessions.json cache)
    * @returns SessionFileInfo or null
    */
-  getSessionInfo(sessionKey: string, staleThresholdMs = 5 * 60 * 1000): SessionFileInfo | null {
-    // Resolve the file path
-    const resolved = this.resolveFilePath(sessionKey)
-    if (!resolved) {
-      return null
-    }
+  getSessionInfo(
+    sessionKey: string,
+    staleThresholdMs = 5 * 60 * 1000,
+    filePath?: string
+  ): SessionFileInfo | null {
+    // Resolve the file path (use override if provided, otherwise look up in sessions.json)
+    let sessionId: string
+    let resolvedFilePath: string
 
-    const { sessionId, filePath } = resolved
+    if (filePath) {
+      // BUG FIX #2: Use provided file path, extract sessionId from filename
+      resolvedFilePath = filePath
+      const match = filePath.match(/\/([^\/]+)\.jsonl$/)
+      sessionId = match ? match[1] : sessionKey
+    } else {
+      // Resolve from sessions.json (may use cached version)
+      const resolved = this.resolveFilePath(sessionKey)
+      if (!resolved) {
+        return null
+      }
+      sessionId = resolved.sessionId
+      resolvedFilePath = resolved.filePath
+    }
 
     // Get file stats
     let stats
     try {
-      stats = statSync(filePath)
+      stats = statSync(resolvedFilePath)
     } catch {
       return null
     }
@@ -279,7 +299,7 @@ export class SessionFileReader {
     const now = Date.now()
 
     // Read last lines and find last assistant message
-    const lines = this.readLastLines(filePath, 20)
+    const lines = this.readLastLines(resolvedFilePath, 20)
     const lastMessage = this.findLastAssistantMessage(lines)
 
     // Check for terminal error (OpenClaw killed the run via timeout).
@@ -332,7 +352,7 @@ export class SessionFileReader {
 
     return {
       sessionId,
-      filePath,
+      filePath: resolvedFilePath,
       fileMtimeMs,
       lastAssistantMessage,
       isDone,

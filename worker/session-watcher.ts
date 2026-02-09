@@ -389,6 +389,9 @@ class SessionWatcher {
   /**
    * Handle changes to sessions.json.
    * Prioritizes recently active sessions when adding new watches.
+   *
+   * BUG FIX: Detects when a session key's sessionId has changed (e.g., task retry
+   * with same key but new session). Removes old watcher and re-adds with new file.
    */
   private handleSessionsJsonChange(): void {
     try {
@@ -411,19 +414,32 @@ class SessionWatcher {
         }
       }
 
-      // Find new sessions (prioritize by recency)
+      // Find new or changed sessions (prioritize by recency)
       for (const [sessionKey, entry] of sortedSessions) {
         // Skip legacy trap: keys
         if (this.isLegacyTrapKey(sessionKey)) {
           continue
         }
 
-        if (!currentKeys.has(sessionKey)) {
-          const filePath =
-            entry.sessionFile ??
-            join(dirname(SESSIONS_JSON_PATH), `${entry.sessionId}.jsonl`)
+        const filePath =
+          entry.sessionFile ??
+          join(dirname(SESSIONS_JSON_PATH), `${entry.sessionId}.jsonl`)
+
+        const watchedSession = this.watchedSessions.get(sessionKey)
+
+        if (!watchedSession) {
+          // New session key - add it
+          this.addSessionWatch(sessionKey, entry.sessionId, filePath)
+        } else if (watchedSession.sessionId !== entry.sessionId) {
+          // BUG FIX #1: Session key exists but sessionId changed (retry scenario)
+          // Remove old watcher and add new one with updated file path
+          console.log(
+            `[SessionWatcher] Session ${sessionKey} changed from ${watchedSession.sessionId} to ${entry.sessionId}, replacing watcher`
+          )
+          this.removeSessionWatch(sessionKey)
           this.addSessionWatch(sessionKey, entry.sessionId, filePath)
         }
+        // else: already watching this session key with same sessionId - do nothing
       }
 
       // Clean up old completed sessions if we're over the limit
@@ -640,7 +656,12 @@ class SessionWatcher {
       }
 
       // Get session info from file reader
-      const info = sessionFileReader.getSessionInfo(sessionKey, STALE_THRESHOLD_MS)
+      // BUG FIX #2: Pass the known filePath to bypass stale sessions.json cache
+      const info = sessionFileReader.getSessionInfo(
+        sessionKey,
+        STALE_THRESHOLD_MS,
+        watchedSession.filePath
+      )
 
       // Determine status
       const status = determineStatus(info)
