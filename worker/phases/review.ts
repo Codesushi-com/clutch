@@ -53,6 +53,13 @@ interface PRInfo {
   title: string
 }
 
+interface RecoveryResult {
+  success: boolean
+  pr: PRInfo | null
+  action: string
+  details?: Record<string, unknown>
+}
+
 // ============================================
 // Review Phase
 // ============================================
@@ -90,7 +97,40 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
     details: { count: tasks.length },
   })
 
+  // Enforce: max 1 reviewer per project.
+  // Sequential reviews prevent merge conflict cascades — each PR merges
+  // before the next gets reviewed, so branches don't diverge.
+  const projectReviewerCount = agents.activeCountByRole("reviewer", project.id)
+  const projectConflictCount = agents.activeCountByRole("conflict_resolver", project.id)
+  if (projectReviewerCount > 0 || projectConflictCount > 0) {
+    const role = projectReviewerCount > 0 ? "reviewer" : "conflict_resolver"
+    console.log(`[ReviewPhase] ${project.slug}: already has active ${role} — skipping ${tasks.length} in_review tasks (1 reviewer per project)`)
+    await ctx.log({
+      projectId: project.id,
+      cycle,
+      phase: "review",
+      action: "limit_reached",
+      details: { reason: "one_reviewer_per_project", activeRole: role, skippedCount: tasks.length },
+    })
+    return { spawnedCount: 0, skippedCount: tasks.length }
+  }
+
   for (const task of tasks) {
+    // Check global limits before each attempt
+    const globalActive = agents.activeCount()
+    if (globalActive >= config.maxAgentsGlobal) {
+      const remaining = tasks.length - tasks.indexOf(task)
+      console.log(`[ReviewPhase] Global agent limit reached (${globalActive}/${config.maxAgentsGlobal}) — skipping ${remaining} review tasks`)
+      await ctx.log({
+        projectId: project.id,
+        cycle,
+        phase: "review",
+        action: "limit_reached",
+        details: { reason: "global_max_agents", limit: config.maxAgentsGlobal, skippedRemaining: remaining },
+      })
+      break
+    }
+
     const result = await processTask(ctx, task)
 
     if (result.spawned) {
@@ -109,29 +149,12 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
       details: result.details,
     })
 
-    // Check reviewer role limit
-    const reviewerCount = agents.activeCountByRole("reviewer")
-    if (reviewerCount >= config.maxReviewerAgents) {
-      await ctx.log({
-        projectId: project.id,
-        cycle,
-        phase: "review",
-        action: "limit_reached",
-        details: { reason: "reviewer_limit", reviewerCount, limit: config.maxReviewerAgents },
-      })
-      break
-    }
-
-    // Check global limits after each spawn
-    const globalActive = agents.activeCount()
-    if (globalActive >= config.maxAgentsGlobal) {
-      await ctx.log({
-        projectId: project.id,
-        cycle,
-        phase: "review",
-        action: "limit_reached",
-        details: { reason: "global_max_agents", limit: config.maxAgentsGlobal },
-      })
+    // If we spawned anything (reviewer or conflict_resolver), stop — 1 per project
+    if (result.spawned) {
+      const remaining = tasks.length - tasks.indexOf(task) - 1
+      if (remaining > 0) {
+        console.log(`[ReviewPhase] ${project.slug}: spawned ${result.details.role ?? "reviewer"} for ${task.id.slice(0, 8)} — deferring ${remaining} remaining tasks`)
+      }
       break
     }
   }
@@ -149,7 +172,7 @@ interface TaskProcessResult {
 }
 
 async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessResult> {
-  const { convex, agents, project, config } = ctx
+  const { convex, agents, project } = ctx
 
   // Use recorded branch name if available, otherwise derive from task ID
   const branchName = task.branch ?? `fix/${task.id.slice(0, 8)}`
@@ -167,10 +190,66 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
     }
   }
 
-  // Check for open PR - use PR number if recorded, otherwise search by branch
-  const pr = task.pr_number
-    ? await getPRByNumber(task.pr_number, project)
-    : findOpenPR(branchName, project)
+  // ── Recovery Pipeline ─────────────────────────────────────────────
+  // Before checking for PR, attempt to recover unpushed work or missing PR.
+  // This handles cases where the dev agent committed but didn't push,
+  // or pushed but PR creation failed.
+  const recovery = await runRecoveryPipeline(ctx, task, branchName)
+
+  if (!recovery.success) {
+    // Recovery failed — task is truly orphaned (no worktree, no remote branch, no PR)
+    // Reset to ready for retry
+    const newRetryCount = (task.agent_retry_count ?? 0) + 1
+    console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} recovery failed — moving back to ready for retry (attempt ${newRetryCount})`)
+
+    try {
+      await convex.mutation(api.tasks.update, {
+        id: task.id,
+        agent_retry_count: newRetryCount,
+      })
+      await convex.mutation(api.tasks.move, {
+        id: task.id,
+        status: "ready",
+      })
+      await convex.mutation(api.task_events.logStatusChange, {
+        taskId: task.id,
+        from: 'in_review',
+        to: 'ready',
+        actor: 'work-loop',
+        reason: 'recovery_failed_orphaned',
+      })
+      await convex.mutation(api.comments.create, {
+        taskId: task.id,
+        author: "work-loop",
+        authorType: "coordinator",
+        content: `Recovery failed: no worktree, no remote branch, and no PR found. Moving back to ready for retry (attempt ${newRetryCount}).`,
+        type: "status_change",
+      })
+    } catch (err) {
+      console.error(`[ReviewPhase] Failed to move task back to ready:`, err)
+    }
+
+    return {
+      spawned: false,
+      details: {
+        reason: "recovery_failed_orphaned",
+        taskId: task.id,
+        branch: branchName,
+        retryCount: newRetryCount,
+        ...recovery.details,
+      },
+    }
+  }
+
+  // If recovery found/created a PR, use it; otherwise check normally
+  let pr = recovery.pr
+
+  if (!pr) {
+    // Check for open PR - use PR number if recorded, otherwise search by branch
+    pr = task.pr_number
+      ? await getPRByNumber(task.pr_number, project)
+      : findOpenPR(branchName, project)
+  }
 
   if (!pr) {
     // If the task has a recorded PR number, check if it was already merged.
@@ -287,38 +366,28 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
     }
   }
 
-  // Check if PR has merge conflicts — spawn conflict resolver or escalate
-  const mergeableStatus = getPRMergeableStatus(pr.number, project)
+  // ── Pre-spawn rebase ──────────────────────────────────────────────
+  // Before spawning a reviewer, rebase the branch onto origin/main.
+  // This is a cheap shell exec (not an agent session). If rebase
+  // succeeds, the PR is guaranteed conflict-free → spawn reviewer.
+  // If rebase fails → spawn conflict_resolver (or block after max retries).
+  const worktreesBase = `${project.local_path}-worktrees`
+  const worktreePath = `${worktreesBase}/${branchName}`
+  const rebaseResult = rebaseBranch(branchName, project)
 
-  if (mergeableStatus === "CONFLICTING" || mergeableStatus === "DIRTY") {
+  if (!rebaseResult.success) {
+    // Rebase failed — conflicts detected
     const retryCount = task.agent_retry_count ?? 0
-    const maxRetries = 2  // Max 2 attempts before escalating
-
-    // Check conflict resolver limit
-    const conflictResolverCount = agents.activeCountByRole("conflict_resolver")
-    if (conflictResolverCount >= config.maxConflictResolverAgents) {
-      console.log(`[ReviewPhase] Skipping task ${task.id.slice(0, 8)} — conflict resolver limit reached`)
-      return {
-        spawned: false,
-        details: {
-          reason: "conflict_resolver_limit_reached",
-          taskId: task.id,
-          prNumber: pr.number,
-          limit: config.maxConflictResolverAgents,
-        },
-      }
-    }
+    const maxRetries = 2
 
     if (retryCount >= maxRetries) {
-      // Max retries exceeded — move to blocked with triage comment
       console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} exceeded max conflict resolution attempts (${maxRetries}) — moving to blocked`)
-
       try {
         await convex.mutation(api.comments.create, {
           taskId: task.id,
           author: "work-loop",
           authorType: "coordinator",
-          content: `PR #${pr.number} has merge conflicts and automated resolution failed after ${retryCount} attempts. Requires manual triage to resolve complex conflicts.`,
+          content: `PR #${pr.number} has merge conflicts and automated resolution failed after ${retryCount} attempts. Conflicts: ${rebaseResult.error?.slice(0, 200) ?? "unknown"}`,
           type: "status_change",
         })
         await convex.mutation(api.tasks.move, {
@@ -328,7 +397,6 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       } catch (err) {
         console.error(`[ReviewPhase] Failed to move task to blocked:`, err)
       }
-
       return {
         spawned: false,
         details: {
@@ -337,17 +405,14 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
           prNumber: pr.number,
           retryCount,
           maxRetries,
+          rebaseError: rebaseResult.error,
         },
       }
     }
 
-    // Spawn conflict resolver agent
-    console.log(`[ReviewPhase] Spawning conflict resolver for task ${task.id.slice(0, 8)} — PR #${pr.number} has merge conflicts (attempt ${retryCount + 1}/${maxRetries})`)
+    // Spawn conflict resolver
+    console.log(`[ReviewPhase] Rebase failed for task ${task.id.slice(0, 8)} PR #${pr.number} — spawning conflict_resolver (attempt ${retryCount + 1}/${maxRetries})`)
 
-    const worktreesBase = `${project.local_path}-worktrees`
-    const worktreePath = `${worktreesBase}/${branchName}`
-
-    // Fetch task comments for context
     let comments: Array<{ author: string; content: string; timestamp: string }> | undefined
     try {
       const taskComments = await convex.query(api.comments.getByTask, { taskId: task.id })
@@ -362,7 +427,6 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       comments = undefined
     }
 
-    // Build prompt using centralized prompt builder (fetches from Convex)
     let prompt: string
     try {
       prompt = await buildPromptAsync({
@@ -382,12 +446,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       console.error(`[ReviewPhase] Failed to build conflict_resolver prompt: ${message}`)
       return {
         spawned: false,
-        details: {
-          reason: "prompt_build_failed",
-          taskId: task.id,
-          prNumber: pr.number,
-          error: message,
-        },
+        details: { reason: "prompt_build_failed", taskId: task.id, prNumber: pr.number, error: message },
       }
     }
 
@@ -398,31 +457,27 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
         projectSlug: project.slug,
         role: "conflict_resolver",
         message: prompt,
-        model: "kimi",  // Use Kimi for reliable execution
+        model: "kimi",
         timeoutSeconds: 600,
       })
 
-      // Update agent tracking with retry count increment
       try {
         await convex.mutation(api.tasks.update, {
           id: task.id,
           session_id: handle.sessionKey,
           agent_session_key: handle.sessionKey,
         })
-        // Note: Agent activity is now tracked in sessions table
-        // Log agent assignment event
         await convex.mutation(api.task_events.logAgentAssigned, {
           taskId: task.id,
           sessionKey: handle.sessionKey,
           model: "kimi",
           role: "conflict_resolver",
         })
-        // Log conflict resolution attempt
         await convex.mutation(api.comments.create, {
           taskId: task.id,
           author: "work-loop",
           authorType: "coordinator",
-          content: `Attempting automated conflict resolution for PR #${pr.number} (attempt ${retryCount + 1}/${maxRetries})`,
+          content: `Rebase onto main failed — spawning conflict resolver for PR #${pr.number} (attempt ${retryCount + 1}/${maxRetries})`,
           type: "status_change",
         })
       } catch (updateError) {
@@ -445,23 +500,12 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       const message = error instanceof Error ? error.message : String(error)
       return {
         spawned: false,
-        details: {
-          reason: "conflict_resolver_spawn_failed",
-          taskId: task.id,
-          prNumber: pr.number,
-          error: message,
-        },
+        details: { reason: "conflict_resolver_spawn_failed", taskId: task.id, prNumber: pr.number, error: message },
       }
     }
   }
 
-  // UNKNOWN is treated as reviewable (GitHub sometimes returns this briefly)
-  // MERGEABLE is obviously fine to review
-
-  // Spawn reviewer via gateway RPC
-  // Use actual branch name for worktree path (handles descriptive suffixes)
-  const worktreesBase = `${project.local_path}-worktrees`
-  const worktreePath = `${worktreesBase}/${branchName}`
+  // Rebase succeeded — branch is clean against main. Spawn reviewer.
 
   // Fetch task comments for context (filter out automated status-change noise)
   let comments: Array<{ author: string; content: string; timestamp: string }> | undefined
@@ -557,6 +601,281 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
         error: message,
       },
     }
+  }
+}
+
+// ============================================
+// Recovery Pipeline
+// ============================================
+
+/**
+ * Run the recovery pipeline to find or create a PR for a task.
+ *
+ * This handles cases where:
+ * - The dev agent committed but didn't push
+ * - The dev agent pushed but PR creation failed
+ * - The recorded PR number is stale/invalid
+ *
+ * Steps:
+ * 1. Check for worktree existence
+ * 2. Check for unpushed commits → push them
+ * 3. Check for PR on GitHub
+ * 4. If no PR but branch exists on remote → create PR
+ * 5. Update task.pr_number if PR was found/created
+ *
+ * Returns:
+ * - success: true if a PR was found or created
+ * - pr: the PR info if found/created
+ * - action: description of what was done
+ */
+async function runRecoveryPipeline(
+  ctx: ReviewContext,
+  task: Task,
+  branchName: string
+): Promise<RecoveryResult> {
+  const { convex, project } = ctx
+  const repoDir = project.local_path!
+  const worktreesBase = `${repoDir}-worktrees`
+  const worktreePath = `${worktreesBase}/${branchName}`
+
+  // Step 1: Check for worktree existence
+  const worktreeExists = checkWorktreeExists(worktreePath)
+
+  if (worktreeExists) {
+    // Step 2: Check for unpushed commits and push them
+    const unpushedCommits = getUnpushedCommits(branchName, worktreePath)
+
+    if (unpushedCommits > 0) {
+      console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} has ${unpushedCommits} unpushed commits — pushing`)
+      const pushResult = pushBranch(branchName, worktreePath)
+
+      if (!pushResult.success) {
+        console.warn(`[ReviewPhase] Failed to push branch ${branchName}: ${pushResult.error}`)
+        // Continue anyway — maybe the branch is already on remote
+      } else {
+        console.log(`[ReviewPhase] Successfully pushed ${unpushedCommits} commits to ${branchName}`)
+      }
+    }
+  }
+
+  // Step 3: Check for PR on GitHub (by recorded number or branch name)
+  let pr: PRInfo | null = null
+
+  if (task.pr_number) {
+    pr = await getPRByNumber(task.pr_number, project)
+    if (pr) {
+      return {
+        success: true,
+        pr,
+        action: "found_by_recorded_number",
+        details: { prNumber: pr.number },
+      }
+    }
+    // Recorded PR number is stale — will try to find by branch or create new
+    console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} recorded PR #${task.pr_number} not found — will search by branch`)
+  }
+
+  // Try to find by branch name
+  pr = findOpenPR(branchName, project)
+  if (pr) {
+    // Found by branch but number didn't match — update the task
+    if (task.pr_number !== pr.number) {
+      console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} PR number corrected: #${task.pr_number} → #${pr.number}`)
+      try {
+        await convex.mutation(api.tasks.update, {
+          id: task.id,
+          pr_number: pr.number,
+        })
+      } catch (err) {
+        console.error(`[ReviewPhase] Failed to update task PR number:`, err)
+      }
+    }
+    return {
+      success: true,
+      pr,
+      action: "found_by_branch",
+      details: { prNumber: pr.number, corrected: task.pr_number !== pr.number },
+    }
+  }
+
+  // Step 4: No PR found — check if branch exists on remote
+  const branchOnRemote = checkBranchOnRemote(branchName, repoDir)
+
+  if (branchOnRemote) {
+    // Branch exists on remote but no PR — create one
+    console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} branch ${branchName} exists on remote but no PR — creating PR`)
+
+    const newPr = createPR(branchName, task, project)
+
+    if (newPr) {
+      // Update task with new PR number
+      try {
+        await convex.mutation(api.tasks.update, {
+          id: task.id,
+          pr_number: newPr.number,
+        })
+        await convex.mutation(api.comments.create, {
+          taskId: task.id,
+          author: "work-loop",
+          authorType: "coordinator",
+          content: `Auto-created PR #${newPr.number} for branch ${branchName}.`,
+          type: "status_change",
+        })
+      } catch (err) {
+        console.error(`[ReviewPhase] Failed to update task with new PR number:`, err)
+      }
+
+      return {
+        success: true,
+        pr: newPr,
+        action: "created_pr",
+        details: { prNumber: newPr.number },
+      }
+    }
+
+    // PR creation failed
+    console.warn(`[ReviewPhase] Failed to create PR for ${branchName}`)
+    return {
+      success: false,
+      pr: null,
+      action: "pr_creation_failed",
+      details: { branch: branchName, hasWorktree: worktreeExists, hasRemoteBranch: branchOnRemote },
+    }
+  }
+
+  // Step 5: No worktree, no remote branch, no PR — truly orphaned
+  if (!worktreeExists) {
+    console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} is orphaned — no worktree, no remote branch, no PR`)
+    return {
+      success: false,
+      pr: null,
+      action: "orphaned_no_worktree",
+      details: { branch: branchName },
+    }
+  }
+
+  // Worktree exists but no remote branch and no PR
+  console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} has worktree but no remote branch or PR`)
+  return {
+    success: false,
+    pr: null,
+    action: "orphaned_no_remote_branch",
+    details: { branch: branchName, worktreePath },
+  }
+}
+
+/**
+ * Check if a worktree exists at the given path.
+ */
+function checkWorktreeExists(worktreePath: string): boolean {
+  try {
+    execFileSync(
+      "test",
+      ["-d", worktreePath],
+      { encoding: "utf-8", timeout: 5_000 }
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Get the number of unpushed commits on a branch.
+ * Returns 0 if no unpushed commits or on error.
+ */
+function getUnpushedCommits(branchName: string, worktreePath: string): number {
+  try {
+    const result = execFileSync(
+      "git",
+      ["log", `origin/${branchName}..${branchName}`, "--oneline"],
+      { encoding: "utf-8", timeout: 10_000, cwd: worktreePath }
+    )
+    // Count non-empty lines
+    return result.trim().split("\n").filter(line => line.length > 0).length
+  } catch {
+    // If the command fails (e.g., no upstream), assume there are commits to push
+    // Check if there are any commits at all
+    try {
+      const result = execFileSync(
+        "git",
+        ["log", "--oneline", "-1"],
+        { encoding: "utf-8", timeout: 10_000, cwd: worktreePath }
+      )
+      return result.trim().length > 0 ? 1 : 0
+    } catch {
+      return 0
+    }
+  }
+}
+
+/**
+ * Push a branch to origin.
+ */
+function pushBranch(branchName: string, worktreePath: string): { success: boolean; error?: string } {
+  try {
+    execFileSync(
+      "git",
+      ["push", "-u", "origin", branchName],
+      { encoding: "utf-8", timeout: 30_000, cwd: worktreePath, stdio: "pipe" }
+    )
+    return { success: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { success: false, error: message }
+  }
+}
+
+/**
+ * Check if a branch exists on the remote.
+ */
+function checkBranchOnRemote(branchName: string, repoDir: string): boolean {
+  try {
+    execFileSync(
+      "git",
+      ["fetch", "origin", branchName, "--quiet"],
+      { encoding: "utf-8", timeout: 15_000, cwd: repoDir }
+    )
+    // If fetch succeeds, check if the branch exists
+    const result = execFileSync(
+      "git",
+      ["ls-remote", "--heads", "origin", branchName],
+      { encoding: "utf-8", timeout: 10_000, cwd: repoDir }
+    )
+    return result.trim().length > 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Create a PR for a branch.
+ */
+function createPR(branchName: string, task: Task, project: ProjectInfo): PRInfo | null {
+  try {
+    const result = execFileSync(
+      "gh",
+      [
+        "pr", "create",
+        "--head", branchName,
+        "--title", task.title,
+        "--body", `Ticket: ${task.id}`,
+      ],
+      { encoding: "utf-8", timeout: 15_000, cwd: project.local_path! }
+    )
+
+    // Parse PR URL from output (e.g., "https://github.com/owner/repo/pull/123")
+    const urlMatch = result.trim().match(/\/pull\/(\d+)$/)
+    if (urlMatch) {
+      const prNumber = parseInt(urlMatch[1], 10)
+      return { number: prNumber, title: task.title }
+    }
+
+    return null
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`[ReviewPhase] Failed to create PR for ${branchName}: ${message}`)
+    return null
   }
 }
 
@@ -666,27 +985,135 @@ function getPRByNumber(prNumber: number, project: ProjectInfo): PRInfo | null {
   }
 }
 
-/**
- * Check if a PR has merge conflicts.
- * Returns "CONFLICTING" | "MERGEABLE" | "UNKNOWN" | null (on error)
- */
-function getPRMergeableStatus(prNumber: number, project: ProjectInfo): string | null {
-  try {
-    const result = execFileSync(
-      "gh",
-      ["pr", "view", String(prNumber), "--json", "mergeable"],
-      {
-        encoding: "utf-8",
-        timeout: 10_000,
-        cwd: project.local_path!,
-      }
-    )
+// ============================================
+// Pre-Spawn Rebase
+// ============================================
 
-    const pr = JSON.parse(result) as { mergeable: string }
-    return pr.mergeable
+interface RebaseResult {
+  success: boolean
+  error?: string
+}
+
+/**
+ * Rebase a PR branch onto origin/main before spawning a reviewer.
+ *
+ * This is a cheap shell operation (not an agent session). Steps:
+ * 1. git fetch origin main (ensure we have latest)
+ * 2. git fetch origin <branch> (ensure branch is up-to-date)
+ * 3. Create or reuse a worktree for the branch
+ * 4. git rebase origin/main
+ * 5. If success → git push --force-with-lease → return success
+ * 6. If fail → git rebase --abort → return failure
+ *
+ * On success, the PR is guaranteed conflict-free and ready for review.
+ */
+function rebaseBranch(branchName: string, project: ProjectInfo): RebaseResult {
+  const repoDir = project.local_path!
+  const worktreesBase = `${repoDir}-worktrees`
+  const worktreePath = `${worktreesBase}/${branchName}`
+
+  try {
+    // Fetch latest main and the PR branch
+    execFileSync("git", ["fetch", "origin", "main", "--quiet"], {
+      encoding: "utf-8",
+      timeout: 30_000,
+      cwd: repoDir,
+    })
+    execFileSync("git", ["fetch", "origin", branchName, "--quiet"], {
+      encoding: "utf-8",
+      timeout: 30_000,
+      cwd: repoDir,
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    console.warn(`[ReviewPhase] Failed to check mergeable status for PR #${prNumber}: ${message}`)
-    return null
+    console.warn(`[ReviewPhase] Failed to fetch for rebase of ${branchName}: ${message}`)
+    // If fetch fails, treat as success (let the reviewer deal with it)
+    return { success: true }
   }
+
+  // Ensure worktree exists
+  try {
+    execFileSync("git", ["worktree", "add", worktreePath, branchName], {
+      encoding: "utf-8",
+      timeout: 15_000,
+      cwd: repoDir,
+      stdio: "pipe",
+    })
+  } catch {
+    // Worktree may already exist — that's fine
+  }
+
+  // Check if branch is already up-to-date with main
+  try {
+    const mergeBase = execFileSync(
+      "git", ["merge-base", "origin/main", `origin/${branchName}`],
+      { encoding: "utf-8", timeout: 10_000, cwd: worktreePath }
+    ).trim()
+    const mainHead = execFileSync(
+      "git", ["rev-parse", "origin/main"],
+      { encoding: "utf-8", timeout: 10_000, cwd: worktreePath }
+    ).trim()
+
+    if (mergeBase === mainHead) {
+      console.log(`[ReviewPhase] Branch ${branchName} already up-to-date with main`)
+      return { success: true }
+    }
+  } catch {
+    // If merge-base check fails, proceed with rebase anyway
+  }
+
+  // Attempt rebase
+  try {
+    execFileSync("git", ["rebase", "origin/main"], {
+      encoding: "utf-8",
+      timeout: 30_000,
+      cwd: worktreePath,
+      stdio: "pipe",
+    })
+  } catch (error) {
+    // Rebase failed — conflicts
+    const message = error instanceof Error ? error.message : String(error)
+    console.log(`[ReviewPhase] Rebase failed for ${branchName}: ${message.slice(0, 200)}`)
+
+    // Abort the rebase to leave worktree clean
+    try {
+      execFileSync("git", ["rebase", "--abort"], {
+        encoding: "utf-8",
+        timeout: 10_000,
+        cwd: worktreePath,
+        stdio: "pipe",
+      })
+    } catch {
+      // If abort fails, try to clean up the worktree entirely
+      try {
+        execFileSync("git", ["worktree", "remove", worktreePath, "--force"], {
+          encoding: "utf-8",
+          timeout: 10_000,
+          cwd: repoDir,
+          stdio: "pipe",
+        })
+      } catch {
+        // Best-effort cleanup
+      }
+    }
+
+    return { success: false, error: message.slice(0, 500) }
+  }
+
+  // Rebase succeeded — force push
+  try {
+    execFileSync("git", ["push", "--force-with-lease", "origin", branchName], {
+      encoding: "utf-8",
+      timeout: 30_000,
+      cwd: worktreePath,
+      stdio: "pipe",
+    })
+    console.log(`[ReviewPhase] Rebased and pushed ${branchName} successfully`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`[ReviewPhase] Rebase succeeded but push failed for ${branchName}: ${message}`)
+    // Push failure isn't fatal — reviewer can still work with it
+  }
+
+  return { success: true }
 }
