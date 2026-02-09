@@ -208,8 +208,9 @@ export default function SettingsPage() {
           </div>
 
           <div className="pt-2">
+            {/* TODO: Update URL when repository is renamed */}
             <a 
-              href="https://github.com/dbachelder/trap" 
+              href="https://github.com/dbachelder/trap"
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 hover:underline"

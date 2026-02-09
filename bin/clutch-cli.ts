@@ -174,7 +174,7 @@ function getConvexClient(): ConvexHttpClient {
 // ============================================
 
 async function apiGet(path: string, query?: Record<string, string>): Promise<unknown> {
-  const baseUrl = process.env.TRAP_API_URL ?? "http://localhost:3002"
+  const baseUrl = process.env.CLUTCH_API_URL ?? "http://localhost:3002"
   const url = new URL(`/api${path}`, baseUrl)
   if (query) {
     Object.entries(query).forEach(([key, value]) => {
@@ -190,7 +190,7 @@ async function apiGet(path: string, query?: Record<string, string>): Promise<unk
 }
 
 async function apiPost(path: string, body: unknown): Promise<unknown> {
-  const baseUrl = process.env.TRAP_API_URL ?? "http://localhost:3002"
+  const baseUrl = process.env.CLUTCH_API_URL ?? "http://localhost:3002"
   const url = new URL(`/api${path}`, baseUrl)
   const response = await fetch(url.toString(), {
     method: "POST",
@@ -205,7 +205,7 @@ async function apiPost(path: string, body: unknown): Promise<unknown> {
 }
 
 async function apiPatch(path: string, body: unknown): Promise<unknown> {
-  const baseUrl = process.env.TRAP_API_URL ?? "http://localhost:3002"
+  const baseUrl = process.env.CLUTCH_API_URL ?? "http://localhost:3002"
   const url = new URL(`/api${path}`, baseUrl)
   const response = await fetch(url.toString(), {
     method: "PATCH",

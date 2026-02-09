@@ -1,5 +1,5 @@
 /**
- * Slash Command Handler for Trap Chat
+ * Slash Command Handler for OpenClutch Chat
  *
  * Intercepts messages starting with "/" and routes them to
  * OpenClaw gateway commands instead of sending as chat messages.

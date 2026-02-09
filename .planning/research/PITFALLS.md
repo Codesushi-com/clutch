@@ -902,7 +902,7 @@ const [showConfirm, setShowConfirm] = useState(false);
 
 **The sleeper issue:** Missing reconnection logic. Everything works until it doesn't, and users don't know why.
 
-**The project management trap:** Feature creep in project/workspace organization. Started simple, now building Jira.
+**The project management pitfall:** Feature creep in project/workspace organization. Started simple, now building Jira.
 
 **The testing gap:** WebSocket features untested because "it's hard." Production bugs in critical flows.
 

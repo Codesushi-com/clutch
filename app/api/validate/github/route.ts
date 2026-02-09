@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       const response = await fetch(`https://api.github.com/repos/${normalizedRepo}`, {
         headers: {
           'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'Trap-Project-Settings',
+          'User-Agent': 'OpenClutch-Project-Settings',
         },
       })
 
