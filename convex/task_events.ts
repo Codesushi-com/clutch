@@ -28,8 +28,8 @@ export interface TaskEvent {
 
 // Event-specific data types
 export interface StatusChangedData {
-  from: string
-  to: string
+  from_status: string
+  to_status: string
   reason?: string
 }
 
@@ -293,8 +293,8 @@ export const logStatusChange = mutation({
   },
   handler: async (ctx, args): Promise<TaskEvent | null> => {
     const data: StatusChangedData = {
-      from: args.from,
-      to: args.to,
+      from_status: args.from,
+      to_status: args.to,
       ...(args.reason && { reason: args.reason }),
     }
 

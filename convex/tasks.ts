@@ -954,7 +954,7 @@ export const move = mutation({
       args.id,
       'status_changed',
       'system', // Could be enhanced to track actual actor (user session key, etc.)
-      { from: fromStatus, to: toStatus }
+      { from_status: fromStatus, to_status: toStatus }
     )
 
     return toTask(updated as Parameters<typeof toTask>[0])

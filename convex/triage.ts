@@ -26,6 +26,8 @@ export interface TriageQueueResult {
 export interface TriageResolvedData {
   action: 'unblock' | 'reassign' | 'split' | 'kill'
   actor: string
+  from_status: string
+  to_status: string
   newRole?: string
   newModel?: string
   subtaskIds?: string[]
@@ -34,6 +36,8 @@ export interface TriageResolvedData {
 
 export interface TriageEscalatedData {
   actor: string
+  from_status: string
+  to_status: string
   reason?: string
 }
 
@@ -259,6 +263,8 @@ export const triageUnblock = mutation({
     const data: TriageResolvedData = {
       action: 'unblock',
       actor: args.actor,
+      from_status: 'blocked',
+      to_status: 'ready',
     }
     await logTaskEvent(ctx, args.taskId, 'status_changed', args.actor, data)
 
@@ -317,6 +323,8 @@ export const triageReassign = mutation({
     const data: TriageResolvedData = {
       action: 'reassign',
       actor: args.actor,
+      from_status: 'blocked',
+      to_status: 'ready',
       ...(args.role && { newRole: args.role }),
       ...(args.agentModel && { newModel: args.agentModel }),
     }
@@ -414,6 +422,8 @@ export const triageSplit = mutation({
     const data: TriageResolvedData = {
       action: 'split',
       actor: args.actor,
+      from_status: 'blocked',
+      to_status: 'done',
       subtaskIds,
     }
     await logTaskEvent(ctx, args.taskId, 'status_changed', args.actor, data)
@@ -471,6 +481,8 @@ export const triageKill = mutation({
     const data: TriageResolvedData = {
       action: 'kill',
       actor: args.actor,
+      from_status: 'blocked',
+      to_status: 'backlog',
       reason: args.reason,
     }
     await logTaskEvent(ctx, args.taskId, 'status_changed', args.actor, data)
@@ -531,6 +543,8 @@ export const triageEscalate = mutation({
     // Log task event
     const data: TriageEscalatedData = {
       actor: args.actor,
+      from_status: 'blocked',
+      to_status: 'blocked',
       ...(args.reason && { reason: args.reason }),
     }
     await logTaskEvent(ctx, args.taskId, 'status_changed', args.actor, {

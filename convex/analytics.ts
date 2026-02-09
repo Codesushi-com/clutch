@@ -277,7 +277,7 @@ export const cycleTimes = query({
         const data = event.data ? JSON.parse(event.data) as StatusChangedData : null
         if (!data) continue
 
-        const toStatus = data.to
+        const toStatus = data.to_status
 
         // If we have a previous status, calculate time spent in that status
         if (lastStatus && lastTimestamp) {
@@ -364,7 +364,7 @@ export const successRate = query({
       // Check if task ever hit blocked status
       const hitBlocked = statusEvents.some((e) => {
         const data = e.data ? JSON.parse(e.data) as StatusChangedData : null
-        return data?.to === 'blocked'
+        return data?.to_status === 'blocked'
       })
 
       // Check if task was killed via triage (has triage_sent_at and ended up in backlog)
