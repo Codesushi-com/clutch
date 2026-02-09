@@ -63,7 +63,7 @@ function CustomTooltip({
   if (!active || !payload || !payload.length) return null
 
   return (
-    <div className="bg-popover border rounded-lg shadow-lg p-3 text-sm">
+    <div className="bg-popover text-popover-foreground border rounded-lg shadow-lg p-3 text-sm">
       <div className="font-medium mb-2">{label}</div>
       {payload.map((entry, index) => (
         <div key={index} className="flex items-center gap-2">

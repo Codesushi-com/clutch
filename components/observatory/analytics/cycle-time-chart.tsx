@@ -95,7 +95,7 @@ function CustomTooltip({
   const data = payload[0].payload
 
   return (
-    <div className="bg-popover border rounded-lg shadow-lg p-3 text-sm">
+    <div className="bg-popover text-popover-foreground border rounded-lg shadow-lg p-3 text-sm">
       <div className="font-medium mb-2">{data.name}</div>
       <div className="space-y-1">
         <div className="flex justify-between gap-4">
