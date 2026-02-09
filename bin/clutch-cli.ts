@@ -32,27 +32,6 @@ interface ProjectInfo {
   github_repo?: string | null
 }
 
-interface AgentSession {
-  id: string
-  name: string
-  type: "main" | "isolated" | "subagent"
-  model: string
-  status: "running" | "idle" | "completed"
-  createdAt: string
-  updatedAt: string
-  completedAt?: string
-  tokens: {
-    input: number
-    output: number
-    total: number
-  }
-  task: {
-    id: string
-    title: string
-    status: string
-  }
-}
-
 interface Signal {
   id: string
   task_id: string
@@ -86,6 +65,24 @@ interface PendingDispatch {
     role: string
   }
   label: string
+}
+
+interface Task {
+  id: string
+  project_id: string
+  title: string
+  description: string | null
+  status: "backlog" | "ready" | "in_progress" | "in_review" | "blocked" | "done"
+  priority: "low" | "medium" | "high" | "urgent"
+  role: "pm" | "dev" | "research" | "reviewer" | "conflict_resolver" | null
+  assignee: string | null
+  tags: string | null // JSON array stored as text
+  agent_session_key: string | null
+  branch: string | null
+  pr_number: number | null
+  created_at: number
+  updated_at: number
+  completed_at: number | null
 }
 
 // ============================================
@@ -123,6 +120,15 @@ OpenClutch CLI - Manage your OpenClutch projects
 Usage:
   clutch <command> [options]
 
+Task Commands:
+  tasks list [--project <slug>] [--status <status>] [--limit <n>] [--json]
+                                      List tasks for a project
+  tasks get <id> [--json]             Get task details (id can be short prefix)
+  tasks create --project <slug> --title "..." [options]
+                                      Create a new task
+  tasks update <id> [options]         Update task fields
+  tasks move <id> <status>            Move task to a new status
+
 Agent Commands:
   agents list                         List active agents and their tasks
   agents get <session-key>            Get agent detail + last output
@@ -149,14 +155,32 @@ Options:
   --project <slug>    Target project slug (defaults to "clutch" or auto-detected)
   --help, -h          Show this help message
 
+Task Create Options:
+  --description "..."  Task description
+  --status <status>    Initial status (default: ready)
+  --priority <level>   Priority: low/medium/high/urgent (default: medium)
+  --role <role>        Role: pm/dev/research/reviewer/conflict_resolver
+  --tags <tags>        Comma-separated tags (e.g., "ui,frontend")
+
+Task Update Options:
+  --title "..."        New title
+  --status <status>    New status
+  --priority <level>   New priority
+  --role <role>        New role
+
 Examples:
+  clutch tasks list                           List tasks for current project
+  clutch tasks list --status ready --json     List ready tasks as JSON
+  clutch tasks get abc123                     Get task details
+  clutch tasks create --title "Fix bug"       Create a task
+  clutch tasks move abc123 done               Move task to done
   clutch agents list                          Show all active agents
-  clutch agents get agent:main:clutch:dev:abc   Get agent details
+  clutch agents get agent:main:clutch:dev:abc Get agent details
   clutch sessions list --active               Show only active sessions
   clutch dispatch pending --project trader    Show pending for trader project
   clutch signals list --pending               Show pending signals
   clutch signals respond abc-123 "LGTM"       Respond to a signal
-  clutch metrics --project clutch               Show metrics for clutch project
+  clutch metrics --project clutch             Show metrics for clutch project
 `)
 }
 
@@ -731,6 +755,282 @@ async function cmdDeployCheck(
 }
 
 // ============================================
+// Task Commands
+// ============================================
+
+const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "blocked", "done"] as const
+const VALID_PRIORITIES = ["low", "medium", "high", "urgent"] as const
+const VALID_ROLES = ["pm", "dev", "research", "reviewer", "conflict_resolver"] as const
+
+async function resolveTaskByPrefix(
+  convex: ConvexHttpClient,
+  projectId: string,
+  idOrPrefix: string
+): Promise<Task | null> {
+  // If it's a full UUID (36 chars with dashes), use it directly
+  if (idOrPrefix.length === 36 && idOrPrefix.includes("-")) {
+    const result = await convex.query(api.tasks.getById, { id: idOrPrefix })
+    return result?.task ?? null
+  }
+
+  // Otherwise, search by prefix
+  const tasks = await convex.query(api.tasks.getByProject, { projectId })
+  const match = tasks.find((t: Task) => t.id.startsWith(idOrPrefix))
+  return match ?? null
+}
+
+async function cmdTasksList(
+  convex: ConvexHttpClient,
+  project: ProjectInfo,
+  flags: Record<string, string | boolean>
+): Promise<void> {
+  const status = typeof flags.status === "string" ? flags.status : undefined
+  const limit = typeof flags.limit === "string" ? parseInt(flags.limit, 10) : undefined
+  const jsonOutput = flags.json === true
+
+  const tasks = await convex.query(api.tasks.getByProject, {
+    projectId: project.id,
+    status: status as Task["status"] | undefined,
+  })
+
+  const limitedTasks = limit && !isNaN(limit) ? tasks.slice(0, limit) : tasks
+
+  if (jsonOutput) {
+    console.log(JSON.stringify({ tasks: limitedTasks, project: project.slug }, null, 2))
+    return
+  }
+
+  if (limitedTasks.length === 0) {
+    console.log(`\nNo tasks found for project: ${project.slug}${status ? ` (status: ${status})` : ""}`)
+    return
+  }
+
+  console.log(`\nTasks for project: ${project.slug}${status ? ` (status: ${status})` : ""}\n`)
+
+  // Header
+  console.log("ID (short)  Title                           Status       Priority  Role       Age")
+  console.log("-".repeat(90))
+
+  for (const task of limitedTasks) {
+    const shortId = task.id.slice(0, 8).padEnd(10)
+    const title = (task.title || "Untitled").slice(0, 30).padEnd(31)
+    const taskStatus = task.status.padEnd(12)
+    const priority = task.priority.padEnd(8)
+    const role = (task.role || "-").padEnd(10)
+    const age = formatTimeAgo(task.created_at).padStart(8)
+
+    console.log(`${shortId} ${title} ${taskStatus} ${priority} ${role} ${age}`)
+  }
+
+  console.log(`\n${limitedTasks.length} task(s) shown`)
+}
+
+async function cmdTasksGet(
+  convex: ConvexHttpClient,
+  project: ProjectInfo,
+  idOrPrefix: string,
+  flags: Record<string, string | boolean>
+): Promise<void> {
+  const jsonOutput = flags.json === true
+
+  const task = await resolveTaskByPrefix(convex, project.id, idOrPrefix)
+
+  if (!task) {
+    console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+    process.exit(1)
+  }
+
+  if (jsonOutput) {
+    console.log(JSON.stringify({ task }, null, 2))
+    return
+  }
+
+  console.log(`\nTask Details\n`)
+  console.log(`ID:          ${task.id}`)
+  console.log(`Title:       ${task.title}`)
+  console.log(`Status:      ${task.status}`)
+  console.log(`Priority:    ${task.priority}`)
+  console.log(`Role:        ${task.role || "-"}`)
+  console.log(`Assignee:    ${task.assignee || "-"}`)
+
+  if (task.tags) {
+    try {
+      const tags = JSON.parse(task.tags)
+      console.log(`Tags:        ${tags.join(", ")}`)
+    } catch {
+      console.log(`Tags:        ${task.tags}`)
+    }
+  }
+
+  console.log(``)
+  console.log(`Agent:       ${task.agent_session_key || "-"}`)
+  console.log(`Branch:      ${task.branch || "-"}`)
+  console.log(`PR Number:   ${task.pr_number || "-"}`)
+
+  console.log(``)
+  console.log(`Created:     ${new Date(task.created_at).toISOString()}`)
+  console.log(`Updated:     ${new Date(task.updated_at).toISOString()}`)
+  if (task.completed_at) {
+    console.log(`Completed:   ${new Date(task.completed_at).toISOString()}`)
+  }
+
+  if (task.description) {
+    console.log(``)
+    console.log(`Description:`)
+    const lines = task.description.split("\n")
+    for (const line of lines.slice(0, 20)) {
+      console.log(`  ${line}`)
+    }
+    if (lines.length > 20) {
+      console.log(`  ... (${lines.length - 20} more lines)`)
+    }
+  }
+}
+
+async function cmdTasksCreate(
+  convex: ConvexHttpClient,
+  project: ProjectInfo,
+  flags: Record<string, string | boolean>
+): Promise<void> {
+  const title = typeof flags.title === "string" ? flags.title : undefined
+
+  if (!title) {
+    console.error("Error: --title is required")
+    process.exit(1)
+  }
+
+  const description = typeof flags.description === "string" ? flags.description : undefined
+  const status = (typeof flags.status === "string" ? flags.status : "ready") as Task["status"]
+  const priority = (typeof flags.priority === "string" ? flags.priority : "medium") as Task["priority"]
+  const role = typeof flags.role === "string" ? flags.role : undefined
+
+  // Validate status
+  if (!VALID_STATUSES.includes(status)) {
+    console.error(`Error: Invalid status "${status}". Must be one of: ${VALID_STATUSES.join(", ")}`)
+    process.exit(1)
+  }
+
+  // Validate priority
+  if (!VALID_PRIORITIES.includes(priority)) {
+    console.error(`Error: Invalid priority "${priority}". Must be one of: ${VALID_PRIORITIES.join(", ")}`)
+    process.exit(1)
+  }
+
+  // Validate role
+  if (role && !VALID_ROLES.includes(role as typeof VALID_ROLES[number])) {
+    console.error(`Error: Invalid role "${role}". Must be one of: ${VALID_ROLES.join(", ")}`)
+    process.exit(1)
+  }
+
+  // Parse tags
+  let tags: string | undefined
+  if (typeof flags.tags === "string") {
+    const tagList = flags.tags.split(",").map((t) => t.trim()).filter(Boolean)
+    tags = JSON.stringify(tagList)
+  }
+
+  const result = await apiPost("/tasks", {
+    project_id: project.id,
+    title,
+    description,
+    status,
+    priority,
+    role,
+    tags,
+  }) as { task: Task }
+
+  if (flags.json === true) {
+    console.log(JSON.stringify({ task: result.task }, null, 2))
+  } else {
+    console.log(result.task.id)
+  }
+}
+
+async function cmdTasksUpdate(
+  convex: ConvexHttpClient,
+  project: ProjectInfo,
+  idOrPrefix: string,
+  flags: Record<string, string | boolean>
+): Promise<void> {
+  const task = await resolveTaskByPrefix(convex, project.id, idOrPrefix)
+
+  if (!task) {
+    console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+    process.exit(1)
+  }
+
+  const updates: Record<string, unknown> = {}
+  const updatedFields: string[] = []
+
+  if (typeof flags.title === "string") {
+    updates.title = flags.title
+    updatedFields.push(`title: "${flags.title}"`)
+  }
+
+  if (typeof flags.status === "string") {
+    if (!VALID_STATUSES.includes(flags.status as typeof VALID_STATUSES[number])) {
+      console.error(`Error: Invalid status "${flags.status}". Must be one of: ${VALID_STATUSES.join(", ")}`)
+      process.exit(1)
+    }
+    updates.status = flags.status
+    updatedFields.push(`status: ${flags.status}`)
+  }
+
+  if (typeof flags.priority === "string") {
+    if (!VALID_PRIORITIES.includes(flags.priority as typeof VALID_PRIORITIES[number])) {
+      console.error(`Error: Invalid priority "${flags.priority}". Must be one of: ${VALID_PRIORITIES.join(", ")}`)
+      process.exit(1)
+    }
+    updates.priority = flags.priority
+    updatedFields.push(`priority: ${flags.priority}`)
+  }
+
+  if (typeof flags.role === "string") {
+    if (!VALID_ROLES.includes(flags.role as typeof VALID_ROLES[number])) {
+      console.error(`Error: Invalid role "${flags.role}". Must be one of: ${VALID_ROLES.join(", ")}`)
+      process.exit(1)
+    }
+    updates.role = flags.role
+    updatedFields.push(`role: ${flags.role}`)
+  }
+
+  if (Object.keys(updates).length === 0) {
+    console.error("Error: No fields to update. Provide at least one of: --title, --status, --priority, --role")
+    process.exit(1)
+  }
+
+  await apiPatch(`/tasks/${task.id}`, updates)
+
+  console.log(`* Updated task ${task.id.slice(0, 8)}`)
+  for (const field of updatedFields) {
+    console.log(`  - ${field}`)
+  }
+}
+
+async function cmdTasksMove(
+  convex: ConvexHttpClient,
+  project: ProjectInfo,
+  idOrPrefix: string,
+  newStatus: string
+): Promise<void> {
+  if (!VALID_STATUSES.includes(newStatus as typeof VALID_STATUSES[number])) {
+    console.error(`Error: Invalid status "${newStatus}". Must be one of: ${VALID_STATUSES.join(", ")}`)
+    process.exit(1)
+  }
+
+  const task = await resolveTaskByPrefix(convex, project.id, idOrPrefix)
+
+  if (!task) {
+    console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+    process.exit(1)
+  }
+
+  await apiPatch(`/tasks/${task.id}`, { status: newStatus })
+
+  console.log(`* Moved task ${task.id.slice(0, 8)} from ${task.status} to ${newStatus}`)
+}
+
+// ============================================
 // Main Entry Point
 // ============================================
 
@@ -749,6 +1049,7 @@ async function main(): Promise<void> {
   // Resolve target project (if needed)
   const needsProject = [
     "agents list", "agents get",
+    "tasks list", "tasks get", "tasks create", "tasks update", "tasks move",
     "dispatch pending",
     "metrics",
     "deploy convex", "deploy check"
@@ -771,6 +1072,23 @@ async function main(): Promise<void> {
 
   // Route to appropriate command
   switch (true) {
+    // Task commands
+    case command === "tasks list":
+      await cmdTasksList(convex, project!, flags)
+      break
+    case command.startsWith("tasks get "):
+      await cmdTasksGet(convex, project!, positional[2], flags)
+      break
+    case command === "tasks create":
+      await cmdTasksCreate(convex, project!, flags)
+      break
+    case command.startsWith("tasks update "):
+      await cmdTasksUpdate(convex, project!, positional[2], flags)
+      break
+    case command.startsWith("tasks move "):
+      await cmdTasksMove(convex, project!, positional[2], positional[3])
+      break
+
     // Agent commands
     case command === "agents list":
       await cmdAgentsList(convex, project!)
