@@ -48,7 +48,7 @@
 }
 
 :root {
-  /* Custom Trap theme (light fallback) */
+  /* Custom Clutch theme (light fallback) */
   --bg-primary: #ffffff;
   --bg-secondary: #f4f4f5;
   --bg-tertiary: #e4e4e7;
@@ -97,7 +97,7 @@
 }
 
 .dark {
-  /* Custom Trap theme */
+  /* Custom Clutch theme */
   --bg-primary: #0a0a0b;
   --bg-secondary: #141415;
   --bg-tertiary: #1c1c1e;
