@@ -33,14 +33,17 @@ const SESSIONS_JSON_PATH = join(
 // Debounce interval for batching Convex writes (ms)
 const FLUSH_INTERVAL_MS = 3000
 
-// Max age for watching completed sessions (1 hour)
-const COMPLETED_SESSION_MAX_AGE_MS = 60 * 60 * 1000
+// Max age for watching completed sessions (5 minutes - evict quickly)
+const COMPLETED_SESSION_MAX_AGE_MS = 5 * 60 * 1000
 
 // Stale threshold (5 minutes of inactivity)
 const STALE_THRESHOLD_MS = 5 * 60 * 1000
 
-// Max watched files limit
-const MAX_WATCHED_FILES = 100
+// Max watched files limit (increased from 100)
+const MAX_WATCHED_FILES = 250
+
+// Re-scan sessions.json every N flush cycles to pick up new sessions
+const RESCAN_INTERVAL_FLUSHES = 5
 
 // ============================================
 // Types
@@ -175,6 +178,7 @@ class SessionWatcher {
   private flushTimer: NodeJS.Timeout | null = null
   private running = false
   private sessionsJsonMtime = 0
+  private flushCycleCount = 0
 
   constructor() {
     this.convex = new ConvexHttpClient(CONVEX_URL)
@@ -265,13 +269,45 @@ class SessionWatcher {
   }
 
   /**
+   * Check if session key is from pre-rename trap: era (should be skipped).
+   */
+  private isLegacyTrapKey(sessionKey: string): boolean {
+    return sessionKey.includes(":trap:")
+  }
+
+  /**
+   * Sort sessions by recency (updatedAt desc) with active sessions first.
+   */
+  private sortSessionsByRecency(
+    sessions: SessionsJson
+  ): Array<[string, SessionsJsonEntry]> {
+    const entries = Object.entries(sessions)
+
+    // Sort by updatedAt desc (most recent first)
+    entries.sort((a, b) => {
+      const timeA = a[1].updatedAt ?? 0
+      const timeB = b[1].updatedAt ?? 0
+      return timeB - timeA
+    })
+
+    return entries
+  }
+
+  /**
    * Initial scan of sessions.json to populate watched sessions.
+   * Prioritizes recently active sessions and skips legacy trap: keys.
    */
   private async scanSessionsJson(): Promise<void> {
     const sessions = this.readSessionsJson()
+    const sortedSessions = this.sortSessionsByRecency(sessions)
     const now = Date.now()
 
-    for (const [sessionKey, entry] of Object.entries(sessions)) {
+    for (const [sessionKey, entry] of sortedSessions) {
+      // Skip legacy trap: keys (pre-rename artifacts)
+      if (this.isLegacyTrapKey(sessionKey)) {
+        continue
+      }
+
       // Resolve file path
       const filePath =
         entry.sessionFile ??
@@ -293,8 +329,8 @@ class SessionWatcher {
         // Add to watch list
         this.addSessionWatch(sessionKey, entry.sessionId, filePath)
       } catch {
-        // File doesn't exist yet, still watch for it
-        this.addSessionWatch(sessionKey, entry.sessionId, filePath)
+        // File doesn't exist yet, skip (we'll pick it up on re-scan)
+        continue
       }
     }
   }
@@ -316,6 +352,7 @@ class SessionWatcher {
 
   /**
    * Handle changes to sessions.json.
+   * Prioritizes recently active sessions when adding new watches.
    */
   private handleSessionsJsonChange(): void {
     try {
@@ -328,17 +365,23 @@ class SessionWatcher {
 
       const sessions = this.readSessionsJson()
       const currentKeys = new Set(this.watchedSessions.keys())
-      const newKeys = new Set(Object.keys(sessions))
+      const sortedSessions = this.sortSessionsByRecency(sessions)
 
       // Find removed sessions
+      const newKeys = new Set(Object.keys(sessions))
       for (const sessionKey of currentKeys) {
         if (!newKeys.has(sessionKey)) {
           this.removeSessionWatch(sessionKey)
         }
       }
 
-      // Find new sessions
-      for (const [sessionKey, entry] of Object.entries(sessions)) {
+      // Find new sessions (prioritize by recency)
+      for (const [sessionKey, entry] of sortedSessions) {
+        // Skip legacy trap: keys
+        if (this.isLegacyTrapKey(sessionKey)) {
+          continue
+        }
+
         if (!currentKeys.has(sessionKey)) {
           const filePath =
             entry.sessionFile ??
@@ -356,24 +399,28 @@ class SessionWatcher {
 
   /**
    * Add a session to the watch list.
+   * Evicts old completed sessions if at limit and new session is active.
    */
   private addSessionWatch(
     sessionKey: string,
     sessionId: string,
     filePath: string
   ): void {
-    // Check limit
-    if (this.watchedSessions.size >= MAX_WATCHED_FILES) {
-      console.warn(`[SessionWatcher] Max watched files reached, skipping ${sessionKey}`)
-      return
-    }
-
     // If file doesn't exist yet, don't watch it (fs.watch throws ENOENT).
     // We'll pick it up on the next sessions.json change or periodic scan.
     try {
       statSync(filePath)
     } catch {
       return
+    }
+
+    // Check limit - try to make room by evicting old completed sessions
+    if (this.watchedSessions.size >= MAX_WATCHED_FILES) {
+      const evicted = this.evictOldestCompletedSession()
+      if (!evicted) {
+        console.warn(`[SessionWatcher] Max watched files reached, skipping ${sessionKey}`)
+        return
+      }
     }
 
     const watcher = watch(filePath, (eventType) => {
@@ -393,6 +440,30 @@ class SessionWatcher {
 
     // Mark as dirty to sync initial state
     this.dirtySessions.add(sessionKey)
+  }
+
+  /**
+   * Evict the oldest completed session to make room for a new one.
+   * Returns true if a session was evicted.
+   */
+  private evictOldestCompletedSession(): boolean {
+    let oldestKey: string | null = null
+    let oldestTime = Infinity
+
+    for (const [sessionKey, session] of this.watchedSessions) {
+      if (session.status === "completed" && session.lastModified < oldestTime) {
+        oldestKey = sessionKey
+        oldestTime = session.lastModified
+      }
+    }
+
+    if (oldestKey) {
+      console.log(`[SessionWatcher] Evicting completed session ${oldestKey} to make room`)
+      this.removeSessionWatch(oldestKey)
+      return true
+    }
+
+    return false
   }
 
   /**
@@ -447,6 +518,28 @@ class SessionWatcher {
   }
 
   /**
+   * Evict completed sessions that have been idle for > 5min.
+   */
+  private evictIdleCompletedSessions(): void {
+    const now = Date.now()
+    const toEvict: string[] = []
+
+    for (const [sessionKey, session] of this.watchedSessions) {
+      if (session.status === "completed") {
+        const idleTime = now - session.lastModified
+        if (idleTime > COMPLETED_SESSION_MAX_AGE_MS) {
+          toEvict.push(sessionKey)
+        }
+      }
+    }
+
+    for (const sessionKey of toEvict) {
+      console.log(`[SessionWatcher] Evicting idle completed session ${sessionKey}`)
+      this.removeSessionWatch(sessionKey)
+    }
+  }
+
+  /**
    * Start the flush timer for batching updates.
    */
   private startFlushTimer(): void {
@@ -461,8 +554,20 @@ class SessionWatcher {
 
   /**
    * Flush dirty sessions to Convex.
+   * Also evicts completed sessions that have been idle and triggers periodic re-scan.
    */
   private async flush(): Promise<void> {
+    this.flushCycleCount++
+
+    // Periodic re-scan: pick up new sessions that appeared since last scan
+    if (this.flushCycleCount % RESCAN_INTERVAL_FLUSHES === 0) {
+      console.log("[SessionWatcher] Periodic re-scan triggered")
+      this.handleSessionsJsonChange()
+    }
+
+    // Evict completed sessions that have been idle for > 5min
+    this.evictIdleCompletedSessions()
+
     if (this.dirtySessions.size === 0) {
       return
     }
