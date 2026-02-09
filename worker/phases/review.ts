@@ -428,6 +428,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       projectId: project.id,
       repoDir: project.local_path!,
       worktreeDir: worktreePath,
+      prNumber: pr.number,
       comments,
     }, { convex })
   } catch (promptError) {
