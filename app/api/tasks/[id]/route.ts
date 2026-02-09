@@ -47,6 +47,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     prompt_version_id,
     branch,
     pr_number,
+    agent_session_key,
   } = body
 
   try {
@@ -79,6 +80,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if (prompt_version_id !== undefined) otherUpdates.prompt_version_id = prompt_version_id || undefined
       if (branch !== undefined) otherUpdates.branch = branch || undefined
       if (pr_number !== undefined) otherUpdates.pr_number = pr_number || undefined
+      if (agent_session_key !== undefined) otherUpdates.agent_session_key = agent_session_key || undefined
 
       if (Object.keys(otherUpdates).length > 0) {
         const task = await convex.mutation(api.tasks.update, { id, ...otherUpdates })
@@ -117,6 +119,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (prompt_version_id !== undefined) updates.prompt_version_id = prompt_version_id || undefined
     if (branch !== undefined) updates.branch = branch || undefined
     if (pr_number !== undefined) updates.pr_number = pr_number || undefined
+    if (agent_session_key !== undefined) updates.agent_session_key = agent_session_key || undefined
 
     const task = await convex.mutation(api.tasks.update, {
       id,

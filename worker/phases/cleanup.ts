@@ -102,9 +102,9 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   //
   //    After a loop restart, the AgentManager starts with an empty map.
   //    Tasks that had agents in the previous loop instance may have
-  //    stale agent state. We do NOT clear agent_session_key - it should
-  //    persist so users can see which agent last worked on the task.
-  //    The UI distinguishes running vs completed agents via sessions table.
+  //    stale agent state. We clear agent_session_key when resetting
+  //    ghost tasks to ready so queries for active agents are accurate.
+  //    The sessions table and task_events provide the audit trail.
   //
   //    For in_progress ghosts: move to ready so the loop can re-assign.
   //    For in_review ghosts: leave them alone - reviewer will pick up.
@@ -120,13 +120,17 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
 
   for (const task of ghostTasks) {
     // For in_progress ghosts, move back to ready so the loop re-assigns
-    // We do NOT clear agent_session_key - it provides visibility into
-    // which agent was working on this task before it became a ghost.
+    // Clear agent_session_key since the agent is no longer active.
     if (task.status === "in_progress") {
       try {
         await convex.mutation(api.tasks.move, {
           id: task.id,
           status: "ready",
+        })
+        // Clear agent_session_key since ghost agent is gone
+        await convex.mutation(api.tasks.update, {
+          id: task.id,
+          agent_session_key: undefined,
         })
       } catch {
         // Non-fatal — task may have been moved already
@@ -163,10 +167,11 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   // ------------------------------------------------------------------
   // 2. (REMOVED) Stale agent field cleanup
   //
-  //    Previously we cleared agent_session_key on done/ready tasks.
-  //    Now we preserve it so users can always see which agent last
-  //    worked on a task. The agent_session_key is only cleared on
-  //    explicit task retry/reset, not on normal completion.
+  //    We now clear agent_session_key when tasks move to done (in loop.ts
+  //    reap handler) and when ghost tasks are reset to ready (above).
+  //    This ensures queries filtering by agent_session_key != null only
+  //    return tasks with live agents. The sessions table and task_events
+  //    provide the audit trail for which agents worked on tasks.
   // ------------------------------------------------------------------
 
   // ------------------------------------------------------------------

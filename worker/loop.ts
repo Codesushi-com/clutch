@@ -474,9 +474,9 @@ async function runProjectCycle(
       }
 
       // Note: Agent session data is now tracked in sessions table, not tasks
-      // We intentionally do NOT clear agent_session_key here - it should persist
-      // so users can see which agent last worked on the task. The UI distinguishes
-      // running vs completed agents by checking the sessions table status.
+      // We clear agent_session_key when tasks move to done so that queries
+      // filtering by agent_session_key != null only return active tasks.
+      // The sessions table and task_events provide the audit trail.
 
       // Post-reap status verification — simplified block rule:
       // If agent finished but task is still in_progress or in_review, move to blocked
@@ -543,6 +543,11 @@ async function runProjectCycle(
                     id: outcome.taskId,
                     status: "done",
                   })
+                  // Clear agent_session_key since task is done
+                  await convex.mutation(api.tasks.update, {
+                    id: outcome.taskId,
+                    agent_session_key: undefined,
+                  })
                   await convex.mutation(api.comments.create, {
                     taskId: outcome.taskId,
                     author: "work-loop",
@@ -576,6 +581,11 @@ async function runProjectCycle(
                   await convex.mutation(api.tasks.move, {
                     id: outcome.taskId,
                     status: "done",
+                  })
+                  // Clear agent_session_key since task is done
+                  await convex.mutation(api.tasks.update, {
+                    id: outcome.taskId,
+                    agent_session_key: undefined,
                   })
                   await convex.mutation(api.comments.create, {
                     taskId: outcome.taskId,

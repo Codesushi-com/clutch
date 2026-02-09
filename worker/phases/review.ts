@@ -183,6 +183,11 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
             id: task.id,
             status: "done",
           })
+          // Clear agent_session_key since task is done
+          await convex.mutation(api.tasks.update, {
+            id: task.id,
+            agent_session_key: undefined,
+          })
           console.log(`[ReviewPhase] Auto-closed task ${task.id.slice(0, 8)} — PR #${task.pr_number} already merged`)
 
           // Trigger Convex deploy if PR touched convex/ directory
