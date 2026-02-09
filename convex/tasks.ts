@@ -523,7 +523,12 @@ export const activeAgentCount = query({
     const tasks = await ctx.db
       .query('tasks')
       .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
-      .filter((q) => q.neq('agent_session_key', null))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field('status'), 'in_progress'),
+          q.neq(q.field('agent_session_key'), null)
+        )
+      )
       .collect()
 
     return tasks.length

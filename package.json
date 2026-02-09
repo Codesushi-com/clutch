@@ -1,10 +1,10 @@
 {
-  "name": "trap-6",
+  "name": "clutch",
   "version": "0.1.0",
   "private": true,
   "bin": {
-    "trap": "./bin/trap-cli.ts",
-    "trap-cli": "./bin/trap-cli.ts"
+    "clutch": "./bin/trap-cli.ts",
+    "clutch-cli": "./bin/trap-cli.ts"
   },
   "scripts": {
     "dev": "volta run node ./node_modules/next/dist/bin/next dev -p 3002",
