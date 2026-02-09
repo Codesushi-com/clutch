@@ -81,7 +81,7 @@ class OpenClawClient {
             maxProtocol: 3,
             client: {
               id: 'gateway-client',
-              displayName: 'Trap Backend',
+              displayName: 'OpenClutch Backend',
               version: '1.0.0',
               platform: 'nodejs',
               mode: 'backend',

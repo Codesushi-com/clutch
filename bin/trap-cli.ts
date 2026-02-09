@@ -118,7 +118,7 @@ function parseArgs(): { command: string; args: string[]; flags: Record<string, s
 
 function showHelp(): void {
   console.log(`
-Trap CLI - Manage your Trap projects
+OpenClutch CLI - Manage your OpenClutch projects
 
 Usage:
   trap <command> [options]

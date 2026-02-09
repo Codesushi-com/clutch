@@ -203,7 +203,7 @@ export default function SettingsPage() {
           <div className="space-y-1">
             <Label className="text-sm font-medium text-[var(--text-primary)]">Description</Label>
             <p className="text-sm text-[var(--text-secondary)]">
-              The Trap — AI Agent Dashboard for OpenClaw
+              OpenClutch — AI Agent Dashboard for OpenClaw
             </p>
           </div>
 

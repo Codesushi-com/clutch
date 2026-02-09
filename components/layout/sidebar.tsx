@@ -41,7 +41,7 @@ export function Sidebar() {
           <div className="text-2xl">🦞</div>
           <div>
             <h1 className="text-lg font-bold text-[var(--text-primary)]">
-              The Trap
+              OpenClutch
             </h1>
             <p className="text-xs text-[var(--text-secondary)]">
               AI Agent Dashboard

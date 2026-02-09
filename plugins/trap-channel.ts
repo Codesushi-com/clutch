@@ -195,9 +195,9 @@ export default function register(api: OpenClawPluginApi) {
       id: "trap",
       meta: {
         id: "trap",
-        label: "Trap",
-        selectionLabel: "Trap",
-        detailLabel: "Trap Orchestration",
+        label: "OpenClutch",
+        selectionLabel: "OpenClutch",
+        detailLabel: "OpenClutch Orchestration",
         docsPath: "/channels/trap",
         blurb: "AI agent orchestration UI",
         order: 50,

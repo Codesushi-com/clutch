@@ -115,7 +115,7 @@ export class GatewayRpcClient {
             maxProtocol: PROTOCOL_VERSION,
             client: {
               id: "gateway-client",
-              displayName: "Trap Work Loop",
+              displayName: "OpenClutch Work Loop",
               version: "1.0.0",
               platform: "linux",
               mode: "backend",

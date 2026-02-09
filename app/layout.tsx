@@ -24,7 +24,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "The Trap - OpenClaw Dashboard",
+  title: "OpenClutch",
   description: "Real-time dashboard for OpenClaw AI agents",
 };
 
