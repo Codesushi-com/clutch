@@ -6,7 +6,6 @@ import {
   ChevronUp,
   Info,
   Bot,
-  Cpu,
   Clock,
   Activity,
   Wifi,
@@ -21,8 +20,9 @@ import {
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useActiveAgentTasks } from "@/lib/hooks/use-work-loop"
-import type { Task } from "@/lib/types"
+import { useActiveAgentSessions } from "@/lib/hooks/use-work-loop"
+import type { TaskWithAgentSession } from "@/convex/tasks"
+import { isAgentStale, formatModelShort, formatDuration, formatLastActivity } from "@/components/agents/agent-status"
 
 interface SessionDetails {
   model?: string
@@ -85,8 +85,8 @@ function formatRelativeTime(timestamp?: number): string {
   return `${Math.floor(diffDays / 7)}w ago`
 }
 
-// Format duration from start time
-function formatDuration(startedAt?: number): string {
+// Format session age from start time
+function formatSessionAge(startedAt?: number): string {
   if (!startedAt) return "Unknown"
 
   const elapsed = Date.now() - startedAt
@@ -98,58 +98,6 @@ function formatDuration(startedAt?: number): string {
   if (hours > 0) return `${hours}h ${minutes % 60}m`
   if (minutes > 0) return `${minutes}m`
   return `${Math.floor(elapsed / 1000)}s`
-}
-
-// Format short model name
-function formatModelShort(model?: string): string {
-  if (!model) return "Unknown"
-
-  const lowerModel = model.toLowerCase()
-
-  // Anthropic models
-  if (lowerModel.includes('claude-opus-4-6')) return 'Opus 4.6'
-  if (lowerModel.includes('claude-opus-4-5')) return 'Opus 4.5'
-  if (lowerModel.includes('claude-opus')) return 'Opus'
-  if (lowerModel.includes('claude-sonnet-4')) return 'Sonnet 4'
-  if (lowerModel.includes('claude-sonnet')) return 'Sonnet'
-  if (lowerModel.includes('claude-haiku')) return 'Haiku'
-  if (lowerModel.includes('claude')) return 'Claude'
-
-  // Moonshot / Kimi models
-  if (lowerModel.includes('kimi-k2-thinking')) return 'Kimi K2 Think'
-  if (lowerModel.includes('kimi-k2.5-thinking')) return 'Kimi K2.5 Think'
-  if (lowerModel.includes('kimi-k2')) return 'Kimi K2'
-  if (lowerModel.includes('kimi-for-coding')) return 'Kimi Code'
-  if (lowerModel.includes('kimi')) return 'Kimi'
-  if (lowerModel.includes('moonshot')) return 'Moonshot'
-
-  // OpenAI models
-  if (lowerModel.includes('gpt-4.5')) return 'GPT-4.5'
-  if (lowerModel.includes('gpt-4o')) return 'GPT-4o'
-  if (lowerModel.includes('gpt-4-turbo')) return 'GPT-4 Turbo'
-  if (lowerModel.includes('gpt-4')) return 'GPT-4'
-  if (lowerModel.includes('gpt-3.5-turbo')) return 'GPT-3.5'
-
-  // Google models
-  if (lowerModel.includes('gemini-1.5-pro')) return 'Gemini 1.5 Pro'
-  if (lowerModel.includes('gemini-1.5-flash')) return 'Gemini 1.5 Flash'
-  if (lowerModel.includes('gemini')) return 'Gemini'
-
-  // Z.AI / GLM models
-  if (lowerModel.includes('glm-4.5')) return 'GLM-4.5'
-  if (lowerModel.includes('glm-4')) return 'GLM-4'
-  if (lowerModel.includes('glm')) return 'GLM'
-
-  // Fallback to last part
-  const parts = model.split('/')
-  return parts[parts.length - 1] || model
-}
-
-// Check if agent is stale (>5min no activity)
-function isAgentStale(lastActiveAt: number | null | undefined): boolean {
-  if (!lastActiveAt) return true
-  const fiveMinutes = 5 * 60 * 1000
-  return Date.now() - lastActiveAt > fiveMinutes
 }
 
 // Get role color for badges
@@ -181,7 +129,7 @@ export function SessionInfoDropdown({
   const buttonRef = useRef<HTMLButtonElement>(null)
 
   // Fetch active agents from Convex if projectId is provided
-  const { tasks: activeAgents, isLoading: agentsLoading } = useActiveAgentTasks(projectId || null)
+  const { data: activeAgentSessions, isLoading: agentsLoading } = useActiveAgentSessions(projectId || null)
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -211,10 +159,12 @@ export function SessionInfoDropdown({
   }
 
   // Check if there are any active agents
-  const hasActiveAgents = activeAgents && activeAgents.length > 0
+  const hasActiveAgents = activeAgentSessions && activeAgentSessions.length > 0
 
-  // Note: Token data now comes from sessions table
-  const totalAgentTokens = 0
+  // Calculate total tokens across all active agents
+  const totalAgentTokens = activeAgentSessions?.reduce((sum, item) => {
+    return sum + (item.session?.tokens_total ?? 0)
+  }, 0) ?? 0
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -242,7 +192,7 @@ export function SessionInfoDropdown({
           {hasActiveAgents && (
             <div className="flex items-center gap-0.5">
               <Bot className="h-3 w-3 text-purple-400 animate-pulse" />
-              <span className="text-purple-400">{activeAgents.length}</span>
+              <span className="text-purple-400">{activeAgentSessions.length}</span>
             </div>
           )}
 
@@ -324,7 +274,7 @@ export function SessionInfoDropdown({
                   <span className="text-xs text-[var(--text-muted)]">Session Age:</span>
                   <span className="text-xs text-[var(--text-primary)] flex items-center gap-1">
                     <Clock className="h-3 w-3" />
-                    {formatDuration(sessionDetails.createdAt)}
+                    {formatSessionAge(sessionDetails.createdAt)}
                   </span>
                 </div>
               )}
@@ -419,7 +369,7 @@ export function SessionInfoDropdown({
                 <span className="font-medium">Project Agents</span>
                 {hasActiveAgents && (
                   <Badge variant="secondary" className="text-xs">
-                    {activeAgents.length}
+                    {activeAgentSessions.length}
                   </Badge>
                 )}
                 {totalAgentTokens > 0 && (
@@ -433,42 +383,63 @@ export function SessionInfoDropdown({
                 <div className="h-16 bg-[var(--bg-secondary)]/50 rounded animate-pulse" />
               ) : hasActiveAgents ? (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {activeAgents.map((agent: Task) => {
-                    // Note: Agent details now in sessions table
+                  {activeAgentSessions.map((item: TaskWithAgentSession) => {
+                    const { task, session } = item
+                    const isStale = session ? isAgentStale(session.last_active_at) : false
+                    const modelName = formatModelShort(session?.model)
+                    const tokens = session?.tokens_total ?? 0
+                    const cost = session?.cost_total
+
                     return (
                       <div
-                        key={agent.id}
+                        key={task.id}
                         className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-tertiary)] transition-colors"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <Link
-                              href={projectSlug ? `/projects/${projectSlug}/board?task=${agent.id}` : '#'}
+                              href={projectSlug ? `/projects/${projectSlug}/board?task=${task.id}` : '#'}
                               className="font-medium text-sm hover:text-[var(--accent-blue)] truncate block"
-                              title={agent.title}
+                              title={task.title}
                             >
-                              {agent.title}
+                              {task.title}
                             </Link>
                           </div>
-                          {/* Staleness now tracked in sessions table */}
+                          {isStale && (
+                            <span title="Agent stale">
+                              <AlertTriangle className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                           <Badge
                             variant="outline"
-                            className={`text-[10px] px-1 py-0 h-auto ${getRoleColor(agent.role)}`}
+                            className={`text-[10px] px-1 py-0 h-auto ${getRoleColor(task.role)}`}
                           >
-                            {agent.role || 'dev'}
+                            {task.role || 'dev'}
                           </Badge>
-                          {/* Model info now in sessions table */}
+                          {session?.model && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-auto">
+                              {modelName}
+                            </Badge>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-3 mt-1.5 text-[10px] text-[var(--text-muted)]">
-                          {/* Agent timing now in sessions table */}
-                          <span className="flex items-center gap-1 text-green-400">
+                          <span className={`flex items-center gap-1 ${isStale ? 'text-amber-500' : 'text-green-400'}`}>
                             <Activity className="h-3 w-3" />
-                            Active
+                            {isStale ? `stale (${formatDuration(session?.last_active_at ?? undefined)})` : session?.status || 'active'}
                           </span>
+                          {tokens > 0 && (
+                            <span>{formatTokenCount(tokens)} tokens</span>
+                          )}
+                          {cost && cost > 0 && (
+                            <span>{formatCost(cost)}</span>
+                          )}
+                          {session?.last_active_at && (
+                            <span>{formatLastActivity(session.last_active_at)}</span>
+                          )}
                         </div>
                       </div>
                     )
