@@ -18,10 +18,10 @@ cd "$(dirname "$0")"
 PORT="${PORT:-3002}"
 
 # Systemd service names
-SERVER_SERVICE="trap-server"
-LOOP_SERVICE="trap-loop"
-BRIDGE_SERVICE="trap-bridge"
-WATCHER_SERVICE="trap-session-watcher"
+SERVER_SERVICE="clutch-server"
+LOOP_SERVICE="clutch-loop"
+BRIDGE_SERVICE="clutch-bridge"
+WATCHER_SERVICE="clutch-session-watcher"
 
 build() {
   echo "[clutch] Building..."
