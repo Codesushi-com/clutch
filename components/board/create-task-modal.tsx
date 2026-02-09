@@ -12,7 +12,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useCreateTask, type CreateTaskData } from "@/lib/stores/task-store"
+import { useCreateTask, type CreateTaskData, type TaskDependencyInput } from "@/lib/stores/task-store"
+import { CreateDependencyPicker } from "./create-dependency-picker"
 import type { TaskStatus, TaskRole } from "@/lib/types"
 
 interface CreateTaskModalProps {
@@ -47,6 +48,7 @@ export function CreateTaskModal({
   const [description, setDescription] = useState("")
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium")
   const [role, setRole] = useState<TaskRole | undefined>(undefined)
+  const [dependencies, setDependencies] = useState<TaskDependencyInput[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -64,6 +66,7 @@ export function CreateTaskModal({
       status: initialStatus,
       priority,
       role,
+      dependencies: dependencies.length > 0 ? dependencies : undefined,
     }
 
     try {
@@ -74,6 +77,7 @@ export function CreateTaskModal({
       setDescription("")
       setPriority("medium")
       setRole(undefined)
+      setDependencies([])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create task")
     } finally {
@@ -157,6 +161,15 @@ export function CreateTaskModal({
                   <option key={r.value} value={r.value}>{r.label}</option>
                 ))}
               </select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Dependencies</Label>
+              <CreateDependencyPicker
+                projectId={projectId}
+                selectedDependencies={dependencies}
+                onDependenciesChange={setDependencies}
+              />
             </div>
           </div>
 

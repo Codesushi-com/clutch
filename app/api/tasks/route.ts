@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
     requires_human_review,
     tags,
     role,
+    dependencies,
   } = body
 
   if (!project_id || !title) {
@@ -66,6 +67,24 @@ export async function POST(request: NextRequest) {
       { error: "project_id and title are required" },
       { status: 400 }
     )
+  }
+
+  // Validate dependencies if provided
+  if (dependencies && Array.isArray(dependencies) && dependencies.length > 0) {
+    for (const dep of dependencies) {
+      if (!dep.task_id || !dep.direction) {
+        return NextResponse.json(
+          { error: "Each dependency must have task_id and direction" },
+          { status: 400 }
+        )
+      }
+      if (dep.direction !== "depends_on" && dep.direction !== "blocks") {
+        return NextResponse.json(
+          { error: "direction must be 'depends_on' or 'blocks'" },
+          { status: 400 }
+        )
+      }
+    }
   }
 
   try {
@@ -81,6 +100,42 @@ export async function POST(request: NextRequest) {
       tags: tags ? (typeof tags === "string" ? tags : JSON.stringify(tags)) : undefined,
       role: role || undefined,
     })
+
+    // Create dependencies if provided
+    if (dependencies && Array.isArray(dependencies) && dependencies.length > 0) {
+      const createdDeps: string[] = []
+      const failedDeps: { task_id: string; error: string }[] = []
+
+      for (const dep of dependencies) {
+        try {
+          // Determine the direction: if "depends_on", task depends on dep.task_id
+          // If "blocks", dep.task_id depends on task (task blocks dep.task_id)
+          const taskId = dep.direction === "depends_on" ? task.id : dep.task_id
+          const dependsOnId = dep.direction === "depends_on" ? dep.task_id : task.id
+
+          // Skip self-dependencies
+          if (taskId === dependsOnId) {
+            failedDeps.push({ task_id: dep.task_id, error: "Cannot depend on itself" })
+            continue
+          }
+
+          await convex.mutation(api.taskDependencies.add, {
+            taskId,
+            dependsOnId,
+          })
+          createdDeps.push(dep.task_id)
+        } catch (depError) {
+          const errorMessage = depError instanceof Error ? depError.message : String(depError)
+          failedDeps.push({ task_id: dep.task_id, error: errorMessage })
+          console.warn(`[Tasks API] Failed to create dependency ${dep.task_id}:`, errorMessage)
+        }
+      }
+
+      // Log dependency creation results
+      if (failedDeps.length > 0) {
+        console.warn(`[Tasks API] Some dependencies failed to create:`, failedDeps)
+      }
+    }
 
     // Log task created event using the existing events system (not task_events)
     try {

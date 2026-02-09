@@ -19,6 +19,11 @@ interface TaskState {
   getTasksByStatus: (status: TaskStatus) => Task[]
 }
 
+export interface TaskDependencyInput {
+  task_id: string
+  direction: "depends_on" | "blocks"
+}
+
 export interface CreateTaskData {
   project_id: string
   title: string
@@ -29,6 +34,7 @@ export interface CreateTaskData {
   assignee?: string
   requires_human_review?: boolean
   tags?: string[]
+  dependencies?: TaskDependencyInput[]
 }
 
 // Convenience hooks for components that expect standalone functions
