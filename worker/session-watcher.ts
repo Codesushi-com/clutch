@@ -171,40 +171,6 @@ function extractProjectSlug(sessionKey: string): string | undefined {
   return undefined
 }
 
-/**
- * Extract task ID prefix from session key (for agent types).
- *
- * Returns the 8-char task ID prefix. The caller must resolve this
- * to a full UUID by querying Convex tasks with agent_session_key.
- */
-function extractTaskIdPrefix(sessionKey: string): string | undefined {
-  // agent:main:clutch:{role}:{taskIdPrefix} (new format)
-  // agent:main:trap:{role}:{taskIdPrefix}   (legacy)
-  const agentMatch = sessionKey.match(
-    /^agent:main:(?:clutch|trap):([^:]+):([a-f0-9]{8})$/
-  )
-  if (agentMatch && AGENT_ROLES.has(agentMatch[1])) {
-    return agentMatch[2]
-  }
-
-  // agent:main:cron:*:clutch-{taskIdPrefix} (old cron-based)
-  const cronMatch = sessionKey.match(/:(?:clutch|trap)-([a-f0-9]{8})$/)
-  if (cronMatch) {
-    return cronMatch[1]
-  }
-
-  // agent:main:cron:*:clutch-review-{taskIdPrefix} (old reviewer)
-  // agent:main:cron:*:trap-review-{taskIdPrefix}
-  const reviewMatch = sessionKey.match(
-    /:(?:clutch|trap)-(?:pr-)?review-([a-f0-9]{8})$/
-  )
-  if (reviewMatch) {
-    return reviewMatch[1]
-  }
-
-  return undefined
-}
-
 // ============================================
 // Status Detection
 // ============================================
