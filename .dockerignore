@@ -1,0 +1,80 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Build outputs
+/.next/
+/out/
+/build
+
+# Testing
+/coverage
+
+# Misc
+.DS_Store
+*.pem
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment files (should be mounted or provided at runtime)
+.env*
+!.env.example
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+
+# Docker files (don't include in build context)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Uploads (runtime data)
+/public/uploads/
+
+# Systemd (not used in Docker)
+/systemd/
+
+# Scripts that reference host paths
+/run.sh
+
+# Convex data (mounted as volume)
+/convex-data/
+
+# Test files
+/test/
+*.test.ts
+*.test.tsx
+__tests__/
+__mocks__/
+
+# Husky (not needed in container)
+/.husky/

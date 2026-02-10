@@ -1,0 +1,229 @@
+# OpenClutch Docker Compose
+# Full local development stack with self-hosted Convex
+#
+# Quick Start:
+#   1. Copy the example environment file:
+#      cp .env.example .env.local
+#
+#   2. Generate a Convex admin key (if not already set):
+#      docker run --rm ghcr.io/get-convex/convex-backend:latest generate-key
+#
+#   3. Update .env.local with your generated key in CONVEX_SELF_HOSTED_ADMIN_KEY
+#
+#   4. Start all services:
+#      docker compose up
+#
+#   5. Deploy the Convex schema (first time only):
+#      docker compose exec app npx convex deploy --yes
+#
+# OpenClaw Note:
+#   OpenClaw (the AI gateway) is NOT included in this compose file.
+#   You need to run OpenClaw separately and configure OPENCLAW_* URLs
+#   in your .env.local to point to your OpenClaw instance.
+#   See: https://github.com/openclaw/openclaw
+
+name: openclutch
+
+services:
+  # -----------------------------------------------------------------------------
+  # Convex Backend (Self-Hosted)
+  # -----------------------------------------------------------------------------
+  convex:
+    image: ghcr.io/get-convex/convex-backend:latest
+    container_name: openclutch-convex
+    restart: unless-stopped
+    ports:
+      - "3210:3210"  # Convex API port
+      - "3211:3211"  # Convex dashboard port
+    volumes:
+      - convex-data:/convex/data
+    environment:
+      # Admin key for Convex (generate with: docker run --rm ghcr.io/get-convex/convex-backend:latest generate-key)
+      - CONVEX_ADMIN_KEY=${CONVEX_SELF_HOSTED_ADMIN_KEY:-convex-self-hosted|00000000000000000000000000000000000000000000000000000000000000000000000000000000}
+      # Storage configuration
+      - CONVEX_STORAGE_TYPE=${CONVEX_STORAGE_TYPE:-sqlite}
+      - CONVEX_SQLITE_PATH=${CONVEX_SQLITE_PATH:-/convex/data/convex.db}
+      # Logging
+      - RUST_LOG=${RUST_LOG:-info}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3210/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - openclutch-network
+
+  # -----------------------------------------------------------------------------
+  # OpenClutch Next.js Application
+  # -----------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: openclutch-app
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      # Server configuration
+      - NODE_ENV=production
+      - PORT=3002
+      - HOSTNAME=0.0.0.0
+
+      # Convex configuration
+      - CONVEX_URL=${CONVEX_URL:-http://convex:3210}
+      - CONVEX_SELF_HOSTED_URL=${CONVEX_SELF_HOSTED_URL:-http://convex:3210}
+      - CONVEX_SELF_HOSTED_ADMIN_KEY=${CONVEX_SELF_HOSTED_ADMIN_KEY}
+
+      # OpenClaw configuration (point to your OpenClaw instance)
+      - OPENCLAW_HTTP_URL=${OPENCLAW_HTTP_URL:-http://host.docker.internal:18789}
+      - OPENCLAW_WS_URL=${OPENCLAW_WS_URL:-ws://host.docker.internal:18789/ws}
+      - OPENCLAW_TOKEN=${OPENCLAW_TOKEN}
+      - OPENCLAW_HOOKS_URL=${OPENCLAW_HOOKS_URL:-http://host.docker.internal:18789/hooks}
+      - OPENCLAW_HOOKS_TOKEN=${OPENCLAW_HOOKS_TOKEN}
+
+      # Public URLs (for client-side code)
+      - NEXT_PUBLIC_CONVEX_SITE_URL=${NEXT_PUBLIC_CONVEX_SITE_URL:-http://localhost:3211}
+      - NEXT_PUBLIC_OPENCLAW_API_URL=${NEXT_PUBLIC_OPENCLAW_API_URL:-http://localhost:18789}
+      - NEXT_PUBLIC_OPENCLAW_WS_URL=${NEXT_PUBLIC_OPENCLAW_WS_URL:-ws://localhost:18789/ws}
+      - NEXT_PUBLIC_OPENCLAW_TOKEN=${NEXT_PUBLIC_OPENCLAW_TOKEN}
+
+      # Work loop configuration
+      - WORK_LOOP_ENABLED=${WORK_LOOP_ENABLED:-1}
+      - WORK_LOOP_MAX_AGENTS=${WORK_LOOP_MAX_AGENTS:-5}
+      - WORK_LOOP_MAX_AGENTS_PER_PROJECT=${WORK_LOOP_MAX_AGENTS_PER_PROJECT:-4}
+      - WORK_LOOP_MAX_DEV_AGENTS=${WORK_LOOP_MAX_DEV_AGENTS:-4}
+      - WORK_LOOP_MAX_REVIEWER_AGENTS=${WORK_LOOP_MAX_REVIEWER_AGENTS:-3}
+      - WORK_LOOP_STALE_TASK_MINUTES=${WORK_LOOP_STALE_TASK_MINUTES:-7}
+    depends_on:
+      convex:
+        condition: service_healthy
+    networks:
+      - openclutch-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # -----------------------------------------------------------------------------
+  # Work Loop Worker
+  # -----------------------------------------------------------------------------
+  worker-loop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: openclutch-worker-loop
+    restart: unless-stopped
+    command: ["npx", "tsx", "worker/loop.ts"]
+    environment:
+      - NODE_ENV=production
+
+      # Convex configuration
+      - CONVEX_URL=${CONVEX_URL:-http://convex:3210}
+      - CONVEX_SELF_HOSTED_URL=${CONVEX_SELF_HOSTED_URL:-http://convex:3210}
+      - CONVEX_SELF_HOSTED_ADMIN_KEY=${CONVEX_SELF_HOSTED_ADMIN_KEY}
+
+      # OpenClaw configuration
+      - OPENCLAW_HTTP_URL=${OPENCLAW_HTTP_URL:-http://host.docker.internal:18789}
+      - OPENCLAW_WS_URL=${OPENCLAW_WS_URL:-ws://host.docker.internal:18789/ws}
+      - OPENCLAW_TOKEN=${OPENCLAW_TOKEN}
+      - OPENCLAW_HOOKS_URL=${OPENCLAW_HOOKS_URL:-http://host.docker.internal:18789/hooks}
+      - OPENCLAW_HOOKS_TOKEN=${OPENCLAW_HOOKS_TOKEN}
+
+      # Work loop configuration
+      - WORK_LOOP_ENABLED=${WORK_LOOP_ENABLED:-1}
+      - WORK_LOOP_MAX_AGENTS=${WORK_LOOP_MAX_AGENTS:-5}
+      - WORK_LOOP_MAX_AGENTS_PER_PROJECT=${WORK_LOOP_MAX_AGENTS_PER_PROJECT:-4}
+      - WORK_LOOP_MAX_DEV_AGENTS=${WORK_LOOP_MAX_DEV_AGENTS:-4}
+      - WORK_LOOP_MAX_REVIEWER_AGENTS=${WORK_LOOP_MAX_REVIEWER_AGENTS:-3}
+      - WORK_LOOP_STALE_TASK_MINUTES=${WORK_LOOP_STALE_TASK_MINUTES:-7}
+    depends_on:
+      convex:
+        condition: service_healthy
+      app:
+        condition: service_started
+    networks:
+      - openclutch-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # -----------------------------------------------------------------------------
+  # Chat Bridge Worker
+  # -----------------------------------------------------------------------------
+  worker-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: openclutch-worker-bridge
+    restart: unless-stopped
+    command: ["npx", "tsx", "worker/chat-bridge.ts"]
+    environment:
+      - NODE_ENV=production
+
+      # Convex configuration
+      - CONVEX_URL=${CONVEX_URL:-http://convex:3210}
+      - CONVEX_SELF_HOSTED_URL=${CONVEX_SELF_HOSTED_URL:-http://convex:3210}
+      - CONVEX_SELF_HOSTED_ADMIN_KEY=${CONVEX_SELF_HOSTED_ADMIN_KEY}
+
+      # OpenClaw configuration
+      - OPENCLAW_HTTP_URL=${OPENCLAW_HTTP_URL:-http://host.docker.internal:18789}
+      - OPENCLAW_WS_URL=${OPENCLAW_WS_URL:-ws://host.docker.internal:18789/ws}
+      - OPENCLAW_TOKEN=${OPENCLAW_TOKEN}
+    depends_on:
+      convex:
+        condition: service_healthy
+      app:
+        condition: service_started
+    networks:
+      - openclutch-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # -----------------------------------------------------------------------------
+  # Session Watcher Worker
+  # -----------------------------------------------------------------------------
+  worker-watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: openclutch-worker-watcher
+    restart: unless-stopped
+    command: ["npx", "tsx", "worker/session-watcher.ts"]
+    environment:
+      - NODE_ENV=production
+
+      # Convex configuration
+      - CONVEX_URL=${CONVEX_URL:-http://convex:3210}
+      - CONVEX_SELF_HOSTED_URL=${CONVEX_SELF_HOSTED_URL:-http://convex:3210}
+      - CONVEX_SELF_HOSTED_ADMIN_KEY=${CONVEX_SELF_HOSTED_ADMIN_KEY}
+
+      # OpenClaw configuration
+      - OPENCLAW_HTTP_URL=${OPENCLAW_HTTP_URL:-http://host.docker.internal:18789}
+      - OPENCLAW_WS_URL=${OPENCLAW_WS_URL:-ws://host.docker.internal:18789/ws}
+      - OPENCLAW_TOKEN=${OPENCLAW_TOKEN}
+    depends_on:
+      convex:
+        condition: service_healthy
+      app:
+        condition: service_started
+    networks:
+      - openclutch-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  convex-data:
+    driver: local
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  openclutch-network:
+    driver: bridge
