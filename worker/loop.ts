@@ -588,10 +588,11 @@ async function runProjectCycle(
                     status: "done",
                     reason: `Auto-merged approved PR #${prNumber} (reviewer finished without merging)`
                   })
-                  // Clear agent_session_key since task is done
+                  // Clear agent fields since task is done
                   await convex.mutation(api.tasks.update, {
                     id: outcome.taskId,
                     agent_session_key: undefined,
+                    agent_spawned_at: undefined,
                   })
                   await convex.mutation(api.comments.create, {
                     taskId: outcome.taskId,
@@ -631,10 +632,11 @@ async function runProjectCycle(
                     status: "done",
                     reason: `Auto-merged PR #${prNumber} via expanded criteria (positive review, CI passing)`
                   })
-                  // Clear agent_session_key since task is done
+                  // Clear agent fields since task is done
                   await convex.mutation(api.tasks.update, {
                     id: outcome.taskId,
                     agent_session_key: undefined,
+                    agent_spawned_at: undefined,
                   })
                   await convex.mutation(api.comments.create, {
                     taskId: outcome.taskId,

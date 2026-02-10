@@ -31,6 +31,7 @@ function toTask(doc: {
   dispatch_requested_at?: number
   dispatch_requested_by?: string
   agent_session_key?: string
+  agent_spawned_at?: number
   agent_retry_count?: number
   triage_sent_at?: number
   triage_acked_at?: number
@@ -64,6 +65,7 @@ function toTask(doc: {
     dispatch_requested_at: doc.dispatch_requested_at ?? null,
     dispatch_requested_by: doc.dispatch_requested_by ?? null,
     agent_session_key: doc.agent_session_key ?? null,
+    agent_spawned_at: (doc as { agent_spawned_at?: number }).agent_spawned_at ?? null,
     // Note: agent session fields removed - now in sessions table
     agent_retry_count: doc.agent_retry_count ?? null,
     triage_sent_at: (doc as { triage_sent_at?: number }).triage_sent_at ?? null,
@@ -759,6 +761,7 @@ export const update = mutation({
     tags: v.optional(v.string()),
     session_id: v.optional(v.string()),
     agent_session_key: v.optional(v.union(v.string(), v.null())),
+    agent_spawned_at: v.optional(v.float64()),
     prompt_version_id: v.optional(v.string()),
     branch: v.optional(v.string()),
     pr_number: v.optional(v.number()),
@@ -809,6 +812,7 @@ export const update = mutation({
     if (args.tags !== undefined) updates.tags = args.tags
     if (args.session_id !== undefined) updates.session_id = args.session_id
     if (args.agent_session_key !== undefined) updates.agent_session_key = args.agent_session_key ?? null
+    if (args.agent_spawned_at !== undefined) updates.agent_spawned_at = args.agent_spawned_at
     if (args.prompt_version_id !== undefined) updates.prompt_version_id = args.prompt_version_id
     if (args.branch !== undefined) updates.branch = args.branch
     if (args.pr_number !== undefined) updates.pr_number = args.pr_number

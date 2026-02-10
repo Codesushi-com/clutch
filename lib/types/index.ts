@@ -72,6 +72,7 @@ export interface Task {
   dispatch_requested_at: number | null
   dispatch_requested_by: string | null
   agent_session_key: string | null
+  agent_spawned_at: number | null
   agent_retry_count: number | null
   triage_sent_at: number | null
   triage_acked_at: number | null

@@ -72,6 +72,7 @@ function toTask(doc: {
   dispatch_requested_at?: number
   dispatch_requested_by?: string
   agent_session_key?: string
+  agent_spawned_at?: number
   agent_retry_count?: number
   triage_sent_at?: number
   triage_acked_at?: number
@@ -106,6 +107,7 @@ function toTask(doc: {
     dispatch_requested_at: doc.dispatch_requested_at ?? null,
     dispatch_requested_by: doc.dispatch_requested_by ?? null,
     agent_session_key: doc.agent_session_key ?? null,
+    agent_spawned_at: (doc as { agent_spawned_at?: number }).agent_spawned_at ?? null,
     agent_retry_count: doc.agent_retry_count ?? null,
     triage_sent_at: doc.triage_sent_at ?? null,
     triage_acked_at: (doc as { triage_acked_at?: number }).triage_acked_at ?? null,

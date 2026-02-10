@@ -460,6 +460,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
           id: task.id,
           session_id: handle.sessionKey,
           agent_session_key: handle.sessionKey,
+          agent_spawned_at: Date.now(),
           agent_retry_count: (task.agent_retry_count ?? 0) + 1,
         })
         // Note: Agent activity is now tracked in sessions table
