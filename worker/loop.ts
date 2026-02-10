@@ -712,8 +712,9 @@ async function runProjectCycle(
         }
         // Case 3: Non-reviewer agent finished while task is in_review → block (security guard)
         // Only reviewers should be able to move tasks from in_review to done.
-        // If dev, conflict_resolver, or other roles finish here, something went wrong.
-        else if (currentStatus === "in_review") {
+        // If conflict_resolver, pm, or other non-dev roles finish here, something went wrong.
+        // Dev finishing in in_review is the happy path (created PR, moved to in_review, done).
+        else if (currentStatus === "in_review" && outcome.role !== "dev") {
           await convex.mutation(api.tasks.move, {
             id: outcome.taskId,
             status: "blocked",
