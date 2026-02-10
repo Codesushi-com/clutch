@@ -6,9 +6,9 @@ Wants=clutch-server.service
 
 [Service]
 Type=simple
-WorkingDirectory=/home/dan/src/clutch
-EnvironmentFile=/home/dan/src/clutch/.env.local
-ExecStart=/home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/tsx/dist/cli.cjs worker/loop.ts
+WorkingDirectory={{WORKING_DIR}}
+EnvironmentFile={{ENV_FILE}}
+ExecStart={{NODE_BIN}} ./node_modules/tsx/dist/cli.cjs worker/loop.ts
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal

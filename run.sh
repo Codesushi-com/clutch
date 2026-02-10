@@ -30,15 +30,38 @@ build() {
 }
 
 install_services() {
-  # Copy unit files to user systemd directory if they don't exist or are different
+  # Generate service files from templates with dynamic paths
+  local WORKING_DIR NODE_BIN ENV_FILE
+  WORKING_DIR="$(pwd)"
+  NODE_BIN="$(which node)"
+  ENV_FILE="$WORKING_DIR/.env.local"
+
+  echo "[clutch] Generating systemd service files..."
+  echo "[clutch]   Working directory: $WORKING_DIR"
+  echo "[clutch]   Node binary: $NODE_BIN"
+  echo "[clutch]   Env file: $ENV_FILE"
+
   mkdir -p ~/.config/systemd/user/
   for service in "$SERVER_SERVICE" "$LOOP_SERVICE" "$BRIDGE_SERVICE" "$WATCHER_SERVICE"; do
-    if [[ ! -f "systemd/${service}.service" ]]; then
-      echo "[clutch] Error: systemd/${service}.service not found"
+    local template="systemd/${service}.service.template"
+    local output="systemd/${service}.service"
+
+    if [[ ! -f "$template" ]]; then
+      echo "[clutch] Error: $template not found"
       exit 1
     fi
-    cp "systemd/${service}.service" ~/.config/systemd/user/
+
+    # Generate service file from template
+    sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
+        -e "s|{{NODE_BIN}}|$NODE_BIN|g" \
+        -e "s|{{ENV_FILE}}|$ENV_FILE|g" \
+        "$template" > "$output"
+
+    # Copy to systemd user directory
+    cp "$output" ~/.config/systemd/user/
+    echo "[clutch]   Generated: $output"
   done
+
   systemctl --user daemon-reload
   echo "[clutch] Systemd unit files installed"
 }
