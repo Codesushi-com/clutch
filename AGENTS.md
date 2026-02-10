@@ -164,3 +164,12 @@ QA agents have access to `agent-browser` (CLI). See the QA role prompt for full 
 - App runs at `http://localhost:3002`
 - Use `agent-browser open`, `snapshot`, `click`, `fill`, `screenshot`, `close`
 - **Always run `agent-browser close` when done** — failing to do so leaks memory
+
+## Task Description Formatting
+
+Task descriptions may contain special characters including:
+- Backticks for inline code: `fix/branch-name`
+- Special chars: `$`, `"`, `'`, `\`, `|`, `&`, `;`
+- Command examples with variables: `PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')`
+
+These are preserved in task specifications and should be handled correctly by agents.
