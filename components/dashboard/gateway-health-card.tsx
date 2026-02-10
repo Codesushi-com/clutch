@@ -2,14 +2,14 @@
 
 /**
  * Gateway Health Card
- * 
+ *
  * Dashboard widget showing OpenClaw gateway status at a glance.
  * Positioned at the top of the sidebar for immediate visibility.
  */
 
 import { useMemo } from "react";
 import { RefreshCw } from "lucide-react";
-import { useOpenClawDashboard, type GatewayStatus } from "@/lib/hooks/use-openclaw-dashboard";
+import { useOpenClawDashboard } from "@/lib/hooks/use-openclaw-dashboard";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -18,13 +18,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+/** Gateway connection status derived from dashboard data */
+type ConnectionStatus = "connected" | "disconnected" | "degraded";
+
 /**
- * Format uptime in seconds to human-readable string
+ * Format uptime in milliseconds to human-readable string
  * Examples: "3d 14h", "2h 30m", "45s"
  */
-function formatUptime(seconds: number): string {
-  if (seconds <= 0) return "--";
+function formatUptime(ms: number): string {
+  if (ms <= 0) return "--";
 
+  const seconds = Math.floor(ms / 1000);
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -35,13 +39,13 @@ function formatUptime(seconds: number): string {
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   }
-  return `${Math.floor(seconds / 60)}m`;
+  return `${minutes}m`;
 }
 
 /**
  * Get status display configuration
  */
-function getStatusConfig(status: GatewayStatus): {
+function getStatusConfig(status: ConnectionStatus): {
   label: string;
   dotClass: string;
   textClass: string;
@@ -70,15 +74,43 @@ function getStatusConfig(status: GatewayStatus): {
 }
 
 /**
+ * Determine connection status from dashboard data
+ */
+function getConnectionStatus(
+  data: { gateway?: { ok?: boolean }; errors?: Array<{ source: string }> } | null
+): ConnectionStatus {
+  if (!data) return "disconnected";
+
+  // If we have connection errors, we're disconnected
+  const hasConnectionError = data.errors?.some(
+    (e) => e.source === "connection"
+  );
+  if (hasConnectionError) return "disconnected";
+
+  // If gateway.ok is explicitly false, we're disconnected
+  if (data.gateway?.ok === false) return "disconnected";
+
+  // If gateway.ok is true, we're connected
+  if (data.gateway?.ok === true) {
+    // Check for partial errors (degraded)
+    const hasPartialErrors = data.errors && data.errors.length > 0;
+    if (hasPartialErrors) return "degraded";
+    return "connected";
+  }
+
+  return "disconnected";
+}
+
+/**
  * Truncate model name for display
  */
 function formatModelName(model: string): string {
   if (model === "unknown" || !model) return "--";
-  
+
   // Remove provider prefix for cleaner display
   const parts = model.split("/");
   const name = parts[parts.length - 1];
-  
+
   // Truncate if too long
   if (name.length > 25) {
     return name.slice(0, 22) + "...";
@@ -87,13 +119,24 @@ function formatModelName(model: string): string {
 }
 
 export function GatewayHealthCard() {
-  const { data, isLoading, reconnect } = useOpenClawDashboard();
+  const { data, isLoading, refetch } = useOpenClawDashboard();
 
-  const statusConfig = useMemo(() => getStatusConfig(data.status), [data.status]);
+  const status = useMemo(() => getConnectionStatus(data), [data]);
+  const statusConfig = useMemo(() => getStatusConfig(status), [status]);
 
-  const formattedUptime = useMemo(() => formatUptime(data.uptime), [data.uptime]);
+  const formattedUptime = useMemo(
+    () => formatUptime(data?.gateway?.uptime ?? 0),
+    [data?.gateway?.uptime]
+  );
 
-  const formattedModel = useMemo(() => formatModelName(data.defaultModel), [data.defaultModel]);
+  const formattedModel = useMemo(
+    () => formatModelName(data?.gateway?.defaultModel ?? ""),
+    [data?.gateway?.defaultModel]
+  );
+
+  const isDisconnected = status === "disconnected";
+  const version = data?.gateway?.version ?? "unknown";
+  const defaultModel = data?.gateway?.defaultModel ?? "unknown";
 
   if (isLoading) {
     return (
@@ -124,15 +167,15 @@ export function GatewayHealthCard() {
               {statusConfig.label}
             </span>
           </div>
-          
-          {/* Reconnect button - only shown when disconnected */}
-          {!data.connected && (
+
+          {/* Refresh button - shown when disconnected or always for manual refresh */}
+          {isDisconnected && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              onClick={reconnect}
-              aria-label="Reconnect to gateway"
+              onClick={refetch}
+              aria-label="Refresh gateway status"
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -144,12 +187,10 @@ export function GatewayHealthCard() {
           <span className="text-base font-semibold text-[var(--text-primary)]">
             OpenClaw
           </span>
-          <span className="text-xs text-[var(--text-muted)]">
-            v{data.version}
-          </span>
+          <span className="text-xs text-[var(--text-muted)]">v{version}</span>
         </div>
 
-        {/* Stats row: Uptime and Model */}
+        {/* Stats row: Uptime */}
         <div className="mt-3 flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
             <span className="text-[var(--text-secondary)]">Uptime:</span>
@@ -168,9 +209,9 @@ export function GatewayHealthCard() {
                 {formattedModel}
               </span>
             </TooltipTrigger>
-            {data.defaultModel !== "unknown" && data.defaultModel.length > 25 && (
+            {defaultModel !== "unknown" && defaultModel.length > 25 && (
               <TooltipContent>
-                <p>{data.defaultModel}</p>
+                <p>{defaultModel}</p>
               </TooltipContent>
             )}
           </Tooltip>
