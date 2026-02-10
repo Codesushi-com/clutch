@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Bot, AlertTriangle } from "lucide-react"
 import type { Task } from "@/lib/types"
 import type { Session } from "@/convex/sessions"
+import { useSession } from "@/lib/hooks/use-sessions"
 
 interface AgentStatusProps {
   task: Task
@@ -127,11 +128,14 @@ function getDisplayStatus(session: Session | null | undefined): string {
  */
 export function AgentStatus({
   task,
-  session,
+  session: sessionProp,
   variant = "compact",
   showIcon = true,
   className = ""
 }: AgentStatusProps) {
+  // Fetch session from Convex if not provided as prop
+  const { session: fetchedSession } = useSession(task.agent_session_key ?? "")
+  const session = sessionProp ?? fetchedSession
   // Track current time for live updates - the state triggers re-renders for live time display
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_now, setNow] = useState(() => Date.now())
