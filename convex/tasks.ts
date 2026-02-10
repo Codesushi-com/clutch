@@ -858,6 +858,7 @@ export const move = mutation({
       v.literal('discarded'),
       v.literal('merged')
     )),
+    reason: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<Task> => {
     const existing = await ctx.db
@@ -874,7 +875,7 @@ export const move = mutation({
       return reorderTask(ctx, existing._id, args.status, args.position)
     }
 
-    // Log the status change event BEFORE the actual move
+    // Capture status change for event logging
     const fromStatus = existing.status
     const toStatus = args.status
 
@@ -963,8 +964,8 @@ export const move = mutation({
       ctx,
       args.id,
       'status_changed',
-      'system', // Could be enhanced to track actual actor (user session key, etc.)
-      { from_status: fromStatus, to_status: toStatus }
+      'work-loop',
+      { from_status: fromStatus, to_status: toStatus, ...(args.reason && { reason: args.reason }) }
     )
 
     return toTask(updated as Parameters<typeof toTask>[0])

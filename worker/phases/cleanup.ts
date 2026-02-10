@@ -98,58 +98,127 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
 
   // ------------------------------------------------------------------
   // 1. Handle ghost tasks — tasks in in_progress / in_review with no
-  //    active agent handle in the current loop run.
+  //    active session in the sessions table.
   //
-  //    After a loop restart, the AgentManager starts with an empty map.
-  //    Tasks that had agents in the previous loop instance may have
-  //    stale agent state. We clear agent_session_key when resetting
-  //    ghost tasks to ready so queries for active agents are accurate.
-  //    The sessions table and task_events provide the audit trail.
+  //    We use the sessions table as the source of truth for agent liveness,
+  //    not the AgentManager in-memory map (which is empty after restarts).
   //
-  //    For in_progress ghosts: move to ready so the loop can re-assign.
-  //    For in_review ghosts: leave them alone - reviewer will pick up.
+  //    A task is NOT a ghost if:
+  //      - it has agent_session_key AND
+  //      - sessions row exists with status active or idle
+  //
+  //    A task IS a ghost if:
+  //      - it has agent_session_key AND
+  //      - no session row exists, OR session is completed/stale
+  //
+  //    For in_progress ghosts:
+  //      - If session completed → move to blocked for triage
+  //      - If session stale → move to blocked for triage
+  //      - If no session row AND in_progress > 2min → reset to ready
+  //
+  //    For in_review ghosts:
+  //      - Leave them alone - reviewer session may still be active
   // ------------------------------------------------------------------
   const inReviewTasks = await convex.query(api.tasks.getByProject, {
     projectId: project.id,
     status: "in_review",
   })
 
-  const ghostTasks = [...inProgressTasks, ...inReviewTasks].filter(
-    (task) => task.agent_session_key && !agents.has(task.id),
+  // Check each task with agent_session_key for session liveness
+  const tasksWithAgents = [...inProgressTasks, ...inReviewTasks].filter(
+    (task) => task.agent_session_key,
   )
 
-  for (const task of ghostTasks) {
-    // For in_progress ghosts, move back to ready so the loop re-assigns
-    // Clear agent_session_key since the agent is no longer active.
+  for (const task of tasksWithAgents) {
+    // Check session status from the sessions table (source of truth)
+    const sessionStatus = await convex.query(api.sessions.getLiveStatus, {
+      sessionKey: task.agent_session_key!,
+    })
+
+    const now = Date.now()
+    const inProgressDurationMs = now - task.updated_at
+    const GHOST_GRACE_PERIOD_MS = 2 * 60 * 1000 // 2 minutes grace period
+
+    // Determine if this is a ghost task
+    let isGhost = false
+    let ghostReason: string | null = null
+
+    if (!sessionStatus.exists) {
+      // No session row yet - only a ghost if grace period exceeded
+      if (inProgressDurationMs > GHOST_GRACE_PERIOD_MS) {
+        isGhost = true
+        ghostReason = "no_session_record"
+      }
+    } else if (sessionStatus.status === "completed") {
+      isGhost = true
+      ghostReason = "session_completed"
+    } else if (sessionStatus.status === "stale") {
+      isGhost = true
+      ghostReason = "session_stale"
+    }
+    // active/idle sessions are NOT ghosts - agent is still running
+
+    if (!isGhost) {
+      // Session is live (active/idle) or within grace period - not a ghost
+      continue
+    }
+
+    // Handle ghost task based on status
     if (task.status === "in_progress") {
+      // Move to blocked for triage - the agent finished/stopped but task
+      // wasn't properly transitioned
       try {
         await convex.mutation(api.tasks.move, {
           id: task.id,
-          status: "ready",
+          status: "blocked",
         })
-        // Clear agent_session_key since ghost agent is gone
+        // Clear agent_session_key since the session is done
         await convex.mutation(api.tasks.update, {
           id: task.id,
           agent_session_key: undefined,
+          // Reset retry count since this is a new triage cycle
+          agent_retry_count: 0,
         })
       } catch {
         // Non-fatal — task may have been moved already
+      }
+
+      // Add a comment explaining why it was blocked
+      const blockReason = ghostReason === "session_completed"
+        ? "Agent session completed but task was not properly transitioned. Moving to blocked for triage."
+        : ghostReason === "session_stale"
+          ? "Agent session became stale (unresponsive). Moving to blocked for triage."
+          : "No active session found for this task after grace period. Moving to blocked for triage."
+
+      try {
+        await convex.mutation(api.comments.create, {
+          taskId: task.id,
+          author: "work-loop",
+          authorType: "coordinator",
+          content: blockReason,
+          type: "status_change",
+        })
+      } catch {
+        // Non-fatal — comment creation is optional
       }
 
       await log({
         projectId: project.id,
         cycle,
         phase: "cleanup",
-        action: "ghost_task_reset_to_ready",
+        action: "ghost_task_blocked",
         taskId: task.id,
         details: {
           status: task.status,
+          ghostReason,
           agentSessionKey: task.agent_session_key,
+          inProgressDurationMs,
         },
       })
       actions++
     } else {
       // in_review ghost - just log it, don't clear session key
+      // The reviewer may still be working, or the review phase will handle it
       await log({
         projectId: project.id,
         cycle,
@@ -158,7 +227,9 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
         taskId: task.id,
         details: {
           status: task.status,
+          ghostReason,
           agentSessionKey: task.agent_session_key,
+          sessionStatus: sessionStatus.status,
         },
       })
     }

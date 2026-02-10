@@ -134,6 +134,31 @@ export const get = query({
 })
 
 /**
+ * Check if a session is "live" (active or idle, not completed/stale/missing).
+ * Returns the session status or null if session doesn't exist.
+ * Used for ghost detection in the work loop.
+ */
+export const getLiveStatus = query({
+  args: { sessionKey: v.string() },
+  handler: async (ctx, args): Promise<{ exists: boolean; status: SessionStatus | null; lastActiveAt: number | null }> => {
+    const session = await ctx.db
+      .query('sessions')
+      .withIndex('by_session_key', (q) => q.eq('session_key', args.sessionKey))
+      .unique()
+
+    if (!session) {
+      return { exists: false, status: null, lastActiveAt: null }
+    }
+
+    return {
+      exists: true,
+      status: session.status as SessionStatus,
+      lastActiveAt: session.last_active_at ?? null,
+    }
+  },
+})
+
+/**
  * Get session(s) by task_id
  */
 export const getByTask = query({

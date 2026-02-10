@@ -122,6 +122,7 @@ async function claimTask(
     const result = await convex.mutation(api.tasks.move, {
       id: taskId,
       status: "in_progress",
+      reason: "task_claimed",
     })
     return result
   } catch (error) {
@@ -455,14 +456,8 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
           model,
           role,
         })
-        // Log status change event (ready -> in_progress)
-        await convex.mutation(api.task_events.logStatusChange, {
-          taskId: task.id,
-          from: 'ready',
-          to: 'in_progress',
-          actor: 'work-loop',
-          reason: 'task_claimed',
-        })
+        // Status change event (ready -> in_progress) is logged by tasks.move
+        // with reason="task_claimed" - no duplicate logging needed
       } catch (updateError) {
         console.error(`[WorkPhase] Failed to update task agent info:`, updateError)
       }
