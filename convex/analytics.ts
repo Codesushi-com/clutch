@@ -1,6 +1,7 @@
 import { query } from './_generated/server'
 import { v } from 'convex/values'
 import type { StatusChangedData } from './task_events'
+import type { Doc } from './_generated/dataModel'
 
 // ============================================
 // Types
@@ -480,6 +481,145 @@ export const throughput = query({
       .sort((a, b) => a.date.localeCompare(b.date))
 
     return result
+  },
+})
+
+/**
+ * Get session usage analytics for dashboard
+ * Returns token counts and cost for the specified time range with hourly breakdown
+ */
+export const sessionUsage = query({
+  args: {
+    projectId: v.optional(v.string()),
+    timeRange: v.optional(v.union(
+      v.literal('24h'),
+      v.literal('7d'),
+      v.literal('30d'),
+      v.literal('all')
+    )),
+  },
+  handler: async (ctx, args): Promise<{
+    totalCost: number
+    previousCost: number
+    totalTokens: number
+    tokensInput: number
+    tokensOutput: number
+    hourlyData: Array<{ hour: string; cost: number; tokens: number }>
+  }> => {
+    const timeRange = args.timeRange ?? '24h'
+    const cutoff = timeRangeFilter(timeRange)
+    const now = Date.now()
+
+    // Calculate previous period for trend comparison
+    const periodMs = timeRange === '24h' ? 24 * 60 * 60 * 1000 :
+                     timeRange === '7d' ? 7 * 24 * 60 * 60 * 1000 :
+                     timeRange === '30d' ? 30 * 24 * 60 * 60 * 1000 : null
+    const previousCutoff = periodMs && cutoff ? cutoff - periodMs : null
+
+    // Get sessions with optional project filter
+    let sessions: Doc<'sessions'>[]
+    if (args.projectId) {
+      // Need to get project slug for filtering
+      const project = await ctx.db
+        .query('projects')
+        .withIndex('by_uuid', (q) => q.eq('id', args.projectId!))
+        .unique()
+      const projectSlug = project?.slug
+
+      if (projectSlug) {
+        sessions = await ctx.db
+          .query('sessions')
+          .withIndex('by_project', (q) => q.eq('project_slug', projectSlug))
+          .collect()
+      } else {
+        sessions = []
+      }
+    } else {
+      sessions = await ctx.db.query('sessions').collect()
+    }
+
+    // Filter sessions by time range on updated_at (when cost was last updated)
+    const currentPeriodSessions = cutoff
+      ? sessions.filter((s) => s.updated_at >= cutoff)
+      : sessions
+
+    const previousPeriodSessions = previousCutoff && cutoff
+      ? sessions.filter((s) => s.updated_at >= previousCutoff && s.updated_at < cutoff)
+      : []
+
+    // Calculate totals for current period
+    let totalCost = 0
+    let totalTokens = 0
+    let tokensInput = 0
+    let tokensOutput = 0
+
+    // Hourly buckets for sparkline (only for 24h view)
+    const hourlyBuckets: Record<string, { cost: number; tokens: number }> = {}
+
+    for (const session of currentPeriodSessions) {
+      const cost = session.cost_total ?? 0
+      const tokens = session.tokens_total ?? 0
+      const inTokens = session.tokens_input ?? 0
+      const outTokens = session.tokens_output ?? 0
+
+      totalCost += cost
+      totalTokens += tokens
+      tokensInput += inTokens
+      tokensOutput += outTokens
+
+      // Add to hourly bucket for sparkline
+      if (timeRange === '24h' && session.updated_at) {
+        const hour = new Date(session.updated_at).toISOString().slice(0, 13) + ':00:00'
+        if (!hourlyBuckets[hour]) {
+          hourlyBuckets[hour] = { cost: 0, tokens: 0 }
+        }
+        hourlyBuckets[hour].cost += cost
+        hourlyBuckets[hour].tokens += tokens
+      }
+    }
+
+    // Calculate previous period cost for trend
+    let previousCost = 0
+    for (const session of previousPeriodSessions) {
+      previousCost += session.cost_total ?? 0
+    }
+
+    // Convert hourly buckets to sorted array
+    const hourlyData = Object.entries(hourlyBuckets)
+      .map(([hour, data]) => ({
+        hour,
+        cost: Math.round(data.cost * 100) / 100,
+        tokens: data.tokens,
+      }))
+      .sort((a, b) => a.hour.localeCompare(b.hour))
+
+    // Fill in missing hours with zeros for complete 24h view
+    if (timeRange === '24h') {
+      const filledData: typeof hourlyData = []
+      for (let i = 0; i < 24; i++) {
+        const hourDate = new Date(now - (23 - i) * 60 * 60 * 1000)
+        const hourKey = hourDate.toISOString().slice(0, 13) + ':00:00'
+        const existing = hourlyData.find(d => d.hour === hourKey)
+        filledData.push(existing || { hour: hourKey, cost: 0, tokens: 0 })
+      }
+      return {
+        totalCost: Math.round(totalCost * 100) / 100,
+        previousCost: Math.round(previousCost * 100) / 100,
+        totalTokens,
+        tokensInput,
+        tokensOutput,
+        hourlyData: filledData,
+      }
+    }
+
+    return {
+      totalCost: Math.round(totalCost * 100) / 100,
+      previousCost: Math.round(previousCost * 100) / 100,
+      totalTokens,
+      tokensInput,
+      tokensOutput,
+      hourlyData,
+    }
   },
 })
 
