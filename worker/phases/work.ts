@@ -71,8 +71,8 @@ function sortTasks(tasks: Task[]): Task[] {
 const ROLE_MODEL_MAP: Record<string, string> = {
   pm: "gpt",
   research: "gpt",
-  reviewer: "moonshot/kimi-for-coding",
-  dev: "moonshot/kimi-for-coding",
+  reviewer: "kimi-coding/k2p5",
+  dev: "kimi-coding/k2p5",
 }
 
 /**
