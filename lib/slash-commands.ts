@@ -15,6 +15,15 @@ export const SLASH_COMMANDS = {
     usage: "/new [title]",
     examples: ["/new", "/new Bug fix discussion", "/new Feature planning"],
   },
+  issue: {
+    name: "/issue",
+    description: "Decompose a feature request into tasks with dependencies",
+    usage: "/issue <description> [--project <slug>]",
+    examples: [
+      "/issue Add dark mode toggle",
+      "/issue Implement user authentication --project myapp",
+    ],
+  },
   status: {
     name: "/status",
     description: "Show session status (model, tokens, context)",
@@ -105,6 +114,9 @@ export async function executeSlashCommand(
     switch (cmd) {
       case "new":
         return await handleNewCommand(sessionKey, command.args);
+
+      case "issue":
+        return await handleIssueCommand(sessionKey, command.args);
 
       case "status":
         return await handleStatusCommand(sessionKey);
@@ -288,6 +300,203 @@ function handleHelpCommand(): SlashCommandResult {
     isError: false,
     action: null,
   };
+}
+
+/**
+ * Handle /issue - Decompose a feature request into tasks with dependencies
+ *
+ * Spawns an isolated sub-agent session that:
+ * 1. Parses and analyzes the request
+ * 2. Asks clarifying questions if needed
+ * 3. Researches the codebase (reads AGENTS.md, etc.)
+ * 4. Creates well-scoped tasks via clutch CLI
+ * 5. Sets up dependency chains via clutch tasks dep-add
+ * 6. Reports back with the task breakdown
+ */
+async function handleIssueCommand(
+  sessionKey: string,
+  args: string[]
+): Promise<SlashCommandResult> {
+  if (args.length === 0) {
+    return {
+      isCommand: true,
+      shouldSendMessage: false,
+      command: "issue",
+      args,
+      response: [
+        "⚠️ **Usage:** `/issue <description> [--project <slug>]`",
+        "",
+        "Decomposes a feature request into properly scoped tasks with dependency chains.",
+        "",
+        "**Examples:**",
+        "- `/issue Add dark mode toggle to settings page`",
+        "- `/issue Implement user authentication --project myapp`",
+        "- `/issue Create API endpoint for user preferences`",
+        "",
+        "The agent will:",
+        "1. Analyze your request and ask clarifying questions if needed",
+        "2. Research the codebase to understand existing patterns",
+        "3. Create well-scoped tasks with clear acceptance criteria",
+        "4. Set up dependency chains (e.g., API before UI)",
+        "5. Report back with the task breakdown and suggested order",
+      ].join("\n"),
+      isError: false,
+      action: null,
+    };
+  }
+
+  // Parse args to extract description and optional --project flag
+  const description: string[] = [];
+  let projectSlug: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--project" && i + 1 < args.length) {
+      projectSlug = args[i + 1];
+      i++; // Skip the next arg since we consumed it
+    } else {
+      description.push(arg);
+    }
+  }
+
+  const descriptionText = description.join(" ");
+
+  if (!descriptionText) {
+    return {
+      isCommand: true,
+      shouldSendMessage: false,
+      command: "issue",
+      args,
+      response: "⚠️ **Error:** Description is required. Use `/issue` without arguments for help.",
+      isError: true,
+      action: null,
+    };
+  }
+
+  // Spawn a sub-agent to handle the decomposition
+  // This runs asynchronously - the user gets immediate feedback
+  try {
+    const { openclawRpc } = await import("@/lib/openclaw/rpc");
+
+    // Spawn an isolated sub-agent session for task decomposition
+    await openclawRpc("sessions.spawn", {
+      task: `You are a task decomposition specialist for Clutch. Your job is to break down a feature request into well-scoped, actionable tasks with proper dependency chains.
+
+## User Request
+"${descriptionText}"
+
+${projectSlug ? `## Target Project\n${projectSlug}` : "## Project Detection\nInfer the project from the current working directory or context."}
+
+## Your Mission
+
+1. **Parse and Analyze**
+   - Understand what the user wants at a high level
+   - Identify the core components: backend, frontend, database, API, etc.
+   - Determine if the request is too vague or broad
+
+2. **Ask Clarifying Questions (if needed)**
+   - If anything is unclear or ambiguous, ask the user before proceeding
+   - Push back if the request is too broad for a single decomposition
+   - Use your judgment - don't guess on critical details
+
+3. **Research the Codebase**
+   - Read AGENTS.md to understand project conventions
+   - Browse relevant source files to understand existing patterns
+   - Look at similar features for reference
+   - Understand the tech stack and architecture
+
+4. **Create Tasks**
+   For each task, create a Clutch task using the CLI:
+   \`\`\`bash
+   clutch tasks create --title "Task title" --description 'Detailed description with acceptance criteria' --priority <low|medium|high|urgent> --role <pm|dev|research|reviewer|conflict_resolver>
+   \`\`\`
+
+   Each task should have:
+   - Clear, specific title
+   - Detailed description with acceptance criteria
+   - Appropriate priority (most tasks should be medium or high)
+   - Appropriate role (usually "dev" for implementation tasks)
+
+5. **Set Up Dependencies**
+   After creating tasks, establish dependencies using:
+   \`\`\`bash
+   clutch tasks dep-add <task-id> --on <dependency-task-id>
+   \`\`\`
+
+   Dependencies should reflect real build order:
+   - API endpoints must exist before UI calls them
+   - Database migrations before code that uses new tables
+   - Shared components before features that use them
+
+6. **Report Back**
+   Provide a summary including:
+   - List of created tasks with IDs
+   - Dependency graph (what depends on what)
+   - Suggested priority/ordering
+   - Any assumptions made
+   - Any questions that still need answers
+
+## Important Guidelines
+
+- Tasks should be granular enough to be completed in a few hours to a day
+- Don't create monolithic "implement everything" tasks
+- Frontend and backend work should usually be separate tasks
+- Include testing/QA tasks where appropriate
+- Consider documentation tasks for user-facing features
+- If research is needed first, create a research task as the first dependency
+
+## Tool Access
+
+You have access to:
+- \`clutch\` CLI for task management
+- File system for researching the codebase
+- All standard OpenClaw tools
+
+Start by checking if you need clarification, then research, then create tasks.`,
+      agentId: "issue-decomposer",
+      label: `issue:${descriptionText.slice(0, 40)}`,
+      model: "anthropic/claude-sonnet-4-20250514", // Use sonnet for cost-effective planning
+      thinking: "on", // Enable thinking for better decomposition
+      runTimeoutSeconds: 600, // 10 minutes for complex decompositions
+      cleanup: "delete", // Clean up after completion
+    });
+
+    return {
+      isCommand: true,
+      shouldSendMessage: false,
+      command: "issue",
+      args,
+      response: [
+        "🚀 **Task decomposition started**",
+        "",
+        `**Request:** ${descriptionText}`,
+        ...(projectSlug ? [`**Project:** ${projectSlug}`] : []),
+        "",
+        "I've spawned a specialized agent to break this down into well-scoped tasks with dependencies. This may take a minute or two.",
+        "",
+        "The agent will:",
+        "1. Research the codebase to understand existing patterns",
+        "2. Create granular, actionable tasks",
+        "3. Set up proper dependency chains",
+        "4. Report back with the full breakdown",
+        "",
+        "You'll see the results in the chat when complete.",
+      ].join("\n"),
+      isError: false,
+      action: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      isCommand: true,
+      shouldSendMessage: false,
+      command: "issue",
+      args,
+      response: `❌ Failed to start task decomposition: ${message}`,
+      isError: true,
+      action: null,
+    };
+  }
 }
 
 /**
