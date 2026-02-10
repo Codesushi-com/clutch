@@ -1,8 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeHighlight from "rehype-highlight"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { X } from "lucide-react"
 
 interface MarkdownContentProps {
   content: string
@@ -12,10 +15,12 @@ interface MarkdownContentProps {
 
 export function MarkdownContent({ content, className = "", variant = "chat" }: MarkdownContentProps) {
   const isDocument = variant === "document"
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
   return (
-    <div className={`markdown-content chat-text ${isDocument ? "overflow-auto" : "overflow-hidden"} ${className}`}>
-      <ReactMarkdown
+    <>
+      <div className={`markdown-content chat-text ${isDocument ? "overflow-auto" : "overflow-hidden"} ${className}`}>
+        <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
@@ -208,10 +213,47 @@ export function MarkdownContent({ content, className = "", variant = "chat" }: M
           hr: () => (
             <hr className={`border-t border-[var(--border)] ${isDocument ? "my-6" : "my-3"}`} />
           ),
+
+          // Images - thumbnail with click to expand
+          img: ({ src, alt }) => (
+            <span className="inline-block my-2">
+              <img
+                src={src}
+                alt={alt || "Image"}
+                className="max-w-[300px] max-h-[300px] w-auto h-auto object-contain rounded-lg border border-[var(--border)] cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => src && typeof src === "string" && setLightboxImage(src)}
+                loading="lazy"
+              />
+            </span>
+          ),
         }}
       >
         {content}
       </ReactMarkdown>
-    </div>
+      </div>
+
+      {/* Lightbox Dialog */}
+      <Dialog open={!!lightboxImage} onOpenChange={(open) => !open && setLightboxImage(null)}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 border-none bg-transparent shadow-none">
+          <DialogTitle className="sr-only">Image Preview</DialogTitle>
+          {lightboxImage && (
+            <div className="relative flex items-center justify-center">
+              <img
+                src={lightboxImage}
+                alt="Full size"
+                className="max-w-[85vw] max-h-[85vh] object-contain rounded-lg shadow-2xl"
+              />
+              <button
+                onClick={() => setLightboxImage(null)}
+                className="absolute top-2 right-2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
