@@ -311,6 +311,7 @@ export function ChatThread({
                 activeCrons={activeCrons}
                 projectSlug={projectSlug}
                 prevMessage={prevMessage}
+                chatLayout={chatLayout}
               />
             )
           })}

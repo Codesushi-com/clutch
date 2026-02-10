@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import type { ChatMessage } from "@/lib/types"
+import type { ChatMessage, DeliveryStatus } from "@/lib/types"
 import { formatDistanceToNow } from "date-fns"
 import { MessageActions } from "./message-actions"
 import { Avatar } from "@/components/ui/avatar"
 import { MarkdownContent } from "./markdown-content"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, ChevronDown, ChevronRight, Bot } from "lucide-react"
+import { ExternalLink, ChevronDown, ChevronRight, Bot, Check, AlertCircle, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 interface SubAgentDetails {
@@ -30,6 +30,7 @@ interface MessageBubbleProps {
   activeCrons?: SubAgentDetails[]
   projectSlug?: string
   prevMessage?: ChatMessage
+  chatLayout?: 'slack' | 'imessage'
 }
 
 const AUTHOR_NAMES: Record<string, string> = {
@@ -38,6 +39,81 @@ const AUTHOR_NAMES: Record<string, string> = {
   "sonnet-reviewer": "Sonnet",
   "haiku-triage": "Haiku",
   dan: "Dan",
+}
+
+/**
+ * Delivery status indicator component.
+ * Shows small status icons for user messages only.
+ * - sent: single gray checkmark
+ * - delivered: double gray checkmark
+ * - processing: animated spinner/dots
+ * - responded: double blue checkmark
+ * - failed: red exclamation with retry affordance
+ */
+interface DeliveryStatusProps {
+  status: DeliveryStatus | null | undefined
+  layout: 'slack' | 'imessage'
+  isOwnMessage: boolean
+  onRetry?: () => void
+}
+
+function DeliveryStatus({ status, layout, isOwnMessage, onRetry }: DeliveryStatusProps) {
+  // Don't show anything for legacy messages without status
+  if (!status) return null
+
+  // Only show for user messages in iMessage layout (isOwnMessage implies user message)
+  // In slack layout, we show inline with timestamp for all user messages
+  const shouldShow = layout === 'imessage' ? isOwnMessage : !isOwnMessage
+  if (!shouldShow) return null
+
+  const baseClasses = "inline-flex items-center gap-0.5 text-xs transition-colors duration-200"
+  
+  switch (status) {
+    case 'sent':
+      return (
+        <span className={`${baseClasses} text-[var(--text-muted)]`} title="Message saved, waiting for delivery">
+          <Check className="h-3 w-3" />
+        </span>
+      )
+    
+    case 'delivered':
+      return (
+        <span className={`${baseClasses} text-[var(--text-muted)]`} title="Agent received your message">
+          <Check className="h-3 w-3" />
+          <Check className="h-3 w-3 -ml-1.5" />
+        </span>
+      )
+    
+    case 'processing':
+      return (
+        <span className={`${baseClasses} text-[var(--text-muted)]`} title="Agent is working on it">
+          <Loader2 className="h-3 w-3 animate-spin" />
+        </span>
+      )
+    
+    case 'responded':
+      return (
+        <span className={`${baseClasses} text-blue-500`} title="Response received">
+          <Check className="h-3 w-3" />
+          <Check className="h-3 w-3 -ml-1.5" />
+        </span>
+      )
+    
+    case 'failed':
+      return (
+        <button
+          onClick={onRetry}
+          className={`${baseClasses} text-red-500 hover:text-red-600 cursor-pointer`}
+          title="Delivery failed. Click to retry."
+        >
+          <AlertCircle className="h-3 w-3" />
+          <span className="text-[10px] ml-0.5">Failed</span>
+        </button>
+      )
+    
+    default:
+      return null
+  }
 }
 
 /**
@@ -57,14 +133,15 @@ function formatGenerationTime(ms: number): string | null {
   return `${mins}m ${remainingSecs}s`
 }
 
-export function MessageBubble({ 
-  message, 
-  isOwnMessage = false, 
+export function MessageBubble({
+  message,
+  isOwnMessage = false,
   showAuthor = true,
   onCreateTask,
   activeCrons = [],
   projectSlug: _projectSlug, // eslint-disable-line @typescript-eslint/no-unused-vars
   prevMessage,
+  chatLayout = 'slack',
 }: MessageBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const authorName = AUTHOR_NAMES[message.author] || message.author
@@ -264,7 +341,7 @@ export function MessageBubble({
       {/* Avatar */}
       {showAuthor && <Avatar author={message.author} />}
       {!showAuthor && <div className="w-8 flex-shrink-0" />}
-      
+
       {/* Message content */}
       <div className={`flex-1 max-w-[90%] md:max-w-[80%] min-w-0 w-0 overflow-hidden ${isOwnMessage ? "text-right" : ""}`}>
         {/* Author + time + actions */}
@@ -276,24 +353,33 @@ export function MessageBubble({
             <span className="text-xs text-[var(--text-muted)]">
               {formatDistanceToNow(message.created_at, { addSuffix: true })}
             </span>
-            
+
+            {/* Delivery status - inline for slack layout */}
+            {chatLayout === 'slack' && (
+              <DeliveryStatus
+                status={message.delivery_status}
+                layout={chatLayout}
+                isOwnMessage={isOwnMessage}
+              />
+            )}
+
             {/* Generation time */}
             {generationTime && (
               <span className="text-xs text-[var(--text-muted)] italic">
                 {generationTime}
               </span>
             )}
-            
+
             {/* Actions */}
             {onCreateTask && (
-              <MessageActions 
-                message={message} 
+              <MessageActions
+                message={message}
                 onCreateTask={onCreateTask}
               />
             )}
           </div>
         )}
-        
+
         {/* Bubble */}
         <div
           className={`block w-full px-3 md:px-4 py-2 md:py-3 rounded-2xl text-base leading-relaxed font-medium chat-text overflow-hidden min-w-0 ${
@@ -307,6 +393,17 @@ export function MessageBubble({
             className="break-words min-w-0"
           />
         </div>
+
+        {/* Delivery status - under bubble for imessage layout */}
+        {chatLayout === 'imessage' && isOwnMessage && (
+          <div className={`mt-1 ${isOwnMessage ? "text-right" : "text-left"}`}>
+            <DeliveryStatus
+              status={message.delivery_status}
+              layout={chatLayout}
+              isOwnMessage={isOwnMessage}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
