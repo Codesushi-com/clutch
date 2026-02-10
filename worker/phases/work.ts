@@ -354,7 +354,19 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     }
 
     // Extract image URLs for PM triage tasks
-    const imageUrls = role === "pm" ? extractImageUrls(task.description) : undefined
+    // Note: Chat uploads are stored as relative paths like /uploads/images/...
+    // OpenClaw can only fetch http(s) URLs, so convert relative URLs to absolute.
+    const rawImageUrls = role === "pm" ? extractImageUrls(task.description) : undefined
+    const imageUrls = rawImageUrls && rawImageUrls.length > 0
+      ? rawImageUrls.map((url) => {
+          if (url.startsWith("http") || url.startsWith("data:")) return url
+          if (url.startsWith("/")) {
+            const base = process.env.CLUTCH_URL || "http://127.0.0.1:3002"
+            return `${base}${url}`
+          }
+          return url
+        })
+      : undefined
 
     // Fetch task comments for context (filter out automated status-change noise)
     let comments: Array<{ author: string; content: string; timestamp: string }> | undefined
