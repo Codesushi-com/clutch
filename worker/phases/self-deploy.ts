@@ -79,16 +79,23 @@ export async function handleSelfDeploy(
     })
     steps.push("pnpm build ✓")
 
-    // Step 4: Deploy Convex schema/functions (if schema changed, old validators reject new fields)
-    console.log("[SelfDeploy] Deploying Convex...")
-    execFileSync("npx", ["convex", "deploy", "--yes"], {
-      encoding: "utf-8",
-      timeout: 60_000,
-      cwd: CLUTCH_REPO,
-    })
-    steps.push("convex deploy ✓")
+    // Step 3.5: Deploy Convex schema/functions
+    // Failures are logged but don't block service restart
+    try {
+      console.log("[SelfDeploy] Deploying Convex...")
+      execFileSync("npx", ["convex", "deploy", "--yes"], {
+        encoding: "utf-8",
+        timeout: 60_000,
+        cwd: CLUTCH_REPO,
+      })
+      steps.push("convex deploy ✓")
+    } catch (convexError) {
+      const message = convexError instanceof Error ? convexError.message : String(convexError)
+      console.error(`[SelfDeploy] Convex deploy failed (non-blocking): ${message}`)
+      steps.push(`convex deploy failed: ${message.slice(0, 200)}`)
+    }
 
-    // Step 5: Restart all services
+    // Step 4: Restart all services
     // Note: this restarts the loop process too, so the current cycle ends here.
     console.log("[SelfDeploy] Restarting services...")
     execFileSync("systemctl", [
