@@ -178,7 +178,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
   // Use recorded branch name if available, otherwise derive from task ID
   const branchName = task.branch ?? `fix/${task.id.slice(0, 8)}`
 
-  // Check if agent already running for this task
+  // Check if agent already running for this task (in-memory check)
   if (agents.has(task.id)) {
     const existing = agents.get(task.id)
     return {
@@ -187,6 +187,19 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
         reason: "reviewer_already_running",
         taskId: task.id,
         sessionKey: existing?.sessionKey,
+      },
+    }
+  }
+
+  // Check if task already has an active agent session recorded (database check)
+  // This prevents duplicate agent_assigned events when review phase runs multiple times
+  if (task.agent_session_key) {
+    return {
+      spawned: false,
+      details: {
+        reason: "agent_session_already_active",
+        taskId: task.id,
+        sessionKey: task.agent_session_key,
       },
     }
   }
