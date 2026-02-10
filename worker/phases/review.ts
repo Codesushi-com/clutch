@@ -562,12 +562,13 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       retryCount: task.review_count ?? 0,
     })
 
-    // Write reviewer agent info to task (same pattern as work phase)
+    // Write reviewer agent info to task and increment review_count
     try {
       await convex.mutation(api.tasks.update, {
         id: task.id,
         session_id: handle.sessionKey,
         agent_session_key: handle.sessionKey,
+        review_count: (task.review_count ?? 0) + 1,
       })
       // Note: Agent activity is now tracked in sessions table
       // Log agent assignment event

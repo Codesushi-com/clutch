@@ -454,12 +454,13 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
         details: { role, model: model ?? "default", sessionKey: handle.sessionKey },
       })
 
-      // Update task with session key and initial agent info
+      // Update task with session key, increment retry count for fresh sessions
       try {
         await convex.mutation(api.tasks.update, {
           id: task.id,
           session_id: handle.sessionKey,
           agent_session_key: handle.sessionKey,
+          agent_retry_count: (task.agent_retry_count ?? 0) + 1,
         })
         // Note: Agent activity is now tracked in sessions table
         // Log agent assignment event
