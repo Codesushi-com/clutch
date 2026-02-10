@@ -548,6 +548,150 @@ export const activeAgentCount = query({
 })
 
 /**
+ * Get active agents for a project with optional role and status filters.
+ *
+ * An agent is "active" if:
+ * - task has agent_session_key != null
+ * - task has agent_spawned_at != null
+ * - AND either:
+ *   - session exists with status = 'active' or 'idle', OR
+ *   - agent_spawned_at is within staleWindowMs (default 5 min grace period)
+ *
+ * This is the source of truth for "is there already a reviewer running?" checks
+ * that must survive loop restarts and manual task moves.
+ */
+export const getActiveAgentsByProject = query({
+  args: {
+    projectId: v.string(),
+    role: v.optional(v.union(
+      v.literal('pm'),
+      v.literal('dev'),
+      v.literal('research'),
+      v.literal('reviewer'),
+      v.literal('conflict_resolver')
+    )),
+    status: v.optional(v.union(
+      v.literal('in_progress'),
+      v.literal('in_review')
+    )),
+    staleWindowMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Task[]> => {
+    const staleWindowMs = args.staleWindowMs ?? 5 * 60 * 1000 // Default 5 minutes
+    const now = Date.now()
+    const gracePeriodEnd = now - 2 * 60 * 1000 // 2 minute grace period
+
+    // Build base query - tasks with agent_session_key and agent_spawned_at
+    let tasks = await ctx.db
+      .query('tasks')
+      .withIndex('by_project', (q) => q.eq('project_id', args.projectId))
+      .filter((q) =>
+        q.and(
+          q.neq(q.field('agent_session_key'), null),
+          q.neq(q.field('agent_spawned_at'), null)
+        )
+      )
+      .collect()
+
+    // Apply status filter if provided
+    if (args.status) {
+      tasks = tasks.filter((t) => t.status === args.status)
+    }
+
+    // Apply role filter if provided
+    if (args.role) {
+      tasks = tasks.filter((t) => t.role === args.role)
+    }
+
+    // Filter to only "active" agents
+    const activeTasks: typeof tasks = []
+
+    for (const task of tasks) {
+      const spawnedAt = (task as { agent_spawned_at?: number }).agent_spawned_at ?? 0
+      const sessionKey = task.agent_session_key
+
+      // Check if session exists and is active/idle
+      let sessionIsLive = false
+      if (sessionKey) {
+        const session = await ctx.db
+          .query('sessions')
+          .withIndex('by_session_key', (q) => q.eq('session_key', sessionKey))
+          .unique()
+
+        if (session && (session.status === 'active' || session.status === 'idle')) {
+          sessionIsLive = true
+        }
+      }
+
+      // Agent is "active" if:
+      // 1. Session exists with status=active/idle, OR
+      // 2. Spawned within 2 minutes ago (grace period for startup), OR
+      // 3. Spawned within staleWindowMs (configurable)
+      const isWithinGracePeriod = spawnedAt > gracePeriodEnd
+      const isWithinStaleWindow = spawnedAt > (now - staleWindowMs)
+
+      if (sessionIsLive || isWithinGracePeriod || isWithinStaleWindow) {
+        activeTasks.push(task)
+      }
+    }
+
+    // Sort by spawned_at desc (most recent first)
+    return activeTasks
+      .sort((a, b) => {
+        const aSpawned = (a as { agent_spawned_at?: number }).agent_spawned_at ?? 0
+        const bSpawned = (b as { agent_spawned_at?: number }).agent_spawned_at ?? 0
+        return bSpawned - aSpawned
+      })
+      .map((t) => toTask(t as Parameters<typeof toTask>[0]))
+  },
+})
+
+/**
+ * Check if a specific task has an active agent.
+ * Returns true if the task has an active agent session.
+ */
+export const hasActiveAgent = query({
+  args: {
+    taskId: v.string(),
+    staleWindowMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<boolean> => {
+    const task = await ctx.db
+      .query('tasks')
+      .withIndex('by_uuid', (q) => q.eq('id', args.taskId))
+      .unique()
+
+    if (!task) {
+      return false
+    }
+
+    // Check if task has agent_session_key and agent_spawned_at
+    const sessionKey = task.agent_session_key
+    const spawnedAt = (task as { agent_spawned_at?: number }).agent_spawned_at
+
+    if (!sessionKey || !spawnedAt) {
+      return false
+    }
+
+    const staleWindowMs = args.staleWindowMs ?? 5 * 60 * 1000
+    const now = Date.now()
+    const gracePeriodEnd = now - 2 * 60 * 1000
+
+    // Check if session exists and is active/idle
+    const session = await ctx.db
+      .query('sessions')
+      .withIndex('by_session_key', (q) => q.eq('session_key', sessionKey))
+      .unique()
+
+    const sessionIsLive = session && (session.status === 'active' || session.status === 'idle')
+    const isWithinGracePeriod = spawnedAt > gracePeriodEnd
+    const isWithinStaleWindow = spawnedAt > (now - staleWindowMs)
+
+    return sessionIsLive || isWithinGracePeriod || isWithinStaleWindow
+  },
+})
+
+/**
  * Get agent activity history for a project
  * Returns all tasks that have been worked on by agents (have agent_session_key)
  * Used by the Agents page to show agent analytics grouped by role
