@@ -187,6 +187,10 @@ If a failure is in code you didn't touch, fix it anyway — leave the codebase c
 
 PRs require maintainer review before merging. Don't merge your own PRs.
 
+### Branch Protection
+
+Repository maintainers can enable branch protection rules on `main` to require CI checks to pass before merging. This ensures code quality and prevents broken builds from being merged. The CI workflow runs lint, typecheck, and test jobs on every PR and push to main.
+
 ## Code of Conduct
 
 See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
