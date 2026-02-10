@@ -99,12 +99,21 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
   })
 
   // Enforce: max 1 reviewer per project.
-  // Sequential reviews prevent merge conflict cascades — each PR merges
-  // before the next gets reviewed, so branches don't diverge.
-  const projectReviewerCount = agents.activeCountByRole("reviewer", project.id)
-  const projectConflictCount = agents.activeCountByRole("conflict_resolver", project.id)
-  if (projectReviewerCount > 0 || projectConflictCount > 0) {
-    const role = projectReviewerCount > 0 ? "reviewer" : "conflict_resolver"
+  // Query Convex for active reviewers instead of using in-memory agentManager.
+  // This survives loop restarts and manual task moves.
+  const activeReviewers = await convex.query(api.tasks.getActiveAgentsByProject, {
+    projectId: project.id,
+    role: "reviewer",
+    status: "in_review",
+  })
+  const activeConflictResolvers = await convex.query(api.tasks.getActiveAgentsByProject, {
+    projectId: project.id,
+    role: "conflict_resolver",
+    status: "in_review",
+  })
+
+  if (activeReviewers.length > 0 || activeConflictResolvers.length > 0) {
+    const role = activeReviewers.length > 0 ? "reviewer" : "conflict_resolver"
     console.log(`[ReviewPhase] ${project.slug}: already has active ${role} — skipping ${tasks.length} in_review tasks (1 reviewer per project)`)
     await ctx.log({
       projectId: project.id,
@@ -178,28 +187,16 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
   // Use recorded branch name if available, otherwise derive from task ID
   const branchName = task.branch ?? `fix/${task.id.slice(0, 8)}`
 
-  // Check if agent already running for this task (in-memory check)
-  if (agents.has(task.id)) {
-    const existing = agents.get(task.id)
-    return {
-      spawned: false,
-      details: {
-        reason: "reviewer_already_running",
-        taskId: task.id,
-        sessionKey: existing?.sessionKey,
-      },
-    }
-  }
+  // Check if this task already has an active agent (via Convex query).
+  // This replaces the in-memory agentManager.has() check to survive loop restarts.
+  const hasActiveAgent = await convex.query(api.tasks.hasActiveAgent, { taskId: task.id })
 
-  // Check if task already has an active agent session recorded (database check)
-  // This prevents duplicate agent_assigned events when review phase runs multiple times
-  if (task.agent_session_key) {
+  if (hasActiveAgent) {
     return {
       spawned: false,
       details: {
         reason: "agent_session_already_active",
         taskId: task.id,
-        sessionKey: task.agent_session_key,
       },
     }
   }

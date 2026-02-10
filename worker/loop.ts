@@ -803,13 +803,19 @@ async function runProjectCycle(
     }
   }
 
+  // Query active agents from Convex (survives loop restarts, source of truth)
+  const activeAgents = await convex.query(api.tasks.getActiveAgentsByProject, {
+    projectId: project.id,
+  })
+  const activeAgentCount = activeAgents.length
+
   // Update state to show we're starting a cycle
   await convex.mutation(api.workLoop.upsertState, {
     project_id: project.id,
     status: "running",
     current_phase: "cleanup",
     current_cycle: cycle,
-    active_agents: agentManager.activeCount(project.id),
+    active_agents: activeAgentCount,
     max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
     last_cycle_at: cycleStart,
   })
@@ -837,7 +843,7 @@ async function runProjectCycle(
     status: "running",
     current_phase: "review",
     current_cycle: cycle,
-    active_agents: agentManager.activeCount(project.id),
+    active_agents: activeAgentCount,
     max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
   })
 
@@ -865,7 +871,7 @@ async function runProjectCycle(
     status: "running",
     current_phase: "work",
     current_cycle: cycle,
-    active_agents: agentManager.activeCount(project.id),
+    active_agents: activeAgentCount,
     max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
   })
 
@@ -898,7 +904,7 @@ async function runProjectCycle(
     status: "running",
     current_phase: "triage",
     current_cycle: cycle,
-    active_agents: agentManager.activeCount(project.id),
+    active_agents: activeAgentCount,
     max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
   })
 
@@ -947,7 +953,7 @@ async function runProjectCycle(
     status: "running",
     current_phase: "idle",
     current_cycle: cycle,
-    active_agents: agentManager.activeCount(project.id),
+    active_agents: activeAgentCount,
     max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
     last_cycle_at: Date.now(),
   })
@@ -1073,12 +1079,16 @@ async function runLoop(): Promise<void> {
   try {
     const projects = await getEnabledProjects(convex)
     for (const project of projects) {
+      // Query active agents from Convex for accurate count
+      const activeAgents = await convex.query(api.tasks.getActiveAgentsByProject, {
+        projectId: project.id,
+      })
       await convex.mutation(api.workLoop.upsertState, {
         project_id: project.id,
         status: "stopped",
         current_phase: currentPhase,
         current_cycle: cycle,
-        active_agents: agentManager.activeCount(project.id),
+        active_agents: activeAgents.length,
         max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
         last_cycle_at: Date.now(),
       })
