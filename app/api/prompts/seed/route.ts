@@ -4,7 +4,7 @@ import { api } from "@/convex/_generated/api"
 import * as fs from "fs"
 import * as path from "path"
 
-const ROLES_DIR = "/home/dan/clawd/roles"
+const ROLES_DIR = path.join(process.cwd(), "roles")
 // v2 Work Loop roles - aligns with TaskRole type in lib/types/index.ts
 const ROLES = ["pm", "dev", "research", "reviewer", "conflict_resolver"]
 

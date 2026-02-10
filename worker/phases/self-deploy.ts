@@ -14,8 +14,8 @@ import { execFileSync } from "node:child_process"
 // The clutch project slug — only this project triggers a self-deploy
 const SELF_PROJECT_SLUG = "clutch"
 
-// Absolute path to the clutch repo (where the server runs from)
-const CLUTCH_REPO = "/home/dan/src/clutch"
+// Use process.cwd() — the worker always runs from the repo root
+const CLUTCH_REPO = process.cwd()
 
 interface ProjectInfo {
   id: string
