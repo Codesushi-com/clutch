@@ -12,8 +12,8 @@
  *    pr_number to see if their PR was merged. If so, mark them as done.
  *    This handles cases where a PR is force-merged outside the review phase.
  * 3. Orphan worktrees — worktrees for tasks that are done. Remove them.
- * 4. Merged remote branches — for done tasks with PR numbers, delete the
- *    remote branch if the PR was merged.
+ * 4. Dead remote branches — for done tasks with PR numbers, delete the
+ *    remote branch if the PR was merged or closed.
  * 5. Stale browser tabs — close agent-opened browser tabs to prevent memory leaks.
  *
  * Agent reaping (finished/stale sessions) is handled earlier in
@@ -559,8 +559,9 @@ async function cleanMergedRemoteBranches(ctx: BranchCleanupContext): Promise<num
       )
       const prData = JSON.parse(prResult) as { state: string; mergedAt: string | null }
 
-      // Only delete branch if PR was merged
-      if (prData.state === "MERGED") {
+      // Delete branch if PR is merged OR closed (dead PRs leave dead branches)
+      if (prData.state === "MERGED" || prData.state === "CLOSED") {
+        const reason = prData.state === "MERGED" ? "merged_pr" : "closed_pr"
         // Branch existence already verified by batch ls-remote above
         try {
           execFileSync(
@@ -575,10 +576,10 @@ async function cleanMergedRemoteBranches(ctx: BranchCleanupContext): Promise<num
             phase: "cleanup",
             action: "remote_branch_deleted",
             taskId: task.id,
-            details: { branch: branchName, prNumber, reason: "merged_pr" },
+            details: { branch: branchName, prNumber, reason },
           })
           actions++
-          console.log(`[cleanup] Deleted merged remote branch: ${branchName} (PR #${prNumber})`)
+          console.log(`[cleanup] Deleted remote branch: ${branchName} (PR #${prNumber}, ${prData.state.toLowerCase()})`)
         } catch (deleteErr) {
           const deleteMsg = deleteErr instanceof Error ? deleteErr.message : String(deleteErr)
           console.warn(`[cleanup] Failed to delete remote branch ${branchName}: ${deleteMsg}`)
@@ -592,7 +593,7 @@ async function cleanMergedRemoteBranches(ctx: BranchCleanupContext): Promise<num
           })
         }
       } else {
-        console.log(`[cleanup] PR #${prNumber} not merged (state: ${prData.state}), keeping branch ${branchName}`)
+        console.log(`[cleanup] PR #${prNumber} still open (state: ${prData.state}), keeping branch ${branchName}`)
       }
     } catch (prCheckErr) {
       const prMsg = prCheckErr instanceof Error ? prCheckErr.message : String(prCheckErr)
