@@ -272,7 +272,9 @@ class SessionWatcher {
   private cache = new SessionCache()
   private scanner = new FileScanner()
   private pollTimer: NodeJS.Timeout | null = null
+  private reconcileTimer: NodeJS.Timeout | null = null
   private running = false
+  private static RECONCILE_INTERVAL_MS = 60_000 // check for stale sessions every 60s
 
   constructor() {
     this.convex = new ConvexHttpClient(CONVEX_URL)
@@ -295,6 +297,9 @@ class SessionWatcher {
     this.running = true
     this.poll()
     this.pollTimer = setInterval(() => this.poll(), POLL_INTERVAL_MS)
+    // Periodically reconcile: mark Convex sessions as stale/completed if their
+    // JSONL files haven't been touched or if they no longer appear in OpenClaw
+    this.reconcileTimer = setInterval(() => this.reconcileStale(), SessionWatcher.RECONCILE_INTERVAL_MS)
 
     process.on("SIGTERM", () => this.stop())
     process.on("SIGINT", () => this.stop())
@@ -309,8 +314,100 @@ class SessionWatcher {
       clearInterval(this.pollTimer)
       this.pollTimer = null
     }
+    if (this.reconcileTimer) {
+      clearInterval(this.reconcileTimer)
+      this.reconcileTimer = null
+    }
     console.log("[SessionWatcher] Goodbye")
     process.exit(0)
+  }
+
+  /**
+   * Periodic reconciliation: find sessions marked "active" in Convex whose
+   * JSONL files are older than STALE_THRESHOLD_MS, and mark them stale/completed.
+   * This catches sessions that died without the watcher noticing (because the
+   * file scanner only picks up files with new mtimes).
+   */
+  private async reconcileStale(): Promise<void> {
+    if (!this.running) return
+
+    try {
+      // Get all active/idle agent sessions from Convex
+      const activeSessions = await this.convex.query(api.sessions.list, {
+        status: "active",
+        sessionType: "agent",
+        limit: 200,
+      })
+
+      if (!activeSessions || activeSessions.length === 0) return
+
+      const now = Date.now()
+      let reconciled = 0
+
+      for (const session of activeSessions) {
+        const filePath = session.file_path
+        if (!filePath) {
+          // No file path recorded — if lastActiveAt is old, mark completed
+          const lastActive = session.last_active_at ?? session.updated_at ?? 0
+          if (now - lastActive > STALE_THRESHOLD_MS) {
+            try {
+              await this.convex.mutation(api.sessions.upsert, {
+                sessionKey: session.session_key,
+                sessionId: session.session_id,
+                sessionType: (session.session_type ?? "agent") as SessionType,
+                status: "completed",
+              })
+              reconciled++
+            } catch {
+              // non-fatal
+            }
+          }
+          continue
+        }
+
+        // Check file mtime
+        try {
+          const stats = statSync(filePath)
+          if (now - stats.mtimeMs > STALE_THRESHOLD_MS) {
+            // File hasn't been touched — determine proper status
+            const lastLines = readLastLines(filePath, 5)
+            const lastMsg = lastLines.length > 0 ? findLastAssistantMessage(lastLines) : null
+            const isTerminalError = hasTerminalError(filePath)
+            const isDone = (lastMsg?.isDone ?? false) || isTerminalError
+            const newStatus = isDone ? "completed" : "stale"
+
+            await this.convex.mutation(api.sessions.upsert, {
+              sessionKey: session.session_key,
+              sessionId: session.session_id,
+              sessionType: (session.session_type ?? "agent") as SessionType,
+              status: newStatus,
+              lastActiveAt: stats.mtimeMs,
+            })
+            reconciled++
+          }
+        } catch {
+          // File doesn't exist — session is dead
+          try {
+            await this.convex.mutation(api.sessions.upsert, {
+              sessionKey: session.session_key,
+              sessionId: session.session_id,
+              sessionType: (session.session_type ?? "agent") as SessionType,
+              status: "completed",
+            })
+            reconciled++
+          } catch {
+            // non-fatal
+          }
+        }
+      }
+
+      if (reconciled > 0) {
+        console.log(`[SessionWatcher] Reconciled ${reconciled} stale sessions`)
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      console.error(`[SessionWatcher] Reconciliation error: ${msg}`)
+    }
   }
 
   private async poll(): Promise<void> {
