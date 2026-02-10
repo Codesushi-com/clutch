@@ -83,9 +83,9 @@ function formatModelShort(model: string | null | undefined): string {
 
 // Get color for idle time indicator
 function getIdleColor(minutes: number): string {
-  if (minutes < 1) return "text-green-400" // < 1m: green
-  if (minutes < 5) return "text-yellow-400" // 1-5m: yellow
-  return "text-red-400" // > 5m: red (possibly stuck)
+  if (minutes < 3) return "text-green-400" // < 3m: green
+  if (minutes < 10) return "text-yellow-400" // 3-10m: yellow (warning)
+  return "text-red-400" // >= 10m: red (possibly stuck)
 }
 
 export function AgentCard({ task, projectSlug }: AgentCardProps) {
@@ -130,7 +130,7 @@ export function AgentCard({ task, projectSlug }: AgentCardProps) {
       idleMinutes,
       totalTokens,
       contextPercent,
-      isStuck: idleMinutes >= 5,
+      isStuck: idleMinutes >= 10,
       model,
       status: session?.status ?? 'idle',
     }
