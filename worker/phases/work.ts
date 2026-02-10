@@ -441,6 +441,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
         model,
         thinking: "off",
         timeoutSeconds: 600,
+        retryCount: task.agent_retry_count ?? 0,
       })
 
       await log({

@@ -50,6 +50,7 @@ export interface SpawnAgentParams {
   model?: string
   thinking?: string
   timeoutSeconds?: number
+  retryCount?: number
 }
 
 // ============================================
@@ -80,7 +81,10 @@ export class AgentManager {
     // Ensure gateway connection
     await this.gateway.connect()
 
-    const sessionKey = `agent:main:${params.projectSlug}:${params.role}:${params.taskId.slice(0, 8)}`
+    const retryCount = params.retryCount ?? 0
+    const sessionKey = retryCount > 0
+      ? `agent:main:${params.projectSlug}:${params.role}:${params.taskId.slice(0, 8)}:r${retryCount}`
+      : `agent:main:${params.projectSlug}:${params.role}:${params.taskId.slice(0, 8)}`
     const now = Date.now()
 
     // Create the long-running RPC promise

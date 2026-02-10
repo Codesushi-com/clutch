@@ -456,6 +456,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
         message: prompt,
         model: "kimi",
         timeoutSeconds: 600,
+        retryCount: task.agent_retry_count ?? 0,
       })
 
       try {
@@ -558,6 +559,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       message: prompt,
       model: "gpt",
       timeoutSeconds: 600,
+      retryCount: task.review_count ?? 0,
     })
 
     // Write reviewer agent info to task (same pattern as work phase)
