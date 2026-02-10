@@ -34,8 +34,9 @@ export async function POST(
 
     const { task } = result
 
-    // Determine new status - 'review' if PR created, 'done' otherwise
-    const newStatus = prUrl ? "in_review" : "done"
+    // Always set to in_review - only the work loop should move to done
+    // (when PR is merged via review phase, cleanup phase, or auto-merge)
+    const newStatus = "in_review"
 
     // Build completion comment content
     let commentContent = `## Task Completed\n\n${summary}`
@@ -61,7 +62,7 @@ export async function POST(
     const updatedTask = await convex.mutation(api.tasks.move, {
       id,
       status: newStatus,
-      reason: `Task completed via API by ${author}${prUrl ? ' with PR' : ''}`
+      reason: `Task completion submitted by ${author} - moved to in_review${prUrl ? ' with PR' : ' (PR to be created)'}`
     })
 
     // Log event to events table
