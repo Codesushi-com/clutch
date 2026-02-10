@@ -416,7 +416,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
 
   // Clean stale worktrees for merged branches not associated with active tasks
   const staleWorktreeResult = await cleanStaleWorktrees(
-    { repoPath, worktreesPath, projectId: project.id, cycle, log },
+    { repoPath, _worktreesPath: worktreesPath, projectId: project.id, cycle, log },
     activeTaskBranches
   )
   actions += staleWorktreeResult.actions

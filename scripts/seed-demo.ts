@@ -124,7 +124,6 @@ const SIGNAL_KINDS = ["question", "blocker", "alert", "fyi"] as const
 type SignalKind = typeof SIGNAL_KINDS[number]
 
 const SIGNAL_SEVERITIES = ["normal", "high", "critical"] as const
-type SignalSeverity = typeof SIGNAL_SEVERITIES[number]
 
 const TASK_EVENT_TYPES = ["created", "assigned", "started", "completed", "reviewed", "merged"] as const
 type TaskEventType = typeof TASK_EVENT_TYPES[number]
@@ -136,7 +135,6 @@ const REQUIREMENT_STATUSES = ["draft", "approved", "implemented", "deferred"] as
 type RequirementStatus = typeof REQUIREMENT_STATUSES[number]
 
 const PROMPT_ROLES = ["dev", "reviewer"] as const
-type PromptRole = typeof PROMPT_ROLES[number]
 
 const ANALYSIS_OUTCOMES = ["success", "failure", "partial", "abandoned"] as const
 type AnalysisOutcome = typeof ANALYSIS_OUTCOMES[number]
