@@ -27,6 +27,26 @@ const DEFAULT_PRICING = [
     input_per_1m: 3.0,
     output_per_1m: 15.0,
   },
+  {
+    model: "openai-codex/gpt-5.2",
+    input_per_1m: 2.0,
+    output_per_1m: 8.0,
+  },
+  {
+    model: "openai-codex/gpt-5.3-codex",
+    input_per_1m: 2.0,
+    output_per_1m: 8.0,
+  },
+  {
+    model: "anthropic/claude-opus-4-6",
+    input_per_1m: 15.0,
+    output_per_1m: 75.0,
+  },
+  {
+    model: "moonshot/kimi-k2.5",
+    input_per_1m: 0.6,
+    output_per_1m: 0.6,
+  },
 ]
 
 /**

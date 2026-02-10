@@ -253,7 +253,7 @@ function checksPass(status: PRExpandedStatus): boolean {
 
   // All checks must be SUCCESS or NEUTRAL (not FAILURE or PENDING)
   for (const check of status.statusCheckRollup) {
-    const state = check.state.toUpperCase()
+    const state = (check.state ?? "").toUpperCase()
     if (state === 'FAILURE' || state === 'ERROR' || state === 'TIMED_OUT') {
       return false
     }
@@ -276,7 +276,7 @@ function noChangesRequested(status: PRExpandedStatus): boolean {
   }
 
   for (const review of status.reviews) {
-    if (review.state.toUpperCase() === 'CHANGES_REQUESTED') {
+    if ((review.state ?? "").toUpperCase() === 'CHANGES_REQUESTED') {
       return false
     }
   }
