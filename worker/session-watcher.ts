@@ -1,6 +1,5 @@
 import { ConvexHttpClient } from "convex/browser"
-import { readdirSync, statSync, readFileSync } from "node:fs"
-import { execFileSync } from "node:child_process"
+import { readdirSync, statSync, readFileSync, openSync, readSync, closeSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, extname } from "node:path"
 import { api } from "../convex/_generated/api"
@@ -71,12 +70,27 @@ function extractProjectSlug(sessionKey: string): string | undefined {
   return undefined
 }
 
-function readLastLine(filePath: string): string | null {
+/**
+ * Read the last N lines of a file by reading a chunk from the end.
+ * Pure Node.js — no external `tail` dependency.
+ */
+function readLastLines(filePath: string, lineCount: number, chunkSize = 8192): string[] {
   try {
-    const result = execFileSync("tail", ["-n", "1", filePath], { encoding: "utf-8", timeout: 5000 })
-    return result.trim() || null
+    const stats = statSync(filePath)
+    if (stats.size === 0) return []
+    const fd = openSync(filePath, "r")
+    try {
+      const readSize = Math.min(chunkSize, stats.size)
+      const buffer = Buffer.alloc(readSize)
+      readSync(fd, buffer, 0, readSize, stats.size - readSize)
+      const text = buffer.toString("utf-8")
+      const lines = text.split("\n").filter(Boolean)
+      return lines.slice(-lineCount)
+    } finally {
+      closeSync(fd)
+    }
   } catch {
-    return null
+    return []
   }
 }
 
@@ -147,10 +161,17 @@ function parseLastMessage(line: string): {
   }
 }
 
+function findLastAssistantMessage(lines: string[]) {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const result = parseLastMessage(lines[i])
+    if (result) return result
+  }
+  return null
+}
+
 function hasTerminalError(filePath: string): boolean {
   try {
-    const result = execFileSync("tail", ["-n", "3", filePath], { encoding: "utf-8", timeout: 5000 })
-    const lines = result.trim().split("\n").filter(Boolean)
+    const lines = readLastLines(filePath, 3)
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
         const entry = JSON.parse(lines[i]) as {
@@ -176,8 +197,9 @@ function hasTerminalError(filePath: string): boolean {
   return false
 }
 
-function determineStatus(isDone: boolean, fileMtimeMs: number): SessionStatus {
+function determineStatus(isDone: boolean, hasAssistantMessage: boolean, fileMtimeMs: number): SessionStatus {
   if (isDone) return "completed"
+  if (!hasAssistantMessage) return "idle"
   if (Date.now() - fileMtimeMs > STALE_THRESHOLD_MS) return "stale"
   return "active"
 }
@@ -310,14 +332,14 @@ class SessionWatcher {
       const stats = statSync(filePath)
       const fileMtimeMs = stats.mtimeMs
 
-      const lastLine = readLastLine(filePath)
-      const lastMsg = lastLine ? parseLastMessage(lastLine) : null
+      const lastLines = readLastLines(filePath, 5)
+      const lastMsg = lastLines.length > 0 ? findLastAssistantMessage(lastLines) : null
       const isTerminalError = hasTerminalError(filePath)
       const isDone = (lastMsg?.isDone ?? false) || isTerminalError
 
       const sessionType = detectSessionType(sessionKey)
       let projectSlug = extractProjectSlug(sessionKey)
-      const status = determineStatus(isDone, fileMtimeMs)
+      const status = determineStatus(isDone, lastMsg !== null, fileMtimeMs)
 
       // Resolve task ID: look up tasks where agent_session_key matches
       // this session key. The task stores the full session key, so we
@@ -409,7 +431,9 @@ class SessionWatcher {
         }))
       })
 
-      console.log(`[SessionWatcher] Synced ${result.count} sessions`)
+      if (result.count > 0) {
+        console.log(`[SessionWatcher] Synced ${result.count} sessions`)
+      }
       if (result.errors.length > 0) {
         console.error("[SessionWatcher] Errors:", result.errors)
       }
