@@ -159,7 +159,7 @@ export class AgentManager {
    * @param staleMs - Milliseconds of inactivity before a session is considered stuck.
    *                  Default: 5 minutes (300_000 ms).
    */
-  async reapFinished(staleMs = 5 * 60 * 1000): Promise<{
+  async reapFinished(staleMs = 5 * 60 * 1000, staleReviewMs?: number): Promise<{
     reaped: AgentOutcome[]
   }> {
     if (this.agents.size === 0) return { reaped: [] }
@@ -168,7 +168,10 @@ export class AgentManager {
     const now = Date.now()
 
     for (const [taskId, handle] of this.agents) {
-      const info = this.sessionFileReader.getSessionInfo(handle.sessionKey, staleMs)
+      const effectiveStaleMs = handle.role === "reviewer" && staleReviewMs != null
+        ? staleReviewMs
+        : staleMs
+      const info = this.sessionFileReader.getSessionInfo(handle.sessionKey, effectiveStaleMs)
 
       // Ignore stale session files from previous loop runs
       // This prevents false tombstones when the loop restarts

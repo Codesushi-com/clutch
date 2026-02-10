@@ -369,10 +369,10 @@ async function runProjectCycle(
   const cycleStart = Date.now()
 
   // Reap finished agents before doing anything else.
-  // Convert staleTaskMinutes from config into milliseconds for the reaper.
   const config = loadConfig()
   const staleMs = config.staleTaskMinutes * 60 * 1000
-  const { reaped } = await agentManager.reapFinished(staleMs)
+  const staleReviewMs = config.staleReviewMinutes * 60 * 1000
+  const { reaped } = await agentManager.reapFinished(staleMs, staleReviewMs)
 
   // Note: Active agent activity is now tracked via sessions table, not tasks
 
