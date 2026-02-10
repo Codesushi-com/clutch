@@ -7,10 +7,10 @@ set -euo pipefail
 #   ./scripts/qa-smoke-agent-browser.sh <project-slug> [base-url]
 #
 # Example:
-#   ./scripts/qa-smoke-agent-browser.sh the-clutch http://192.168.7.200:3002
+#   ./scripts/qa-smoke-agent-browser.sh the-clutch http://localhost:3002
 
 SLUG="${1:-}"
-BASE_URL="${2:-${CLUTCH_URL:-http://192.168.7.200:3002}}"
+BASE_URL="${2:-${CLUTCH_URL:-http://localhost:3002}}"
 
 if [[ -z "$SLUG" ]]; then
   echo "Usage: $0 <project-slug> [base-url]" >&2

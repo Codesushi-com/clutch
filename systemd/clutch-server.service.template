@@ -1,6 +1,6 @@
 [Unit]
 Description=OpenClutch Next.js Server
-Documentation=https://github.com/dbachelder/clutch
+Documentation=https://github.com/OWNER/REPO
 After=network.target
 
 [Service]

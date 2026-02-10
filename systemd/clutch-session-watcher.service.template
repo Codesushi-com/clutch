@@ -1,6 +1,6 @@
 [Unit]
 Description=OpenClutch Session Watcher
-Documentation=https://github.com/dbachelder/clutch
+Documentation=https://github.com/OWNER/REPO
 After=clutch-server.service
 Wants=clutch-server.service
 

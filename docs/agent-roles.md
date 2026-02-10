@@ -4,7 +4,7 @@ OpenClutch supports specialized agent roles through SOUL templates that define b
 
 ## Available Roles
 
-Role templates are stored in `/home/dan/clawd/roles/` and can be injected into agents at spawn time.
+Role templates are stored in `/path/to/clawd/roles/` and can be injected into agents at spawn time.
 
 | Role | Template | Purpose |
 |------|----------|---------|
@@ -22,7 +22,7 @@ When spawning agents, specify role template to inject specialized behavior:
 // Example: Spawn PM agent for feature breakdown
 const pmAgent = await spawnAgent({
   task: "Break down user authentication epic into tickets",
-  role: "pm", // Injects /home/dan/clawd/roles/pm.md as SOUL
+  role: "pm", // Injects /path/to/clawd/roles/pm.md as SOUL
   context: { epic: epicDetails }
 });
 ```
@@ -58,5 +58,5 @@ Roles define when to escalate vs. decide independently, enabling autonomous oper
 Consistent output formats across role agents make handoffs predictable and reduce coordination overhead.
 
 ## See Also
-- Full role documentation: `/home/dan/clawd/roles/README.md`
-- Individual role templates: `/home/dan/clawd/roles/*.md`
+- Full role documentation: `/path/to/clawd/roles/README.md`
+- Individual role templates: `/path/to/clawd/roles/*.md`

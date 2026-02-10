@@ -31,7 +31,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [reconnecting, setReconnecting] = useState(false)
   const [appVersion] = useState("1.0.0")
-  const githubUrl = process.env.NEXT_PUBLIC_GITHUB_URL || "https://github.com/dbachelder/clutch"
+  const githubUrl = process.env.NEXT_PUBLIC_GITHUB_URL
 
   // Fetch OpenClaw connection status
   const fetchStatus = async () => {
@@ -208,17 +208,19 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          <div className="pt-2">
-            <a
-              href={githubUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 hover:underline"
-            >
-              View on GitHub
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </div>
+          {githubUrl && (
+            <div className="pt-2">
+              <a
+                href={githubUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 hover:underline"
+              >
+                View on GitHub
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

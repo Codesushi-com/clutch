@@ -41,7 +41,7 @@ Statuses: `backlog` → `ready` → `in_progress` → `in_review` → `done` (+ 
 
 **`read` tool — ALWAYS pass a `path` parameter:**
 ```
-read(path="/home/dan/src/clutch/some/file.ts")
+read(path="/path/to/clutch/some/file.ts")
 ```
 Never call `read()` with no arguments — it will fail. If you need to explore the project structure, use `exec` with `fd`, `rg`, or `cat` instead.
 
@@ -50,37 +50,37 @@ Never call `read()` with no arguments — it will fail. If you need to explore t
 **Common patterns:**
 ```bash
 # Find files by name (fd is available)
-fd "\.tsx$" /home/dan/src/clutch/app
+fd "\.tsx$" /path/to/clutch/app
 
 # Search for code (rg is available — use it instead of grep)
 # NOTE: -t ts covers .ts AND .tsx. Do NOT use -t tsx (doesn't exist)
-rg "functionName" /home/dan/src/clutch/app -t ts
+rg "functionName" /path/to/clutch/app -t ts
 
 # Read a file
-cat /home/dan/src/clutch/app/page.tsx
+cat /path/to/clutch/app/page.tsx
 
 # IMPORTANT: Quote paths with brackets (Next.js [slug] dirs)
-cat '/home/dan/src/clutch/app/projects/[slug]/page.tsx'
+cat '/path/to/clutch/app/projects/[slug]/page.tsx'
 
 # List directory
-ls /home/dan/src/clutch/app/
+ls /path/to/clutch/app/
 ```
 
 ## Git Worktrees (REQUIRED)
 
-**NEVER switch branches in `/home/dan/src/clutch`** — the dev server runs there on `main`.
+**NEVER switch branches in `/path/to/clutch`** — the dev server runs there on `main`.
 
 **For ALL feature work:**
 ```bash
 # Create worktree for your task
-cd /home/dan/src/clutch
-git worktree add /home/dan/src/clutch-worktrees/<branch-name> -b <branch-name>
+cd /path/to/clutch
+git worktree add /path/to/clutch-worktrees/<branch-name> -b <branch-name>
 
 # Work in the worktree
-cd /home/dan/src/clutch-worktrees/<branch-name>
+cd /path/to/clutch-worktrees/<branch-name>
 
 # When done (after PR merged), clean up
-git worktree remove /home/dan/src/clutch-worktrees/<branch-name>
+git worktree remove /path/to/clutch-worktrees/<branch-name>
 ```
 
 Branch naming: `fix/<ticket-id-prefix>-<short-desc>` or `feat/<ticket-id-prefix>-<short-desc>`

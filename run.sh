@@ -178,7 +178,9 @@ stop_bridge_pid() {
 start_server_pid() {
   stop_server_pid 2>/dev/null || true
   echo "[clutch] Starting production server on port $PORT (watch mode)"
-  NODE_ENV=production setsid nohup /home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/next/dist/bin/next start -p "$PORT" > "$SERVER_LOG" 2>&1 &
+  local NODE_BIN
+  NODE_BIN="$(which node)"
+  NODE_ENV=production setsid nohup "$NODE_BIN" ./node_modules/next/dist/bin/next start -p "$PORT" > "$SERVER_LOG" 2>&1 &
   echo $! > "$SERVER_PID"
 }
 
@@ -189,7 +191,9 @@ start_loop_pid() {
     set -a
     source <(grep -v '^#' .env.local)
     set +a
-    setsid nohup /home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/.bin/tsx worker/loop.ts > "$LOOP_LOG" 2>&1 &
+    local NODE_BIN
+    NODE_BIN="$(which node)"
+    setsid nohup "$NODE_BIN" ./node_modules/.bin/tsx worker/loop.ts > "$LOOP_LOG" 2>&1 &
     echo $! > "$LOOP_PID"
   else
     echo "[clutch] Work loop disabled (WORK_LOOP_ENABLED != true)"
@@ -202,7 +206,9 @@ start_bridge_pid() {
   set -a
   source <(grep -v '^#' .env.local)
   set +a
-  setsid nohup /home/dan/.volta/tools/image/node/22.22.0/bin/node ./node_modules/.bin/tsx worker/chat-bridge.ts > "$BRIDGE_LOG" 2>&1 &
+  local NODE_BIN
+  NODE_BIN="$(which node)"
+  setsid nohup "$NODE_BIN" ./node_modules/.bin/tsx worker/chat-bridge.ts > "$BRIDGE_LOG" 2>&1 &
   echo $! > "$BRIDGE_PID"
 }
 

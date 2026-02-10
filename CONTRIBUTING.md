@@ -26,8 +26,8 @@ Not sure where to start? Check out issues labeled `good first issue`.
 
 ```bash
 # Clone the repository
-git clone https://github.com/dbachelder/clutch.git
-cd clutch
+git clone https://github.com/OWNER/REPO.git
+cd REPO
 
 # Install dependencies
 pnpm install
