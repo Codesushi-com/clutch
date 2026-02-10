@@ -30,6 +30,8 @@ export interface PromptParams {
   taskDescription: string
   /** The project ID */
   projectId: string
+  /** The project slug (for CLI commands) */
+  projectSlug?: string
   /** The repository directory */
   repoDir: string
   /** The worktree directory for dev tasks */
@@ -147,6 +149,7 @@ ${params.taskDescription}${commentsSection}
 function buildReviewerTaskContext(params: PromptParams): string {
   const commentsSection = formatCommentsSection(params.comments)
   const prNumber = params.prNumber ?? "<number>"
+  const projectSlug = params.projectSlug ?? "clutch"
 
   return `## Task: ${params.taskTitle}
 
@@ -163,6 +166,7 @@ ${params.taskDescription}${commentsSection}
 
 **Worktree Path:** ${params.worktreeDir}
 **PR Number:** #${prNumber}
+**Project:** ${projectSlug}
 
 **Review steps:**
 1. Read the ticket description above
@@ -173,8 +177,35 @@ ${params.taskDescription}${commentsSection}
 
 You do NOT have browser access. If UI changes need visual verification, note it in your review comment.
 
-**Your session MUST end with either step 5 (merge) or step 6 (rejection comment).
-Finishing without either will block the task and waste a triage cycle.**`
+**Your session MUST end with either step 4 (merge) or step 5 (rejection comment).
+Finishing without either will block the task and waste a triage cycle.**
+
+## Creating Follow-up Tickets (for non-blocking feedback)
+
+If you find non-blocking improvements (style, small refactors, tech-debt, "would be nicer if..."), create follow-up tickets so they don't get lost.
+
+**Use this CLI command:**
+\`\`\`bash
+clutch tasks create --project ${projectSlug} --title "Follow-up: <short summary>" --description '<context and suggested change>' --status ready --priority medium --role dev --tags 'follow-up,<area>'
+\`\`\`
+
+**Example:**
+\`\`\`bash
+clutch tasks create --project ${projectSlug} --title "Follow-up: Extract validation logic into shared utility" --description '- Context: Found during review of PR #'${prNumber}'
+- Why: The validation logic is duplicated across 3 files
+- Suggested change: Extract into a shared validateTask() function in lib/validation.ts
+
+**Acceptance Criteria:**
+- [ ] Validation logic extracted into shared utility
+- [ ] All existing validation sites updated to use the new utility
+- [ ] Tests pass' --status ready --priority medium --role dev --tags 'follow-up,refactor'
+\`\`\`
+
+**Important:**
+- Use SINGLE QUOTES for --description (double quotes let zsh interpret backticks)
+- Always include the \`follow-up\` tag
+- Include the PR number in the description for context
+- Create one ticket per distinct improvement area (avoid mega-tickets)`
 }
 
 /**
