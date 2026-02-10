@@ -1,292 +1,137 @@
 # OpenClutch
 
-AI agent orchestration system where Ada serves as coordinator for specialized sub-agents.
+> AI agent orchestration platform. Coordinate specialized sub-agents to build software autonomously.
 
-## Quick Start
+![OpenClutch Observatory](./docs/observatory-screenshot.png)
 
-```bash
-# Install dependencies
-pnpm install
+OpenClutch is an autonomous software development platform that orchestrates AI agents to plan, code, review, and deploy changes. It replaces manual project management with an intelligent work loop that continuously assigns tasks to specialized agents, monitors progress, and ensures quality through automated reviews.
 
-# Run development server
-pnpm dev
+## Features
 
-# Build for production
-pnpm build
-
-# Run production server
-PORT=3002 pnpm start
-```
-
-**Dev URL:** http://192.168.7.200:3002  
-**Prod URL:** https://ada.codesushi.com
+- **Agent Orchestration** — Coordinate multiple AI agents across projects with configurable roles (dev, reviewer, pm, research, conflict_resolver)
+- **Work Loop Engine** — Continuous task scheduling with automatic triage, work assignment, and review pipelines
+- **Observatory Dashboard** — Real-time monitoring with 5 tabs: Live, Triage, Analytics, Models, and Prompts
+- **Real-time Backend** — Convex-powered reactive data layer for instant UI updates
+- **Bidirectional Chat** — WebSocket integration with OpenClaw for seamless agent communication
+- **GitHub Integration** — Automated PR creation, review, and merge workflows
+- **CLI Tool** — Command-line interface for task management and deployment
+- **Multi-Project Support** — Manage multiple repositories with isolated worktrees
 
 ## Architecture
 
-### Core Concept
-- **Ada (Coordinator)** - Main agent that triages and delegates to sub-agents
-- **Worker Agents** - Stateless, fresh session per task (kimi-coder, sonnet-reviewer, haiku-triage)
-- **OpenClutch Board** - Convex-backed task management (replaces GitHub Projects)
-- **Observatory** - 5-tab dashboard for monitoring and controlling AI agents
-- **Chat** - Bidirectional communication with OpenClaw main session
-
-### Tech Stack
-- Next.js 16, TypeScript, React 19
-- Convex (self-hosted) for real-time data
-- Tailwind CSS v4 + shadcn/ui
-- Zustand for state management
-- Vitest for testing
-- pnpm for package management
-
-### Process Architecture
-
-OpenClutch runs as **4 separate processes** managed by `run.sh`:
-
-1. **Next.js Server** (`clutch-server`) - Serves web UI and API routes (port 3002)
-2. **Work Loop** (`clutch-loop`) - Agent orchestration, task scheduling, triage
-3. **Chat Bridge** (`clutch-bridge`) - WebSocket client syncing OpenClaw ↔ Convex
-4. **Session Watcher** (`clutch-session-watcher`) - Reads OpenClaw JSONL files, upserts to Convex `sessions` table
-
-**Why split:** Running work loop + WebSocket client in Next.js blocked the event loop, causing 30s+ page loads.
-
-**Management:**
-```bash
-./run.sh start      # Build + enable/start all systemd services
-./run.sh stop       # Stop all services
-./run.sh restart    # Stop + start
-./run.sh status     # Show systemd service status
-./run.sh logs       # Tail server logs (journald)
-./run.sh loop-logs  # Tail work loop logs
-./run.sh bridge-logs # Tail chat bridge logs
-./run.sh watcher-logs # Tail session watcher logs
-./run.sh all-logs   # Tail all logs
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           OpenClutch Platform                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
+│  │ clutch-server│  │ clutch-loop  │  │clutch-bridge │  │clutch-session│ │
+│  │   (Next.js)  │  │  (Worker)    │  │   (Worker)   │  │  -watcher    │ │
+│  │   Port 3002  │  │Orchestration │  │ OpenClaw WS  │  │ JSONL Reader │ │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘ │
+│         │                 │                 │                 │         │
+│         └─────────────────┴─────────────────┴─────────────────┘         │
+│                                    │                                    │
+│                                    ▼                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    Convex (Self-Hosted)                          │   │
+│  │  • tasks • projects • sessions • workLoopState • signals        │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                    │                                    │
+│                                    ▼                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                      OpenClaw Gateway                            │   │
+│  │            (AI Agent Runtime - Separate Service)                 │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Observatory
+### Process Overview
 
-The **Observatory** is the centralized dashboard that replaced the old work-loop page. It provides a tabbed interface for monitoring and controlling AI agents across projects.
+| Process | Purpose | Description |
+|---------|---------|-------------|
+| `clutch-server` | Web UI & API | Next.js application serving the dashboard and REST endpoints |
+| `clutch-loop` | Orchestration | Work loop engine that schedules and monitors agents |
+| `clutch-bridge` | WebSocket Client | Bidirectional chat sync between OpenClutch and OpenClaw |
+| `clutch-session-watcher` | File Monitor | Reads OpenClaw JSONL session files and upserts to Convex |
 
-### Routes
-- **Global Observatory:** `/work-loop` - All projects
-- **Per-Project Observatory:** `/projects/[slug]/work-loop` - Locked to single project
+### Data Flow
 
-### Tabs
+1. **Task Creation** → Stored in Convex `tasks` table
+2. **Work Loop** → Detects ready tasks, spawns agents via OpenClaw
+3. **Agent Execution** → OpenClaw runs agents, writes to JSONL files
+4. **Session Watcher** → Reads JSONL, upserts to Convex `sessions`
+5. **UI Update** → Convex subscriptions push updates to Observatory dashboard
 
-1. **Live** - Real-time work-loop monitoring
-   - Active agents and their status
-   - Work-loop statistics and metrics
-   - Recent agent actions and events
+## Quick Start
 
-2. **Triage** - Blocked task management
-   - Review and unblock stuck tasks
-   - Triage performance metrics
+### Prerequisites
 
-3. **Analytics** - Historical performance data
-   - Cost tracking and visualizations
-   - Agent performance metrics over time
+- **Node.js 22** (via [Volta](https://volta.sh) recommended: `volta install node@22`)
+- **pnpm 10+** (`npm install -g pnpm`)
+- **Convex** (self-hosted via Docker, or use Convex Cloud)
+- **OpenClaw** gateway (separate service - see [OpenClaw](https://github.com/openclaw/openclaw))
 
-4. **Models** - Model usage and performance
-   - Model comparison and usage stats
-   - Cost per model
-
-5. **Prompts** - Prompt performance analysis
-   - A/B testing results
-   - Prompt version performance
-
-## Work Loop v2
-
-The work loop is OpenClutch's agent orchestration engine. It runs continuously, cycling through phases to manage agent execution across all projects.
-
-### Phases
-
-1. **Cleanup** - Close stale browser tabs, reset transient state
-2. **Triage** - Identify blocked tasks and notify Ada
-3. **Review** - Check completed work, spawn reviewers for PRs
-4. **Work** - Spawn agents for ready tasks
-
-### Agent Roles
-
-| Role | Model | Purpose |
-|------|-------|---------|
-| `dev` | kimi-for-coding | Implement features, fix bugs |
-| `reviewer` | kimi-for-coding | Review PRs, request changes or merge |
-| `pm` | sonnet | Research, plan, write specs |
-| `research` | sonnet | Deep investigation, analysis |
-| `conflict_resolver` | kimi-for-coding | Auto-rebase and resolve merge conflicts |
-
-### Status Flow
-
-```
-backlog → ready → in_progress → in_review → done
-              ↓        ↓
-           blocked ←─┘
-```
-
-- **backlog** - Holding pen for future work
-- **ready** - Available for agents to pick up
-- **in_progress** - Agent actively working
-- **in_review** - PR opened, waiting for review
-- **blocked** - Stuck, needs triage
-- **done** - Completed
-
-### Triage System
-
-When tasks become blocked, the work loop:
-1. Detects blocking conditions (signals, failed agents, conflicts)
-2. Sends batched triage messages to Ada via HTTP
-3. Ada reviews and decides: unblock, reassign, split, or escalate
-4. Circuit breaker: auto-escalates to Dan after 3 triage attempts
-
-### Agent Limits
-
-Configured via environment variables:
+### Installation
 
 ```bash
-WORK_LOOP_MAX_AGENTS=4              # Global max concurrent agents
-WORK_LOOP_MAX_AGENTS_PER_PROJECT=3  # Per-project limit
-WORK_LOOP_MAX_DEV_AGENTS=2          # Max dev agents
-WORK_LOOP_MAX_REVIEWER_AGENTS=2     # Max reviewer agents
+# Clone the repository
+git clone https://github.com/dbachelder/clutch.git
+cd clutch
+
+# Install dependencies
+pnpm install
+
+# Set up environment
+cp .env.example .env.local
+# Edit .env.local with your configuration (see Configuration section)
+
+# Start development server
+pnpm dev
 ```
 
-### Concurrency Tuning (Critical)
+The dev server will be available at `http://localhost:3002`.
 
-OpenClutch's agent limits must match OpenClaw's command lane concurrency:
+### Running the Full Stack
 
-**In `~/.openclaw/openclaw.json`:**
-```json
-{
-  "agents": {
-    "defaults": {
-      "maxConcurrent": 8
-    }
-  }
-}
-```
+For production deployment with all four processes:
 
-If OpenClaw's limit is lower than OpenClutch's, agents will queue and may be falsely reaped ("ghost-completing" with 0 tokens).
-
-**OpenClutch reaper grace period:** Located in `worker/agent-manager.ts`. Recommended: **10 minutes** when running high parallelism.
-
-### Multi-Project Support
-
-The work loop runs for all projects with `work_loop_enabled=1`. Each project needs:
-- `local_path` - Where to create worktrees
-- `github_repo` - For PR operations
-
-Worktree convention: `{project.local_path}-worktrees/fix/{taskId.slice(0,8)}`
-
-## Database
-
-OpenClutch uses **Convex** (self-hosted) for real-time data synchronization.
-
-### Tables
-
-**Core:**
-- `projects` - Project metadata, repo links, work loop config
-- `tasks` - Kanban tasks with status, priority, assignee, agent tracking
-- `comments` - Task comments for agent communication
-- `chats` - Chat threads per project
-- `chatMessages` - Chat message history
-
-**Work Loop:**
-- `workLoopRuns` - Audit log of every loop action
-- `workLoopState` - Current state of each project's loop
-- `task_events` - Detailed audit trail for task transitions
-- `sessions` - Unified tracking for all OpenClaw sessions
-
-**Agent System:**
-- `signals` - Agent signals (questions, blockers, alerts)
-- `taskDependencies` - Task dependency graph
-- `promptVersions` - Versioned role prompt templates
-- `taskAnalyses` - Post-mortem analysis of completed tasks
-- `promptMetrics` - Aggregated performance per role/model/version
-
-**Observatory:**
-- `model_pricing` - Cost per 1M tokens for each model
-- `notifications` - System notifications
-- `events` - Activity log
-
-**Feature Builder:**
-- `features` - High-level feature/epic definitions
-- `requirements` - Individual requirements
-- `roadmapPhases` - GSD-style phase definitions
-- `phaseRequirements` - Phase-to-requirement mappings
-- `featureBuilderSessions` - Feature builder usage tracking
-- `featureBuilderAnalytics` - Aggregated metrics
-
-### Convex Setup
-
-Convex runs locally via Docker:
 ```bash
-# Start Convex (if not already running)
-docker start convex-local  # or check docker-compose
+# Build and start all systemd services
+./run.sh start
 
-# Deploy schema changes
-npx convex deploy --url http://127.0.0.1:3210 --admin-key '<admin-key>'
+# Check status
+./run.sh status
+
+# View logs
+./run.sh logs          # Server logs
+./run.sh loop-logs     # Work loop logs
+./run.sh all-logs      # All processes
 ```
 
-The Convex URL is configured via `NEXT_PUBLIC_CONVEX_URL` (defaults to `http://127.0.0.1:3210`).
+## Configuration
 
-## OpenClaw Integration
-
-### WebSocket Chat
-
-OpenClutch connects to OpenClaw via WebSocket for real-time chat.
-
-```javascript
-// Connect handshake (first message required)
-{
-  type: "req",
-  id: "<uuid>",
-  method: "connect",
-  params: {
-    minProtocol: 3,
-    maxProtocol: 3,
-    client: {
-      id: "webchat",
-      version: "1.0.0", 
-      platform: "web",
-      mode: "webchat"
-    },
-    auth: { token: "<OPENCLAW_TOKEN>" }
-  }
-}
-```
-
-### Channel Plugin
-
-The clutch-channel plugin enables bidirectional messaging:
-- Plugin location: `plugins/clutch-channel.ts`
-- Symlink to: `~/.openclaw/extensions/clutch-channel.ts`
-
-### Session Tracking
-
-The **session watcher** worker (`worker/session-watcher.ts`) is the only code that reads OpenClaw JSONL session files. It batches/upserts into Convex `sessions` table; everything else reads from Convex. This allows swapping storage later without touching loop/UI.
-
-Agent completion is detected via `stopReason: "stop"` in JSONL files.
-
-## Environment Variables
-
-Create `.env.local`:
+Create `.env.local` from the example below:
 
 ```bash
 # OpenClaw API (server-side)
-OPENCLAW_HTTP_URL=http://127.0.0.1:18789
-OPENCLAW_WS_URL=ws://127.0.0.1:18789/ws
+OPENCLAW_HTTP_URL=http://localhost:18789
+OPENCLAW_WS_URL=ws://localhost:18789/ws
 OPENCLAW_TOKEN=<your-gateway-token>
 OPENCLAW_HOOKS_URL=http://localhost:18789/hooks
 OPENCLAW_HOOKS_TOKEN=<your-hooks-token>
 
 # OpenClaw (client-side)
-NEXT_PUBLIC_OPENCLAW_API_URL=http://192.168.7.200:18789
-NEXT_PUBLIC_OPENCLAW_WS_URL=ws://192.168.7.200:18789/ws
+NEXT_PUBLIC_OPENCLAW_API_URL=http://localhost:18789
+NEXT_PUBLIC_OPENCLAW_WS_URL=ws://localhost:18789/ws
 NEXT_PUBLIC_OPENCLAW_TOKEN=<your-gateway-token>
 
 # Convex
-CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
+CONVEX_SELF_HOSTED_URL=http://localhost:3210
 CONVEX_SELF_HOSTED_ADMIN_KEY=<admin-key>
-CONVEX_URL=http://127.0.0.1:3210
-NEXT_PUBLIC_CONVEX_SITE_URL=http://127.0.0.1:3211
+CONVEX_URL=http://localhost:3210
+NEXT_PUBLIC_CONVEX_SITE_URL=http://localhost:3211
 
 # Work Loop
 WORK_LOOP_ENABLED=true
@@ -299,182 +144,275 @@ WORK_LOOP_MAX_REVIEWER_AGENTS=2
 PORT=3002
 ```
 
-## Project Structure
+### OpenClaw Connection
 
-```
-openclutch/
-├── app/                          # Next.js app router
-│   ├── api/                      # API routes
-│   │   ├── chats/                # Chat CRUD
-│   │   ├── tasks/                # Task CRUD
-│   │   ├── projects/             # Project CRUD
-│   │   ├── signal/               # Agent signal API
-│   │   ├── triage/               # Triage endpoints
-│   │   ├── prompts/metrics/      # Prompt metrics API
-│   │   └── work-loop/config      # Dynamic work loop config
-│   ├── projects/[slug]/          # Project pages (board, chat, work-loop)
-│   ├── work-loop/                # Global Observatory
-│   ├── prompts/                  # Prompt management
-│   ├── agents/                   # Agent status page
-│   ├── sessions/                 # Session list
-│   └── settings/                 # Settings page
-├── components/                   # React components
-│   ├── board/                    # Kanban board components
-│   ├── chat/                     # Chat UI components
-│   ├── observatory/              # Observatory dashboard
-│   │   ├── live/                 # Live tab components
-│   │   ├── triage/               # Triage tab components
-│   │   ├── analytics/            # Analytics tab components
-│   │   ├── models/               # Models tab components
-│   │   └── prompts/              # Prompts tab components
-│   ├── providers/                # Context providers
-│   └── ui/                       # shadcn/ui components
-├── lib/                          # Library code
-│   ├── api/                      # API utilities
-│   ├── convex/                   # Convex queries/mutations
-│   ├── hooks/                    # React hooks
-│   ├── stores/                   # Zustand stores
-│   ├── types/                    # TypeScript types
-│   └── utils/                    # Utility functions
-├── worker/                       # Background workers
-│   ├── loop.ts                   # Main work loop
-│   ├── agent-manager.ts          # Agent lifecycle management
-│   ├── session-watcher.ts        # Session file monitoring
-│   ├── chat-bridge.ts            # OpenClaw WS bridge
-│   ├── gateway-client.ts         # OpenClaw RPC client
-│   ├── session-file-reader.ts    # JSONL file parsing
-│   ├── decide.ts                 # Loop decision logic
-│   ├── prompts.ts                # Prompt fetching
-│   └── phases/                   # Work loop phases
-│       ├── cleanup.ts
-│       ├── triage.ts
-│       ├── review.ts
-│       └── work.ts
-├── convex/                       # Convex schema and functions
-│   ├── schema.ts                 # Database schema
-│   ├── tasks.ts                  # Task mutations/queries
-│   ├── workLoop.ts               # Work loop state
-│   ├── sessions.ts               # Session tracking
-│   ├── task_events.ts            # Event logging
-│   └── ...
-├── plugins/                      # OpenClaw plugins
-│   ├── clutch-channel.ts         # Channel plugin for chat
-│   └── clutch-signal.ts          # Signal plugin for notifications
-├── bin/                          # CLI tools
-│   └── clutch-cli.ts               # OpenClutch CLI
-├── scripts/                      # Utility scripts
-├── systemd/                      # Systemd service files
-├── run.sh                        # Process management script
-└── roles/                        # Agent role prompts (external)
+OpenClutch requires a running OpenClaw gateway for agent execution:
+
+1. Install and configure [OpenClaw](https://github.com/openclaw/openclaw)
+2. Copy the gateway token from `~/.openclaw/openclaw.json`
+3. Set `OPENCLAW_TOKEN` and `NEXT_PUBLIC_OPENCLAW_TOKEN` in `.env.local`
+
+### Convex Setup
+
+**Self-hosted (Docker):**
+
+```bash
+# Start Convex
+docker run -d --name convex-local -p 3210:3210 -p 3211:3211 \
+  -v convex-data:/data ghcr.io/get-convex/convex-local:latest
+
+# Deploy schema
+npx convex deploy --url http://localhost:3210 --admin-key <admin-key>
 ```
 
-**Note:** Role prompts are stored in `/home/dan/clawd/roles/` (not in this repo):
-- `dev.md` - Developer agent prompt
-- `reviewer.md` - Reviewer agent prompt
-- `pm.md` - Product manager prompt
-- `research.md` - Researcher prompt
-- `conflict_resolver.md` - Conflict resolver prompt
-- `qa.md` - QA agent prompt
-- `pe.md` - Prompt engineer prompt
+**Convex Cloud:**
 
-## Nginx Configuration
+Set `CONVEX_URL` to your deployment URL and remove self-hosted variables.
 
-For HTTPS deployment, WebSocket connections need to be proxied through nginx.
+## Work Loop
 
-Add to nginx custom config (`/data/nginx/custom/server_proxy.conf` in NPM):
+The work loop is OpenClutch's core orchestration engine. It continuously cycles through phases to manage agent execution.
 
-```nginx
-# OpenClaw WebSocket proxy (for OpenClutch app)
-location = /openclaw-ws {
-    proxy_pass http://192.168.7.200:18789/ws;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header Origin $http_origin;
-    proxy_read_timeout 86400;
-    proxy_send_timeout 86400;
-    proxy_buffering off;
-    proxy_cache off;
+### Phases
+
+```
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+│ Cleanup │───→│ Triage  │───→│ Review  │───→│  Work   │──┐
+└─────────┘    └─────────┘    └─────────┘    └─────────┘  │
+                                                  │        │
+                                                  └────────┘
+```
+
+1. **Cleanup** — Close stale browser tabs, reset transient state
+2. **Triage** — Identify blocked tasks and notify for human review
+3. **Review** — Check completed work, spawn reviewers for PRs
+4. **Work** — Spawn agents for ready tasks
+
+### Agent Roles
+
+| Role | Model | Purpose |
+|------|-------|---------|
+| `dev` | kimi-for-coding | Implement features, fix bugs |
+| `reviewer` | kimi-for-coding | Review PRs, request changes or merge |
+| `pm` | sonnet | Research, plan, write specs |
+| `research` | sonnet | Deep investigation, analysis |
+| `conflict_resolver` | kimi-for-coding | Auto-rebase and resolve merge conflicts |
+
+### Task Status Flow
+
+```
+backlog → ready → in_progress → in_review → done
+              ↓        ↓
+           blocked ←─┘
+```
+
+- **backlog** — Holding pen for future work
+- **ready** — Available for agents to pick up
+- **in_progress** — Agent actively working
+- **in_review** — PR opened, waiting for review
+- **blocked** — Stuck, needs triage
+- **done** — Completed
+
+### Concurrency Configuration
+
+Match OpenClutch's agent limits with OpenClaw's command lane concurrency:
+
+**OpenClaw config (`~/.openclaw/openclaw.json`):**
+```json
+{
+  "agents": {
+    "defaults": {
+      "maxConcurrent": 8
+    }
+  }
 }
 ```
 
-After updating, reload nginx:
+If OpenClaw's limit is lower than OpenClutch's, agents will queue and may timeout.
+
+## Observatory
+
+The Observatory is the centralized dashboard for monitoring and controlling AI agents.
+
+### Routes
+
+- **Global:** `/work-loop` — All projects
+- **Per-Project:** `/projects/[slug]/work-loop` — Single project view
+
+### Tabs
+
+| Tab | Purpose |
+|-----|---------|
+| **Live** | Real-time work-loop monitoring, active agents, statistics |
+| **Triage** | Blocked task management and unblocking |
+| **Analytics** | Historical performance, cost tracking, metrics |
+| **Models** | Model usage comparison and cost analysis |
+| **Prompts** | Prompt performance analysis and A/B testing |
+
+## CLI
+
+The `clutch` CLI provides command-line access to tasks, agents, and deployment.
+
 ```bash
-docker exec nginx-proxy-manager nginx -t && docker exec nginx-proxy-manager nginx -s reload
+# Tasks
+clutch tasks list --project clutch --status ready
+clutch tasks get <task-id>
+clutch tasks move <task-id> in_review
+
+# Agents
+clutch agents list
+clutch agents get <agent-id>
+
+# Signals
+clutch signals list --pending
+clutch signals respond <signal-id> "Answer"
+
+# Deploy
+clutch deploy convex --project clutch
 ```
 
-## Development Commands
+**Projects:** `clutch` (default), add your own via the UI  
+**Statuses:** `backlog` → `ready` → `in_progress` → `in_review` → `done`  
+**Priorities:** `low`, `medium`, `high`, `urgent`  
+**Roles:** `pm`, `dev`, `research`, `reviewer`, `conflict_resolver`
+
+## Deployment
+
+### Systemd Setup
+
+The `run.sh` script installs and manages systemd user services:
 
 ```bash
-# Type-check
-pnpm typecheck
+# Install services
+./run.sh install
 
-# Lint
-pnpm lint
+# Enable and start
+./run.sh start
 
+# Check status
+./run.sh status
+```
+
+Service files are in `systemd/`:
+- `clutch-server.service` — Next.js server
+- `clutch-loop.service` — Work loop worker
+- `clutch-bridge.service` — Chat bridge worker
+- `clutch-session-watcher.service` — Session file watcher
+
+### Nginx Reverse Proxy
+
+For HTTPS deployment with WebSocket support:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # WebSocket proxy for OpenClaw
+    location = /openclaw-ws {
+        proxy_pass http://localhost:18789/ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+        proxy_buffering off;
+    }
+}
+```
+
+## Development
+
+### Dev Server
+
+```bash
+# Start dev server (port 3002)
+pnpm dev
+```
+
+Uses Turbopack for fast hot-reload. Do not start multiple dev servers.
+
+### Testing
+
+```bash
 # Run tests
 pnpm test
 
 # Run tests with UI
 pnpm test:ui
 
-# Convex dev mode
-pnpm convex:dev
+# Type check
+pnpm typecheck
 
-# Deploy schema changes
-pnpm convex:deploy
+# Lint
+pnpm lint
 ```
-
-## Development Notes
-
-### Dev Server
-
-The dev server runs on port 3002 with Turbopack hot-reload:
-
-```bash
-pnpm dev
-```
-
-**Do not start another dev server** - use `run.sh` for production mode.
-
-### Pre-commit Hooks
-
-Pre-commit hooks run lint and typecheck. **Never use `--no-verify`** - fix any failures before committing.
 
 ### Git Worktrees
 
-**Never switch branches in `/home/dan/src/clutch`** - the dev server runs there on `main`.
+**Never switch branches in the main repo** when the dev server is running.
 
 For feature work:
+
 ```bash
-cd /home/dan/src/clutch
-git worktree add /home/dan/src/clutch-worktrees/fix/<ticket-id> -b fix/<ticket-id>
-cd /home/dan/src/clutch-worktrees/fix/<ticket-id>
-# ... work ...
+# Create worktree
+git worktree add ../clutch-worktrees/fix/my-feature -b fix/my-feature
+cd ../clutch-worktrees/fix/my-feature
+
+# Work and commit...
+
+# Clean up after merge
+git worktree remove ../clutch-worktrees/fix/my-feature
 ```
 
-### Debugging
+### Pre-commit Hooks
 
-Check OpenClaw logs for connection issues:
+Pre-commit hooks run lint and typecheck. Never use `--no-verify` — fix any failures before committing.
+
 ```bash
-journalctl --user -u openclaw-gateway.service -f --no-pager | grep -i ws
+# If hooks fail
+pnpm lint
+pnpm typecheck
+# Fix errors, then commit
 ```
 
-Check OpenClutch logs:
-```bash
-./run.sh logs        # Server logs
-./run.sh loop-logs   # Work loop logs
-./run.sh all-logs    # All logs
+## Project Structure
+
+```
+clutch/
+├── app/                    # Next.js app router
+│   ├── api/                # REST API routes
+│   ├── projects/[slug]/    # Project pages
+│   └── work-loop/          # Observatory dashboard
+├── components/             # React components
+│   ├── observatory/        # Dashboard tabs
+│   ├── board/              # Kanban board
+│   └── chat/               # Chat UI
+├── lib/                    # Library code
+│   ├── convex/             # Convex queries/mutations
+│   └── hooks/              # React hooks
+├── worker/                 # Background workers
+│   ├── loop.ts             # Work loop engine
+│   ├── agent-manager.ts    # Agent lifecycle
+│   ├── chat-bridge.ts      # WebSocket bridge
+│   └── phases/             # Loop phases
+├── convex/                 # Database schema and functions
+├── plugins/                # OpenClaw plugins
+├── bin/                    # CLI source
+├── systemd/                # Systemd service files
+└── run.sh                  # Process management
 ```
 
-### Common Issues
+## Contributing
 
-- **"invalid handshake"** - First message must be `connect` with proper params
-- **"protocol mismatch"** - Use protocol version 3
-- **"Mixed Content"** - HTTPS pages need WSS via nginx proxy
-- **Ghost-completing agents** - OpenClaw lane concurrency too low vs OpenClutch agent limits
-- **Tasks stuck in_review with 0 reviews** - PR has conflicts, needs conflict_resolver role
+Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+
+## License
+
+MIT License — see [LICENSE](./LICENSE) for details.
