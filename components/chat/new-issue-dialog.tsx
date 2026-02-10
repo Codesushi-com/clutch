@@ -311,7 +311,7 @@ export function NewIssueDialog({
     }
 
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleClose)
+    return () => window.removeEventListener('keydown', handleKeyDown)
   }, [open, handleClose])
 
   if (!open) return null
