@@ -16,6 +16,7 @@ function runCli(args: string[], env?: Record<string, string>): { stdout: string;
   const cliPath = join(__dirname, 'clutch-cli.ts');
   const stdout = execFileSync('npx', ['tsx', cliPath, ...args], {
     encoding: 'utf-8',
+    maxBuffer: 10 * 1024 * 1024, // 10MB to prevent ENOBUFS with large task lists
     env: {
       ...process.env,
       ...env,
