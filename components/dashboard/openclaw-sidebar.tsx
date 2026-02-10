@@ -1,6 +1,7 @@
 "use client"
 
 import { Activity } from "lucide-react"
+import { SessionsAgentsCard } from "./sessions-agents-card"
 
 interface OpenClawSidebarProps {
   children?: React.ReactNode
@@ -32,11 +33,7 @@ export function OpenClawSidebar({ children }: OpenClawSidebarProps) {
                 Widget coming soon
               </p>
             </SidebarCard>
-            <SidebarCard title="Active Sessions">
-              <p className="text-sm text-[var(--text-muted)]">
-                Widget coming soon
-              </p>
-            </SidebarCard>
+            <SessionsAgentsCard />
             <SidebarCard title="System Health">
               <p className="text-sm text-[var(--text-muted)]">
                 Widget coming soon
