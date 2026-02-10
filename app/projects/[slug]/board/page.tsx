@@ -80,6 +80,7 @@ function BoardPageInner({ slug }: { slug: string }) {
       <Board
         projectId={project.id}
         projectSlug={slug}
+        githubRepo={project.github_repo}
         onTaskClick={handleTaskClick}
         onAddTask={handleAddTask}
       />
@@ -95,6 +96,7 @@ function BoardPageInner({ slug }: { slug: string }) {
         task={selectedTask}
         open={taskModalOpen}
         onOpenChange={setTaskModalOpen}
+        githubRepo={project.github_repo}
       />
     </div>
   )

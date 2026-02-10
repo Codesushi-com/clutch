@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Draggable } from "@hello-pangea/dnd"
-import { Link2, Lock } from "lucide-react"
+import { Link2, Lock, GitPullRequest } from "lucide-react"
 import type { Task } from "@/lib/types"
 import { useDependencies } from "@/lib/hooks/use-dependencies"
 import { formatCompactTime } from "@/lib/utils"
@@ -16,6 +16,7 @@ interface TaskCardProps {
   isMobile?: boolean
   projectId: string
   columnTasks: Task[]
+  githubRepo?: string | null
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -67,7 +68,7 @@ function getStatusAgeColor(ageMs: number, status: string): string {
   return '#9ca3af'
 }
 
-export function TaskCard({ task, index, onClick, isMobile = false, projectId, columnTasks }: TaskCardProps) {
+export function TaskCard({ task, index, onClick, isMobile = false, projectId, columnTasks, githubRepo }: TaskCardProps) {
   // Track current time for live updates - use lazy initializer to avoid impure function during render
   const [now, setNow] = useState(() => Date.now())
 
@@ -207,6 +208,21 @@ export function TaskCard({ task, index, onClick, isMobile = false, projectId, co
               >
                 {ROLE_LABELS[task.role] || task.role}
               </span>
+            )}
+
+            {/* PR Link */}
+            {task.pr_number && githubRepo && (
+              <a
+                href={`https://github.com/${githubRepo}/pull/${task.pr_number}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-[var(--bg-tertiary)] text-[var(--accent-blue)] hover:text-[var(--accent-blue)]/80 hover:underline flex-shrink-0"
+                title={`View PR #${task.pr_number}`}
+              >
+                <GitPullRequest className="h-3 w-3" />
+                #{task.pr_number}
+              </a>
             )}
 
             {task.assignee && (

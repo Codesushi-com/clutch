@@ -16,6 +16,7 @@ interface ColumnProps {
   showAddButton?: boolean
   isMobile?: boolean
   projectId: string
+  githubRepo?: string | null
   totalCount?: number
   hasMore?: boolean
   onLoadMore?: () => void
@@ -31,6 +32,7 @@ export function Column({
   showAddButton = false,
   isMobile = false,
   projectId,
+  githubRepo,
   totalCount,
   hasMore,
   onLoadMore,
@@ -81,6 +83,7 @@ export function Column({
                 isMobile={isMobile}
                 projectId={projectId}
                 columnTasks={tasks}
+                githubRepo={githubRepo}
               />
             ))}
             {provided.placeholder}

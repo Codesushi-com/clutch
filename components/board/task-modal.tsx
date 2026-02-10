@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus, BarChart3, Pencil, History, OctagonX } from "lucide-react"
+import { X, Trash2, Clock, Calendar, MessageSquare, Send, Loader2, Link2, CheckCircle2, Circle, Plus, BarChart3, Pencil, History, OctagonX, GitPullRequest } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -32,6 +32,7 @@ interface TaskModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onDelete?: (taskId: string) => void
+  githubRepo?: string | null
 }
 
 const STATUS_OPTIONS: { value: TaskStatus; label: string; color: string }[] = [
@@ -65,7 +66,7 @@ const AGENT_OPTIONS = [
   { value: "haiku-triage", label: "Haiku (Scanner)" },
 ]
 
-export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps) {
+export function TaskModal({ task, open, onOpenChange, onDelete, githubRepo }: TaskModalProps) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [status, setStatus] = useState<TaskStatus>("backlog")
@@ -702,6 +703,24 @@ export function TaskModal({ task, open, onOpenChange, onDelete }: TaskModalProps
                     Needs human review
                   </label>
                 </div>
+
+                {/* Pull Request */}
+                {task.pr_number && githubRepo && (
+                  <div className="border-t border-[var(--border)] pt-4">
+                    <label className="text-sm font-medium text-[var(--text-secondary)] mb-2 block">
+                      Pull Request
+                    </label>
+                    <a
+                      href={`https://github.com/${githubRepo}/pull/${task.pr_number}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-3 py-2 rounded bg-[var(--bg-primary)] border border-[var(--border)] text-sm text-[var(--accent-blue)] hover:text-[var(--accent-blue)]/80 hover:border-[var(--accent-blue)]/50 transition-colors"
+                    >
+                      <GitPullRequest className="h-4 w-4" />
+                      <span>#{task.pr_number}</span>
+                    </a>
+                  </div>
+                )}
 
                 {/* Timestamps */}
                 <div className="border-t border-[var(--border)] pt-4 space-y-2 text-xs text-[var(--text-muted)]">

@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 interface BoardProps {
   projectId: string
   projectSlug: string
+  githubRepo?: string | null
   onTaskClick: (task: Task) => void
   onAddTask: (status: TaskStatus) => void
 }
@@ -62,7 +63,7 @@ function getInitialVisibility(projectSlug: string): Record<TaskStatus, boolean> 
 // Pending optimistic move: taskId → target status
 type PendingMoves = Map<string, TaskStatus>
 
-export function Board({ projectId, projectSlug, onTaskClick, onAddTask }: BoardProps) {
+export function Board({ projectId, projectSlug, githubRepo, onTaskClick, onAddTask }: BoardProps) {
   // Use paginated Convex hook for reactive task data with per-column pagination
   const { tasksByStatus, totalCounts, isLoading, hasMore, loadMore } = usePaginatedBoardTasks(projectId)
   
@@ -291,6 +292,7 @@ export function Board({ projectId, projectSlug, onTaskClick, onAddTask }: BoardP
         columnVisibility={columnVisibility}
         onToggleColumn={updateColumnVisibility}
         projectId={projectId}
+        githubRepo={githubRepo}
         totalCounts={totalCounts}
         hasMore={hasMore}
         onLoadMore={loadMore}
@@ -400,6 +402,7 @@ export function Board({ projectId, projectSlug, onTaskClick, onAddTask }: BoardP
               showAddButton={col.showAdd}
               isMobile={true}
               projectId={projectId}
+              githubRepo={githubRepo}
               totalCount={totalCounts[col.status]}
               hasMore={hasMore[col.status]}
               onLoadMore={() => loadMore(col.status)}
@@ -419,6 +422,7 @@ export function Board({ projectId, projectSlug, onTaskClick, onAddTask }: BoardP
               onAddTask={() => onAddTask(col.status)}
               showAddButton={col.showAdd}
               projectId={projectId}
+              githubRepo={githubRepo}
               totalCount={totalCounts[col.status]}
               hasMore={hasMore[col.status]}
               onLoadMore={() => loadMore(col.status)}

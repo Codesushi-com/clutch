@@ -22,6 +22,7 @@ interface MobileBoardProps {
   columnVisibility: Record<TaskStatus, boolean>
   onToggleColumn: (status: TaskStatus, visible: boolean) => void
   projectId: string
+  githubRepo?: string | null
   totalCounts?: Record<TaskStatus, number>
   hasMore?: Record<TaskStatus, boolean>
   onLoadMore?: (status: TaskStatus) => void
@@ -36,6 +37,7 @@ export function MobileBoard({
   columnVisibility,
   onToggleColumn,
   projectId,
+  githubRepo,
   totalCounts,
   hasMore,
   onLoadMore,
@@ -284,6 +286,7 @@ export function MobileBoard({
             showAddButton={activeColumn.showAdd}
             isMobile={true}
             projectId={projectId}
+            githubRepo={githubRepo}
             totalCount={totalCounts?.[activeColumn.status]}
             hasMore={hasMore?.[activeColumn.status]}
             onLoadMore={onLoadMore ? () => onLoadMore(activeColumn.status) : undefined}
