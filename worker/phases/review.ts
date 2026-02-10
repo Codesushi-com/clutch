@@ -90,12 +90,12 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
   })
 
   // Query active agents from Convex (source of truth, survives restarts)
-  const allActiveTasks = await convex.query(api.tasks.getAllActiveAgentTasks, {})
+  const _allActiveTasks = await convex.query(api.tasks.getAllActiveAgentTasks, {})
 
   // Enforce: max 1 reviewer per project.
   // Sequential reviews prevent merge conflict cascades — each PR merges
   // before the next gets reviewed, so branches don't diverge.
-  const projectActiveTasks = allActiveTasks.filter((t) => t.project_id === project.id)
+  const projectActiveTasks = _allActiveTasks.filter((t) => t.project_id === project.id)
   const projectReviewerCount = projectActiveTasks.filter((t) => t.role === "reviewer").length
   const projectConflictCount = projectActiveTasks.filter((t) => t.role === "conflict_resolver").length
   if (projectReviewerCount > 0 || projectConflictCount > 0) {
@@ -113,7 +113,7 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
 
   for (const task of tasks) {
     // Check global limits before each attempt
-    const globalActive = allActiveTasks.length
+    const globalActive = _allActiveTasks.length
     if (globalActive >= config.maxAgentsGlobal) {
       const remaining = tasks.length - tasks.indexOf(task)
       console.log(`[ReviewPhase] Global agent limit reached (${globalActive}/${config.maxAgentsGlobal}) — skipping ${remaining} review tasks`)
@@ -127,7 +127,7 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
       break
     }
 
-    const result = await processTask(ctx, task, allActiveTasks)
+    const result = await processTask(ctx, task, _allActiveTasks)
 
     if (result.spawned) {
       spawnedCount++
@@ -170,7 +170,7 @@ interface TaskProcessResult {
 async function processTask(
   ctx: ReviewContext,
   task: Task,
-  allActiveTasks: Task[]
+  _allActiveTasks: Task[]
 ): Promise<TaskProcessResult> {
   const { convex, project } = ctx
 

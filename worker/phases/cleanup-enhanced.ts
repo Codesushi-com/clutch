@@ -241,10 +241,10 @@ export async function pruneStaleRemoteRefs(
  * - Not associated with active tasks
  */
 export async function cleanStaleWorktrees(
-  ctx: MergedBranchCleanupContext & { worktreesPath: string },
+  ctx: MergedBranchCleanupContext & { _worktreesPath: string },
   activeTaskBranches: Set<string>
 ): Promise<{ actions: number; worktreesRemoved: string[] }> {
-  const { repoPath, worktreesPath, projectId, cycle, log } = ctx
+  const { repoPath, _worktreesPath, projectId, cycle, log } = ctx
   let actions = 0
   const worktreesRemoved: string[] = []
 

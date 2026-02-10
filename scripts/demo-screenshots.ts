@@ -14,7 +14,6 @@
  *   - Dev server running (pnpm demo:dev)
  */
 
-import { execSync } from "child_process"
 import fs from "fs"
 import path from "path"
 

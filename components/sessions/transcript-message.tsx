@@ -1,6 +1,5 @@
 "use client"
 
-import { formatDistanceToNow } from "date-fns"
 import { ToolCallBlock } from "./tool-call-block"
 
 interface TranscriptMessageProps {

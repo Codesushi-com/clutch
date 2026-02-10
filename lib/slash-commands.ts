@@ -97,12 +97,12 @@ export function parseSlashCommand(message: string): Omit<SlashCommandResult, "re
  * Execute a slash command and return the result.
  *
  * @param command - The parsed command result
- * @param sessionKey - The current session key
+ * @param _sessionKey - The current session key
  * @returns The command result with response
  */
 export async function executeSlashCommand(
   command: Omit<SlashCommandResult, "response" | "isError" | "action">,
-  sessionKey: string
+  _sessionKey: string
 ): Promise<SlashCommandResult> {
   if (!command.isCommand) {
     return { ...command, response: null, isError: false, action: null };
@@ -113,16 +113,16 @@ export async function executeSlashCommand(
   try {
     switch (cmd) {
       case "new":
-        return await handleNewCommand(sessionKey, command.args);
+        return await handleNewCommand(_sessionKey, command.args);
 
       case "issue":
-        return await handleIssueCommand(sessionKey, command.args);
+        return await handleIssueCommand(_sessionKey, command.args);
 
       case "status":
-        return await handleStatusCommand(sessionKey);
+        return await handleStatusCommand(_sessionKey);
 
       case "model":
-        return await handleModelCommand(sessionKey, command.args);
+        return await handleModelCommand(_sessionKey, command.args);
 
       case "help":
         return handleHelpCommand();
@@ -151,11 +151,11 @@ export async function executeSlashCommand(
  * Handle /new - Reset the session and create a new chat with optional title
  */
 async function handleNewCommand(
-  sessionKey: string,
+  _sessionKey: string,
   args: string[]
 ): Promise<SlashCommandResult> {
   const title = args.length > 0 ? args.join(" ") : undefined;
-  await resetSession(sessionKey);
+  await resetSession(_sessionKey);
 
   const response = title
     ? `✨ New chat created: "${title}"`
@@ -179,7 +179,7 @@ async function handleNewCommand(
  * NOTE: Session status is now displayed in the chat header dropdown in real-time
  * via Convex reactive queries. This command directs users to the UI.
  */
-async function handleStatusCommand(sessionKey: string): Promise<SlashCommandResult> {
+async function handleStatusCommand(_sessionKey: string): Promise<SlashCommandResult> {
   return {
     isCommand: true,
     shouldSendMessage: false,
@@ -195,7 +195,7 @@ async function handleStatusCommand(sessionKey: string): Promise<SlashCommandResu
  * Handle /model - Switch models
  */
 async function handleModelCommand(
-  sessionKey: string,
+  _sessionKey: string,
   args: string[]
 ): Promise<SlashCommandResult> {
   if (args.length === 0) {
@@ -262,7 +262,7 @@ async function handleModelCommand(
     };
   }
 
-  await patchSession(sessionKey, { model });
+  await patchSession(_sessionKey, { model });
 
   return {
     isCommand: true,
@@ -314,7 +314,7 @@ function handleHelpCommand(): SlashCommandResult {
  * 6. Reports back with the task breakdown
  */
 async function handleIssueCommand(
-  sessionKey: string,
+  _sessionKey: string,
   args: string[]
 ): Promise<SlashCommandResult> {
   if (args.length === 0) {
