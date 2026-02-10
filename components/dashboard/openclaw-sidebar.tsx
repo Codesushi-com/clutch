@@ -2,22 +2,48 @@
 
 import { Activity } from "lucide-react"
 import { SessionsAgentsCard } from "./sessions-agents-card"
-import { ChannelHealthCard, type Channel } from "./channel-health-card"
+import { ChannelHealthCard, type Channel, type ChannelType, type ChannelStatus } from "./channel-health-card"
+import { GatewayHealthCard } from "./gateway-health-card"
+import { UsageCostCard } from "./usage-cost-card"
+import { useOpenClawDashboard } from "@/lib/hooks/use-openclaw-dashboard"
 
-// Mock channel data - replace with useOpenClawDashboard() hook when available
-const MOCK_CHANNELS: Channel[] = [
-  { id: "discord", type: "discord", name: "Discord", status: "connected" },
-  { id: "telegram", type: "telegram", name: "Telegram", status: "connected" },
-  { id: "signal", type: "signal", name: "Signal", status: "disconnected" },
-  { id: "clutch", type: "clutch", name: "Clutch", status: "connected" },
-  { id: "whatsapp", type: "whatsapp", name: "WhatsApp", status: "connected" },
-]
+// Map API channel IDs to our ChannelType
+const CHANNEL_TYPE_MAP: Record<string, ChannelType> = {
+  discord: "discord",
+  telegram: "telegram",
+  signal: "signal",
+  clutch: "clutch",
+  whatsapp: "whatsapp",
+}
+
+// Get channel type from API channel ID (with fallback)
+function getChannelType(id: string): ChannelType {
+  return CHANNEL_TYPE_MAP[id] || "clutch"
+}
+
+// Map API connected boolean to our ChannelStatus
+function getChannelStatus(connected: boolean): ChannelStatus {
+  return connected ? "connected" : "disconnected"
+}
 
 interface OpenClawSidebarProps {
   children?: React.ReactNode
+  projectId?: string | null
 }
 
-export function OpenClawSidebar({ children }: OpenClawSidebarProps) {
+export function OpenClawSidebar({ children, projectId }: OpenClawSidebarProps) {
+  const { data, isLoading } = useOpenClawDashboard()
+
+  // Transform API channel data to Channel format
+  const channels: Channel[] = data?.channels
+    ? data.channels.map((ch) => ({
+        id: ch.id,
+        type: getChannelType(ch.id),
+        name: ch.label || ch.id,
+        status: getChannelStatus(ch.connected),
+      }))
+    : []
+
   return (
     <aside className="w-full lg:w-80 xl:w-88 flex-shrink-0 space-y-4">
       {/* Header */}
@@ -37,42 +63,20 @@ export function OpenClawSidebar({ children }: OpenClawSidebarProps) {
       <div className="space-y-3">
         {children ?? (
           <>
-            {/* Channel Health Widget */}
-            <ChannelHealthCard channels={MOCK_CHANNELS} />
+            {/* Gateway Health Widget */}
+            <GatewayHealthCard />
 
-            {/* Placeholder widget slots */}
-            <SidebarCard title="Gateway Status">
-              <p className="text-sm text-[var(--text-muted)]">
-                Widget coming soon
-              </p>
-            </SidebarCard>
-            <SessionsAgentsCard />
-            <SidebarCard title="System Health">
-              <p className="text-sm text-[var(--text-muted)]">
-                Widget coming soon
-              </p>
-            </SidebarCard>
+            {/* Channel Health Widget */}
+            <ChannelHealthCard channels={channels} isLoading={isLoading} />
+
+            {/* Sessions & Agents Widget */}
+            <SessionsAgentsCard projectId={projectId} />
+
+            {/* Usage & Cost Widget */}
+            <UsageCostCard projectId={projectId} />
           </>
         )}
       </div>
     </aside>
-  )
-}
-
-interface SidebarCardProps {
-  title: string
-  children: React.ReactNode
-}
-
-function SidebarCard({ title, children }: SidebarCardProps) {
-  return (
-    <div className="border border-[var(--border)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] transition-colors">
-      <div className="px-3 py-2 border-b border-[var(--border)]">
-        <h3 className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
-          {title}
-        </h3>
-      </div>
-      <div className="p-3">{children}</div>
-    </div>
   )
 }
