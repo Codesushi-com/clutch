@@ -44,8 +44,6 @@ export interface PromptParams {
   prNumber?: number | null
   /** Optional branch name (for conflict_resolver role) */
   branch?: string | null
-  /** Optional review comments (deprecated - kept for compatibility) */
-  reviewComments?: string | null
   /** Optional task comments for context (from previous work / triage) */
   comments?: TaskComment[]
   /**
@@ -173,11 +171,17 @@ ${params.taskDescription}${commentsSection}
 2. Check the diff: \`gh pr diff ${prNumber}\`
 3. Install deps + run verification commands from AGENTS.md: \`cd ${params.worktreeDir}\` then follow the project's build/lint/typecheck instructions
 4. If all checks pass → MERGE: \`gh pr merge ${prNumber} --squash --delete-branch\`
-5. If issues found → leave review comment with actionable feedback
+5. If issues found → leave rejection feedback in TWO places, then send the task back to dev:
+   - GitHub PR comment (so humans see it): \`gh pr comment ${prNumber} --body "<feedback>"\`
+   - OpenClutch task comment (so agents see it on retry):
+     \`curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "REVIEW REJECTED (PR #${prNumber}): <feedback>", "author": "reviewer", "author_type": "agent"}'\`
+
+   After posting feedback, move the task back to \`ready\` so a dev agent re-picks it up with the feedback in context:
+   \`curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "ready"}'\`
 
 You do NOT have browser access. If UI changes need visual verification, note it in your review comment.
 
-**Your session MUST end with either step 4 (merge) or step 5 (rejection comment).
+**Your session MUST end with either step 4 (merge) or step 5 (rejection feedback + move to ready).
 Finishing without either will block the task and waste a triage cycle.**
 
 ## Creating Follow-up Tickets (for non-blocking feedback)
