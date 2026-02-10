@@ -142,6 +142,22 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
     localStorage.setItem('clutch:blockedExpanded', String(blockedExpanded))
   }, [blockedExpanded])
 
+  // Work Queue section expanded state (persisted in localStorage)
+  const [workQueueExpanded, setWorkQueueExpanded] = useState(true)
+
+  // Load work queue expanded state from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem('clutch:workQueueExpanded')
+    if (stored !== null) {
+      setWorkQueueExpanded(stored === 'true')
+    }
+  }, [])
+
+  // Persist work queue expanded state to localStorage
+  useEffect(() => {
+    localStorage.setItem('clutch:workQueueExpanded', String(workQueueExpanded))
+  }, [workQueueExpanded])
+
   // Task modal state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskModalOpen, setTaskModalOpen] = useState(false)
@@ -582,8 +598,17 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
 
       {/* Divider with Work Queue header */}
       <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/30">
-        <div className="flex items-center justify-between">
+        {/* Clickable header with chevron */}
+        <button
+          onClick={() => setWorkQueueExpanded(!workQueueExpanded)}
+          className="w-full flex items-center justify-between hover:opacity-80 transition-opacity"
+        >
           <div className="flex items-center gap-2">
+            {workQueueExpanded ? (
+              <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-[var(--text-muted)]" />
+            )}
             <ListTodo className="h-4 w-4 text-[var(--text-muted)]" />
             <h2 className="font-medium text-[var(--text-primary)]">Work Queue</h2>
             {totalWorkItems > 0 && (
@@ -602,15 +627,18 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
               href={`/projects/${projectSlug}/board`}
               className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] flex items-center gap-1"
               title="Open board"
+              onClick={(e) => e.stopPropagation()}
             >
               <ExternalLink className="h-3 w-3" />
             </Link>
           )}
-        </div>
+        </button>
       </div>
 
       {/* Work Queue sections */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        className={`flex-1 overflow-y-auto transition-all duration-300 ease-in-out ${workQueueExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}
+      >
         {loadingTasks || !projectId ? (
           <div className="p-3 space-y-4">
             {/* In Progress skeleton */}
