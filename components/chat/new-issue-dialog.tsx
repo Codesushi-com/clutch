@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
-import { X, Send, ImageIcon, Loader2 } from "lucide-react"
+import { X, Send, ImageIcon, Loader2, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -16,9 +16,14 @@ import type { TaskPriority } from "@/lib/types"
 
 interface NewIssueDialogProps {
   projectId: string
+  projectSlug?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated?: (taskId: string) => void
+  /** Called when user submits for /issue decomposition flow (if available) */
+  onDecompose?: (description: string, images: string[]) => void
+  /** Session key for the current chat - needed for /issue flow */
+  sessionKey?: string
 }
 
 interface ImagePreview {
@@ -51,22 +56,31 @@ function generateId(): string {
 
 export function NewIssueDialog({
   projectId,
+  projectSlug,
   open,
   onOpenChange,
   onCreated,
+  onDecompose,
+  sessionKey,
 }: NewIssueDialogProps) {
+  // Form state
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [priority, setPriority] = useState<TaskPriority>("medium")
   const [images, setImages] = useState<ImagePreview[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [useDecomposition, setUseDecomposition] = useState(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Check if /issue flow is available (handler provided and session key exists)
+  const canUseDecomposition = Boolean(onDecompose && sessionKey)
 
   const resetForm = useCallback(() => {
     setTitle("")
     setDescription("")
     setPriority("medium")
+    setUseDecomposition(true)
     images.forEach((img) => URL.revokeObjectURL(img.url))
     setImages([])
   }, [images])
@@ -188,6 +202,33 @@ export function NewIssueDialog({
     return fullDescription
   }
 
+  const buildIssueCommandText = (): string => {
+    let text = description
+
+    // Add title as a prefix if provided
+    if (title.trim()) {
+      text = `${title.trim()}\n\n${text}`
+    }
+
+    // Add image references
+    const uploadedImages = images.filter((img) => img.uploadedUrl && !img.uploading)
+    if (uploadedImages.length > 0) {
+      if (text) {
+        text += "\n\n"
+      }
+      text += uploadedImages
+        .map((img) => `![image](${img.uploadedUrl})`)
+        .join("\n")
+    }
+
+    // Add project flag if projectSlug is available
+    if (projectSlug) {
+      text += ` --project ${projectSlug}`
+    }
+
+    return text
+  }
+
   const handleSubmit = async () => {
     if (isSubmitting) return
 
@@ -208,6 +249,20 @@ export function NewIssueDialog({
         )
       }
 
+      // Check if we should use decomposition flow
+      if (useDecomposition && canUseDecomposition) {
+        // Use /issue decomposition flow
+        const issueText = buildIssueCommandText()
+        const uploadedImageUrls = images
+          .filter((img) => img.uploadedUrl && !img.uploading)
+          .map((img) => img.uploadedUrl!)
+
+        onDecompose?.(issueText, uploadedImageUrls)
+        handleClose()
+        return
+      }
+
+      // Fallback: Create single task directly
       const fullDescription = buildDescriptionWithImages()
 
       const response = await fetch("/api/tasks", {
@@ -215,7 +270,7 @@ export function NewIssueDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           project_id: projectId,
-          title: title.trim() || "New Issue", // PM agent will refine if blank
+          title: title.trim() || "New Issue",
           description: fullDescription || undefined,
           priority,
           status: "ready",
@@ -273,7 +328,15 @@ export function NewIssueDialog({
       <div className="relative bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl w-full max-w-2xl max-h-[90vh] shadow-2xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Create New Issue</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Create New Issue</h2>
+            {canUseDecomposition && (
+              <span className="text-xs bg-[var(--accent-blue)]/10 text-[var(--accent-blue)] px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Sparkles className="h-3 w-3" />
+                AI Decomposition
+              </span>
+            )}
+          </div>
           <button
             onClick={handleClose}
             className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded transition-colors"
@@ -284,39 +347,82 @@ export function NewIssueDialog({
 
         {/* Form */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Title */}
+          {/* Mode toggle - only show if decomposition is available */}
+          {canUseDecomposition && (
+            <div className="flex items-center gap-3 p-3 bg-[var(--bg-primary)] rounded-lg border border-[var(--border)]">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-[var(--text-primary)]">
+                  {useDecomposition ? "AI Task Decomposition" : "Simple Task Creation"}
+                </p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {useDecomposition
+                    ? "An AI agent will break down your request into well-scoped tasks with dependencies"
+                    : "Create a single task directly without AI assistance"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setUseDecomposition(!useDecomposition)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    useDecomposition ? "bg-[var(--accent-blue)]" : "bg-[var(--border)]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      useDecomposition ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Title - show for both modes, but optional in decomposition mode */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-[var(--text-primary)]">
-              Title <span className="text-[var(--text-muted)]">(optional)</span>
+              Title {useDecomposition && canUseDecomposition ? (
+                <span className="text-[var(--text-muted)]">(optional)</span>
+              ) : (
+                <span className="text-red-500">*</span>
+              )}
             </label>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Brief summary (PM agent will generate if blank)"
+              placeholder={useDecomposition && canUseDecomposition
+                ? "Brief summary (AI will generate detailed titles)"
+                : "Brief summary of the issue"
+              }
               className="bg-[var(--bg-primary)] border-[var(--border)]"
             />
           </div>
 
-          {/* Priority */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--text-primary)]">Priority</label>
-            <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority)}>
-              <SelectTrigger className="w-40 bg-[var(--bg-primary)] border-[var(--border)]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PRIORITIES.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Priority - only show in simple mode or when decomposition is unavailable */}
+          {(!useDecomposition || !canUseDecomposition) && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-[var(--text-primary)]">Priority</label>
+              <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority)}>
+                <SelectTrigger className="w-40 bg-[var(--bg-primary)] border-[var(--border)]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRIORITIES.map((p) => (
+                    <SelectItem key={p.value} value={p.value}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Description with image paste/drop support */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--text-primary)]">Description</label>
+            <label className="text-sm font-medium text-[var(--text-primary)]">
+              Description {useDecomposition && canUseDecomposition && (
+                <span className="text-[var(--text-muted)]">- Describe what you want in natural language</span>
+              )}
+            </label>
             <div
               className={`relative rounded-lg border-2 border-dashed transition-colors ${
                 dragOver
@@ -332,8 +438,11 @@ export function NewIssueDialog({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 onPaste={handlePaste}
-                placeholder="Describe the issue... (Markdown supported, paste images with Ctrl+V or drag & drop)"
-                rows={8}
+                placeholder={useDecomposition && canUseDecomposition
+                  ? "Describe the feature or issue in natural language. The AI will break it down into tasks.\n\nExample: \"Add a dark mode toggle to the settings page that syncs across devices\""
+                  : "Describe the issue... (Markdown supported, paste images with Ctrl+V or drag & drop)"
+                }
+                rows={useDecomposition && canUseDecomposition ? 10 : 8}
                 className="bg-[var(--bg-primary)] border-0 resize-none focus-visible:ring-0 focus-visible:ring-offset-0"
               />
 
@@ -351,6 +460,7 @@ export function NewIssueDialog({
             {/* Upload hint */}
             <p className="text-xs text-[var(--text-muted)]">
               Paste images with Ctrl+V or drag & drop files
+              {useDecomposition && canUseDecomposition && " — Images will be included as context for the AI"}
             </p>
 
             {/* Image previews */}
@@ -393,12 +503,12 @@ export function NewIssueDialog({
             {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Creating...
+                {useDecomposition && canUseDecomposition ? "Starting..." : "Creating..."}
               </>
             ) : (
               <>
                 <Send className="h-4 w-4 mr-2" />
-                Create Issue
+                {useDecomposition && canUseDecomposition ? "Decompose with AI" : "Create Issue"}
               </>
             )}
           </Button>

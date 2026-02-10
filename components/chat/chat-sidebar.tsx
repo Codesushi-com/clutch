@@ -45,7 +45,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, isMobile = false }: ChatSidebarProps) {
-  const { chats, activeChat, setActiveChat, createChat, deleteChat, loading: chatsLoading, fetchChats, currentProjectId } = useChatStore()
+  const { chats, activeChat, setActiveChat, createChat, deleteChat, sendMessage, loading: chatsLoading, fetchChats, currentProjectId } = useChatStore()
   const [creating, setCreating] = useState(false)
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null)
 
@@ -255,6 +255,23 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
       onClose()
     }
   }
+
+  // Handle decomposition flow from New Issue dialog
+  const handleDecompose = useCallback(async (description: string, images: string[]) => {
+    if (!activeChat) return
+
+    // Build the /issue command with the description and images
+    let issueCommand = `/issue ${description}`
+
+    // Add images as context if any
+    if (images.length > 0) {
+      const imageMarkdown = images.map(url => `![Image](${url})`).join("\n")
+      issueCommand += `\n\n${imageMarkdown}`
+    }
+
+    // Send the command as a message - the chat input will process it as a slash command
+    await sendMessage(activeChat.id, issueCommand, "dan")
+  }, [activeChat, sendMessage])
 
   useEffect(() => {
     if (!isMobile || !isOpen) return
@@ -824,12 +841,15 @@ export function ChatSidebar({ projectId, projectSlug, isOpen = true, onClose, is
       {projectId && (
         <NewIssueDialog
           projectId={projectId}
+          projectSlug={projectSlug}
           open={newIssueDialogOpen}
           onOpenChange={setNewIssueDialogOpen}
           onCreated={(taskId) => {
             // Convex reactive subscription will update automatically
             console.log("New issue created:", taskId)
           }}
+          onDecompose={handleDecompose}
+          sessionKey={activeChat ? (activeChat.session_key || `clutch:${projectSlug}:${activeChat.id}`) : undefined}
         />
       )}
     </>
