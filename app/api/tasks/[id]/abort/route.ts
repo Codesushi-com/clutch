@@ -175,6 +175,7 @@ export async function POST(
       id,
       status: "done",
       resolution: "discarded",
+      reason: "Task aborted - work discarded and resources cleaned up"
     })
 
     // 4. Log task event

@@ -965,7 +965,11 @@ export const move = mutation({
       args.id,
       'status_changed',
       'work-loop',
-      { from_status: fromStatus, to_status: toStatus, ...(args.reason && { reason: args.reason }) }
+      { 
+        from_status: fromStatus, 
+        to_status: toStatus, 
+        reason: args.reason || `Task moved from ${fromStatus} to ${toStatus}` 
+      }
     )
 
     return toTask(updated as Parameters<typeof toTask>[0])

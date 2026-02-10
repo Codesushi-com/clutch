@@ -70,7 +70,6 @@ interface CleanupResult {
 export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   const {
     convex,
-    agents,
     cycle,
     project,
     log,
@@ -90,10 +89,6 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   const doneTasks = await convex.query(api.tasks.getByProject, {
     projectId: project.id,
     status: "done",
-  })
-  const readyTasks = await convex.query(api.tasks.getByProject, {
-    projectId: project.id,
-    status: "ready",
   })
 
   // ------------------------------------------------------------------
@@ -263,6 +258,22 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
     log,
   })
   actions += worktreeActions
+
+  // ------------------------------------------------------------------
+  // 3.5. Clean merged remote branches
+  //
+  //    For done tasks with PR numbers, check if the PR was merged and
+  //    delete the remote branch if it exists. This handles cases where
+  //    tasks went blocked→done and bypassed the review phase cleanup.
+  // ------------------------------------------------------------------
+  const branchActions = await cleanMergedRemoteBranches({
+    repoPath,
+    doneTasks,
+    projectId: project.id,
+    cycle,
+    log,
+  })
+  actions += branchActions
 
   // ------------------------------------------------------------------
   // 4. Close stale browser tabs
@@ -458,6 +469,113 @@ async function cleanOrphanWorktrees(ctx: WorktreeCleanupContext): Promise<number
       details: { path: dir, taskPrefix: prefix },
     })
     actions++
+  }
+
+  return actions
+}
+
+// ============================================
+// Remote Branch Cleanup
+// ============================================
+
+interface BranchCleanupContext {
+  repoPath: string
+  doneTasks: Task[]
+  projectId: string
+  cycle: number
+  log: (params: LogRunParams) => Promise<void>
+}
+
+async function cleanMergedRemoteBranches(ctx: BranchCleanupContext): Promise<number> {
+  const {
+    repoPath,
+    doneTasks,
+    projectId,
+    cycle,
+    log,
+  } = ctx
+
+  let actions = 0
+
+  // Find done tasks with PR numbers that might have merged PRs
+  const tasksWithPRs = doneTasks.filter(task => task.pr_number && task.branch)
+
+  if (tasksWithPRs.length === 0) {
+    return 0
+  }
+
+  for (const task of tasksWithPRs) {
+    const branchName = task.branch!
+    const prNumber = task.pr_number!
+
+    try {
+      // Check if PR was merged
+      const prResult = execFileSync(
+        "gh",
+        ["pr", "view", String(prNumber), "--json", "state,merged"],
+        { encoding: "utf-8", timeout: 10_000, cwd: repoPath }
+      )
+      const prData = JSON.parse(prResult) as { state: string; merged: boolean }
+
+      // Only delete branch if PR was merged
+      if (prData.merged) {
+        // Check if remote branch exists
+        try {
+          execFileSync(
+            "git",
+            ["ls-remote", "--heads", "origin", branchName],
+            { encoding: "utf-8", timeout: 10_000, cwd: repoPath }
+          )
+
+          // Branch exists on remote, delete it
+          try {
+            execFileSync(
+              "git",
+              ["push", "origin", "--delete", branchName],
+              { encoding: "utf-8", timeout: 15_000, cwd: repoPath }
+            )
+
+            await log({
+              projectId,
+              cycle,
+              phase: "cleanup",
+              action: "remote_branch_deleted",
+              taskId: task.id,
+              details: { branch: branchName, prNumber, reason: "merged_pr" },
+            })
+            actions++
+            console.log(`[cleanup] Deleted merged remote branch: ${branchName} (PR #${prNumber})`)
+          } catch (deleteErr) {
+            const deleteMsg = deleteErr instanceof Error ? deleteErr.message : String(deleteErr)
+            console.warn(`[cleanup] Failed to delete remote branch ${branchName}: ${deleteMsg}`)
+            await log({
+              projectId,
+              cycle,
+              phase: "cleanup",
+              action: "remote_branch_delete_failed",
+              taskId: task.id,
+              details: { branch: branchName, prNumber, error: deleteMsg },
+            })
+          }
+        } catch {
+          // Remote branch doesn't exist, which is fine
+          console.log(`[cleanup] Remote branch ${branchName} already deleted`)
+        }
+      } else {
+        console.log(`[cleanup] PR #${prNumber} not merged (state: ${prData.state}), keeping branch ${branchName}`)
+      }
+    } catch (prCheckErr) {
+      const prMsg = prCheckErr instanceof Error ? prCheckErr.message : String(prCheckErr)
+      console.warn(`[cleanup] Failed to check PR #${prNumber} status: ${prMsg}`)
+      await log({
+        projectId,
+        cycle,
+        phase: "cleanup",
+        action: "pr_check_failed",
+        taskId: task.id,
+        details: { prNumber, error: prMsg },
+      })
+    }
   }
 
   return actions

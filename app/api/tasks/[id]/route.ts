@@ -65,7 +65,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // If status is changing, use the move mutation (handles dependencies + position)
     if (status !== undefined) {
       // First do the status change via move
-      const movedTask = await convex.mutation(api.tasks.move, { id, status })
+      const movedTask = await convex.mutation(api.tasks.move, { 
+        id, 
+        status, 
+        reason: `Status changed via HTTP API to ${status}`
+      })
 
       // If there are other fields to update, do that separately
       const otherUpdates: Record<string, unknown> = {}
