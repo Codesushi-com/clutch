@@ -38,6 +38,7 @@ interface ProjectInfo {
   work_loop_max_agents?: number | null
   local_path?: string | null
   github_repo?: string | null
+  role_model_overrides?: Record<string, string> | null
 }
 
 // ============================================
@@ -1002,6 +1003,7 @@ async function getEnabledProjects(convex: ConvexHttpClient): Promise<ProjectInfo
         work_loop_max_agents: p.work_loop_max_agents,
         local_path: p.local_path,
         github_repo: p.github_repo,
+        role_model_overrides: p.role_model_overrides,
       }))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

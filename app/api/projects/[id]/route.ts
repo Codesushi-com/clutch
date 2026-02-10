@@ -67,7 +67,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const { name, slug, description, color, repo_url, context_path, chat_layout, local_path, github_repo, work_loop_enabled, work_loop_max_agents } = body
+    const { name, slug, description, color, repo_url, context_path, chat_layout, local_path, github_repo, work_loop_enabled, work_loop_max_agents, role_model_overrides } = body
 
     // Validate local_path if provided
     if (local_path !== undefined && local_path !== null && typeof local_path !== 'string') {
@@ -105,6 +105,25 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    // Validate role_model_overrides if provided
+    if (role_model_overrides !== undefined && role_model_overrides !== null) {
+      if (typeof role_model_overrides !== 'object' || Array.isArray(role_model_overrides)) {
+        return NextResponse.json(
+          { error: "role_model_overrides must be an object mapping roles to model strings" },
+          { status: 400 }
+        )
+      }
+      // Validate that all values are strings
+      for (const [role, model] of Object.entries(role_model_overrides)) {
+        if (typeof model !== 'string') {
+          return NextResponse.json(
+            { error: `role_model_overrides.${role} must be a string` },
+            { status: 400 }
+          )
+        }
+      }
+    }
+
     // Build updates object - only include fields that were explicitly provided
     const updates: Record<string, unknown> = {}
     if (name !== undefined) updates.name = name
@@ -118,6 +137,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (chat_layout !== undefined) updates.chat_layout = chat_layout
     if (work_loop_enabled !== undefined) updates.work_loop_enabled = work_loop_enabled
     if (work_loop_max_agents !== undefined) updates.work_loop_max_agents = work_loop_max_agents
+    if (role_model_overrides !== undefined) updates.role_model_overrides = role_model_overrides
 
     const project = await convex.mutation(api.projects.update, {
       id: existing.id,

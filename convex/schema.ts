@@ -17,6 +17,7 @@ export default defineSchema({
     work_loop_enabled: v.boolean(),
     work_loop_max_agents: v.optional(v.number()),
     work_loop_schedule: v.optional(v.string()),
+    role_model_overrides: v.optional(v.record(v.string(), v.string())),
     created_at: v.number(),
     updated_at: v.number(),
   })

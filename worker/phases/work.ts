@@ -31,6 +31,7 @@ interface ProjectInfo {
   work_loop_max_agents?: number | null
   local_path?: string | null
   github_repo?: string | null
+  role_model_overrides?: Record<string, string> | null
 }
 
 interface WorkContext {
@@ -76,10 +77,16 @@ const ROLE_MODEL_MAP: Record<string, string> = {
 
 /**
  * Get the model for a role.
+ * Checks project-specific overrides first, then falls back to defaults.
  * Every role must have an explicit model to avoid falling back to the
  * gateway default (which may be an expensive model like Opus).
  */
-function getModelForRole(role: string): string {
+export function getModelForRole(role: string, project: ProjectInfo): string {
+  // Check project-specific overrides first
+  if (project.role_model_overrides?.[role]) {
+    return project.role_model_overrides[role]
+  }
+  // Fall back to global defaults
   return ROLE_MODEL_MAP[role] ?? ROLE_MODEL_MAP.dev
 }
 
@@ -429,7 +436,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     }
 
     // --- 5. Spawn agent via gateway RPC ---
-    const model = getModelForRole(role)
+    const model = getModelForRole(role, project)
     console.log(`[WorkPhase] Task ${task.id.slice(0, 8)} role=${role} → model=${model}`)
 
     try {

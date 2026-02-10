@@ -19,6 +19,7 @@ export interface ProjectInfo {
   work_loop_max_agents?: number | null
   local_path?: string | null
   github_repo?: string | null
+  role_model_overrides?: Record<string, string> | null
 }
 
 export interface PRInfo {

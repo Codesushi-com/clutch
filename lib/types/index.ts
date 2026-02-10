@@ -46,6 +46,7 @@ export interface Project {
   chat_layout: 'slack' | 'imessage'
   work_loop_enabled: number  // SQLite boolean (0/1)
   work_loop_max_agents: number | null
+  role_model_overrides: Record<string, string> | null
   created_at: number
   updated_at: number
 }

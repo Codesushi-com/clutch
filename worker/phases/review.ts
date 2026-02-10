@@ -8,6 +8,7 @@ import { buildPromptAsync } from "../prompts"
 import { handlePostMergeDeploy } from "./convex-deploy"
 import { handleSelfDeploy } from "./self-deploy"
 import { isPRMerged, findOpenPR, getPRByNumber, type ProjectInfo } from "./github"
+import { getModelForRole } from "./work"
 
 // ============================================
 // Types
@@ -69,7 +70,7 @@ interface RecoveryResult {
  *    c. Check if reviewer child already running
  *    d. If PR exists and no reviewer running → spawn reviewer
  * 3. Build reviewer prompt using role template from Convex
- * 4. Spawn via ChildManager with role="reviewer", model="gpt"
+ * 4. Spawn via ChildManager with role="reviewer", model from getModelForRole
  */
 export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
   const { convex, config, cycle, project } = ctx
@@ -473,6 +474,8 @@ async function processTask(
       }
     }
 
+    const conflictResolverModel = getModelForRole("conflict_resolver", project)
+
     try {
       const { sessionKey } = await agentManager.spawn({
         taskId: task.id,
@@ -480,7 +483,7 @@ async function processTask(
         projectSlug: project.slug,
         role: "conflict_resolver",
         message: prompt,
-        model: "kimi",
+        model: conflictResolverModel,
         timeoutSeconds: 600,
         retryCount: task.agent_retry_count ?? 0,
       })
@@ -496,7 +499,7 @@ async function processTask(
         await convex.mutation(api.task_events.logAgentAssigned, {
           taskId: task.id,
           sessionKey,
-          model: "kimi",
+          model: conflictResolverModel,
           role: "conflict_resolver",
         })
         await convex.mutation(api.comments.create, {
@@ -578,6 +581,8 @@ async function processTask(
     }
   }
 
+  const reviewerModel = getModelForRole("reviewer", project)
+
   try {
     const { sessionKey } = await agentManager.spawn({
       taskId: task.id,
@@ -585,7 +590,7 @@ async function processTask(
       projectSlug: project.slug,
       role: "reviewer",
       message: prompt,
-      model: "gpt",
+      model: reviewerModel,
       timeoutSeconds: 600,
       retryCount: task.review_count ?? 0,
     })
@@ -604,7 +609,7 @@ async function processTask(
       await convex.mutation(api.task_events.logAgentAssigned, {
         taskId: task.id,
         sessionKey,
-        model: "gpt",
+        model: reviewerModel,
         role: "reviewer",
       })
     } catch (updateError) {

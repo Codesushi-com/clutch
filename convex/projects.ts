@@ -54,6 +54,7 @@ function toProject(doc: {
   chat_layout: 'slack' | 'imessage'
   work_loop_enabled: boolean
   work_loop_max_agents?: number
+  role_model_overrides?: Record<string, string>
   created_at: number
   updated_at: number
 }): Project {
@@ -70,6 +71,7 @@ function toProject(doc: {
     chat_layout: doc.chat_layout,
     work_loop_enabled: doc.work_loop_enabled ? 1 : 0,
     work_loop_max_agents: doc.work_loop_max_agents ?? null,
+    role_model_overrides: doc.role_model_overrides ?? null,
     created_at: doc.created_at,
     updated_at: doc.updated_at,
   }
@@ -279,6 +281,7 @@ export const update = mutation({
     chat_layout: v.optional(v.union(v.literal('slack'), v.literal('imessage'))),
     work_loop_enabled: v.optional(v.boolean()),
     work_loop_max_agents: v.optional(v.number()),
+    role_model_overrides: v.optional(v.record(v.string(), v.string())),
     slug: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<Project> => {
@@ -331,6 +334,7 @@ export const update = mutation({
     if (args.chat_layout !== undefined) updates.chat_layout = args.chat_layout
     if (args.work_loop_enabled !== undefined) updates.work_loop_enabled = args.work_loop_enabled
     if (args.work_loop_max_agents !== undefined) updates.work_loop_max_agents = args.work_loop_max_agents
+    if (args.role_model_overrides !== undefined) updates.role_model_overrides = args.role_model_overrides
 
     await ctx.db.patch(existing._id, updates)
 
