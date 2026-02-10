@@ -226,6 +226,19 @@ async function processTask(
     }
   }
 
+  // Check if agent already running for this task (in-memory check)
+  if (agents.has(task.id)) {
+    const existing = agents.get(task.id)
+    return {
+      spawned: false,
+      details: {
+        reason: "reviewer_already_running",
+        taskId: task.id,
+        sessionKey: existing?.sessionKey,
+      },
+    }
+  }
+
   // Check if task already has an active agent session recorded (database check)
   // This prevents duplicate agent_assigned events when review phase runs multiple times
   if (task.agent_session_key) {
