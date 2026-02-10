@@ -818,21 +818,34 @@ const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "blocked
 const VALID_PRIORITIES = ["low", "medium", "high", "urgent"] as const
 const VALID_ROLES = ["pm", "dev", "research", "reviewer", "conflict_resolver"] as const
 
+interface ResolvedTask {
+  task: Task
+  lookupType: "global" | "project-scoped"
+}
+
 async function resolveTaskByPrefix(
   convex: ConvexHttpClient,
   projectId: string,
-  idOrPrefix: string
-): Promise<Task | null> {
-  // If it's a full UUID (36 chars with dashes), use it directly
+  idOrPrefix: string,
+  explicitProject = false
+): Promise<ResolvedTask | null> {
+  // If it's a full UUID (36 chars with dashes), look up globally first
   if (idOrPrefix.length === 36 && idOrPrefix.includes("-")) {
     const result = await convex.query(api.tasks.getById, { id: idOrPrefix })
-    return result?.task ?? null
+    if (result?.task) {
+      return { task: result.task, lookupType: "global" }
+    }
+    // If explicit project was specified and global lookup failed, fall through to prefix search
+    // Otherwise, return null (global lookup failed for a full UUID)
+    if (!explicitProject) {
+      return null
+    }
   }
 
-  // Otherwise, search by prefix
+  // Search by prefix within the specified project
   const tasks = await convex.query(api.tasks.getByProject, { projectId })
   const match = tasks.find((t: Task) => t.id.startsWith(idOrPrefix))
-  return match ?? null
+  return match ? { task: match, lookupType: "project-scoped" } : null
 }
 
 async function cmdTasksList(
@@ -885,16 +898,23 @@ async function cmdTasksGet(
   convex: ConvexHttpClient,
   project: ProjectInfo,
   idOrPrefix: string,
-  flags: Record<string, string | boolean>
+  flags: Record<string, string | boolean>,
+  explicitProject = false
 ): Promise<void> {
   const jsonOutput = flags.json === true
 
-  const task = await resolveTaskByPrefix(convex, project.id, idOrPrefix)
+  const resolved = await resolveTaskByPrefix(convex, project.id, idOrPrefix, explicitProject)
 
-  if (!task) {
-    console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+  if (!resolved) {
+    if (idOrPrefix.length === 36 && idOrPrefix.includes("-")) {
+      console.error(`Task "${idOrPrefix}" not found`)
+    } else {
+      console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+    }
     process.exit(1)
   }
+
+  const { task } = resolved
 
   if (jsonOutput) {
     console.log(JSON.stringify({ task }, null, 2))
@@ -1006,15 +1026,21 @@ async function cmdTasksUpdate(
   convex: ConvexHttpClient,
   project: ProjectInfo,
   idOrPrefix: string,
-  flags: Record<string, string | boolean>
+  flags: Record<string, string | boolean>,
+  explicitProject = false
 ): Promise<void> {
-  const task = await resolveTaskByPrefix(convex, project.id, idOrPrefix)
+  const resolved = await resolveTaskByPrefix(convex, project.id, idOrPrefix, explicitProject)
 
-  if (!task) {
-    console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+  if (!resolved) {
+    if (idOrPrefix.length === 36 && idOrPrefix.includes("-")) {
+      console.error(`Task "${idOrPrefix}" not found`)
+    } else {
+      console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+    }
     process.exit(1)
   }
 
+  const { task } = resolved
   const updates: Record<string, unknown> = {}
   const updatedFields: string[] = []
 
@@ -1093,14 +1119,21 @@ async function cmdTasksComment(
   project: ProjectInfo,
   idOrPrefix: string,
   message: string,
-  flags: Record<string, string | boolean>
+  flags: Record<string, string | boolean>,
+  explicitProject = false
 ): Promise<void> {
-  const task = await resolveTaskByPrefix(convex, project.id, idOrPrefix)
+  const resolved = await resolveTaskByPrefix(convex, project.id, idOrPrefix, explicitProject)
 
-  if (!task) {
-    console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+  if (!resolved) {
+    if (idOrPrefix.length === 36 && idOrPrefix.includes("-")) {
+      console.error(`Task "${idOrPrefix}" not found`)
+    } else {
+      console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+    }
     process.exit(1)
   }
+
+  const { task } = resolved
 
   if (!message) {
     console.error("Error: Message is required")
@@ -1127,19 +1160,26 @@ async function cmdTasksMove(
   convex: ConvexHttpClient,
   project: ProjectInfo,
   idOrPrefix: string,
-  newStatus: string
+  newStatus: string,
+  explicitProject = false
 ): Promise<void> {
   if (!VALID_STATUSES.includes(newStatus as typeof VALID_STATUSES[number])) {
     console.error(`Error: Invalid status "${newStatus}". Must be one of: ${VALID_STATUSES.join(", ")}`)
     process.exit(1)
   }
 
-  const task = await resolveTaskByPrefix(convex, project.id, idOrPrefix)
+  const resolved = await resolveTaskByPrefix(convex, project.id, idOrPrefix, explicitProject)
 
-  if (!task) {
-    console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+  if (!resolved) {
+    if (idOrPrefix.length === 36 && idOrPrefix.includes("-")) {
+      console.error(`Task "${idOrPrefix}" not found`)
+    } else {
+      console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+    }
     process.exit(1)
   }
+
+  const { task } = resolved
 
   await apiPatch(`/tasks/${task.id}`, { status: newStatus })
 
@@ -1154,16 +1194,23 @@ async function cmdTasksDeps(
   convex: ConvexHttpClient,
   project: ProjectInfo,
   idOrPrefix: string,
-  flags: Record<string, string | boolean>
+  flags: Record<string, string | boolean>,
+  explicitProject = false
 ): Promise<void> {
   const jsonOutput = flags.json === true
 
-  const task = await resolveTaskByPrefix(convex, project.id, idOrPrefix)
+  const resolved = await resolveTaskByPrefix(convex, project.id, idOrPrefix, explicitProject)
 
-  if (!task) {
-    console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+  if (!resolved) {
+    if (idOrPrefix.length === 36 && idOrPrefix.includes("-")) {
+      console.error(`Task "${idOrPrefix}" not found`)
+    } else {
+      console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+    }
     process.exit(1)
   }
+
+  const { task } = resolved
 
   try {
     const result = await apiGet(`/tasks/${task.id}/dependencies`) as {
@@ -1232,7 +1279,8 @@ async function cmdTasksDepAdd(
   convex: ConvexHttpClient,
   project: ProjectInfo,
   idOrPrefix: string,
-  flags: Record<string, string | boolean>
+  flags: Record<string, string | boolean>,
+  explicitProject = false
 ): Promise<void> {
   const dependsOnIdOrPrefix = typeof flags.on === "string" ? flags.on : undefined
 
@@ -1241,19 +1289,31 @@ async function cmdTasksDepAdd(
     process.exit(1)
   }
 
-  const task = await resolveTaskByPrefix(convex, project.id, idOrPrefix)
+  const resolved = await resolveTaskByPrefix(convex, project.id, idOrPrefix, explicitProject)
 
-  if (!task) {
-    console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+  if (!resolved) {
+    if (idOrPrefix.length === 36 && idOrPrefix.includes("-")) {
+      console.error(`Task "${idOrPrefix}" not found`)
+    } else {
+      console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+    }
     process.exit(1)
   }
 
-  const dependsOnTask = await resolveTaskByPrefix(convex, project.id, dependsOnIdOrPrefix)
+  const { task } = resolved
 
-  if (!dependsOnTask) {
-    console.error(`Dependency task "${dependsOnIdOrPrefix}" not found in project ${project.slug}`)
+  const dependsOnResolved = await resolveTaskByPrefix(convex, project.id, dependsOnIdOrPrefix, explicitProject)
+
+  if (!dependsOnResolved) {
+    if (dependsOnIdOrPrefix.length === 36 && dependsOnIdOrPrefix.includes("-")) {
+      console.error(`Dependency task "${dependsOnIdOrPrefix}" not found`)
+    } else {
+      console.error(`Dependency task "${dependsOnIdOrPrefix}" not found in project ${project.slug}`)
+    }
     process.exit(1)
   }
+
+  const { task: dependsOnTask } = dependsOnResolved
 
   try {
     const result = await apiPost(`/tasks/${task.id}/dependencies`, {
@@ -1279,7 +1339,8 @@ async function cmdTasksDepRm(
   convex: ConvexHttpClient,
   project: ProjectInfo,
   idOrPrefix: string,
-  flags: Record<string, string | boolean>
+  flags: Record<string, string | boolean>,
+  explicitProject = false
 ): Promise<void> {
   const dependsOnIdOrPrefix = typeof flags.on === "string" ? flags.on : undefined
 
@@ -1288,19 +1349,31 @@ async function cmdTasksDepRm(
     process.exit(1)
   }
 
-  const task = await resolveTaskByPrefix(convex, project.id, idOrPrefix)
+  const resolved = await resolveTaskByPrefix(convex, project.id, idOrPrefix, explicitProject)
 
-  if (!task) {
-    console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+  if (!resolved) {
+    if (idOrPrefix.length === 36 && idOrPrefix.includes("-")) {
+      console.error(`Task "${idOrPrefix}" not found`)
+    } else {
+      console.error(`Task "${idOrPrefix}" not found in project ${project.slug}`)
+    }
     process.exit(1)
   }
 
-  const dependsOnTask = await resolveTaskByPrefix(convex, project.id, dependsOnIdOrPrefix)
+  const { task } = resolved
 
-  if (!dependsOnTask) {
-    console.error(`Dependency task "${dependsOnIdOrPrefix}" not found in project ${project.slug}`)
+  const dependsOnResolved = await resolveTaskByPrefix(convex, project.id, dependsOnIdOrPrefix, explicitProject)
+
+  if (!dependsOnResolved) {
+    if (dependsOnIdOrPrefix.length === 36 && dependsOnIdOrPrefix.includes("-")) {
+      console.error(`Dependency task "${dependsOnIdOrPrefix}" not found`)
+    } else {
+      console.error(`Dependency task "${dependsOnIdOrPrefix}" not found in project ${project.slug}`)
+    }
     process.exit(1)
   }
+
+  const { task: dependsOnTask } = dependsOnResolved
 
   try {
     await apiDelete(`/tasks/${task.id}/dependencies`, {
@@ -1356,6 +1429,9 @@ async function main(): Promise<void> {
     project = resolved
   }
 
+  // Determine if project was explicitly specified (affects task lookup behavior)
+  const explicitProject = typeof flags.project === "string"
+
   // Route to appropriate command
   switch (true) {
     // Task commands
@@ -1363,28 +1439,28 @@ async function main(): Promise<void> {
       await cmdTasksList(convex, project!, flags)
       break
     case command.startsWith("tasks get "):
-      await cmdTasksGet(convex, project!, positional[2], flags)
+      await cmdTasksGet(convex, project!, positional[2], flags, explicitProject)
       break
     case command === "tasks create":
       await cmdTasksCreate(convex, project!, flags)
       break
     case command.startsWith("tasks update "):
-      await cmdTasksUpdate(convex, project!, positional[2], flags)
+      await cmdTasksUpdate(convex, project!, positional[2], flags, explicitProject)
       break
     case command.startsWith("tasks comment "):
-      await cmdTasksComment(convex, project!, positional[2], positional.slice(3).join(" "), flags)
+      await cmdTasksComment(convex, project!, positional[2], positional.slice(3).join(" "), flags, explicitProject)
       break
     case command.startsWith("tasks move "):
-      await cmdTasksMove(convex, project!, positional[2], positional[3])
+      await cmdTasksMove(convex, project!, positional[2], positional[3], explicitProject)
       break
     case command.startsWith("tasks deps "):
-      await cmdTasksDeps(convex, project!, positional[2], flags)
+      await cmdTasksDeps(convex, project!, positional[2], flags, explicitProject)
       break
     case command.startsWith("tasks dep-add "):
-      await cmdTasksDepAdd(convex, project!, positional[2], flags)
+      await cmdTasksDepAdd(convex, project!, positional[2], flags, explicitProject)
       break
     case command.startsWith("tasks dep-rm "):
-      await cmdTasksDepRm(convex, project!, positional[2], flags)
+      await cmdTasksDepRm(convex, project!, positional[2], flags, explicitProject)
       break
 
     // Agent commands
