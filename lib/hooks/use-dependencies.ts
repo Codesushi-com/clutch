@@ -38,7 +38,10 @@ export function useDependencies(taskId: string | null): UseDependenciesReturn {
         throw new Error("Failed to fetch dependencies")
       }
       const data = await response.json()
-      setDependencies(data)
+      setDependencies({
+        depends_on: data.dependencies ?? [],
+        blocks: data.blocked_by ?? [],
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error")
     } finally {
