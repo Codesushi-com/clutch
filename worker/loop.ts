@@ -374,10 +374,33 @@ async function runProjectCycle(
   const staleReviewMs = config.staleReviewMinutes * 60 * 1000
   const { reaped } = await agentManager.reapFinished(staleMs, staleReviewMs)
 
+  // Drain completed queue — catches outcomes from fire-and-forget _runAgent
+  // promises that resolved/rejected between cycles (e.g. gateway errors).
+  // Without this, failed spawns silently disappear from the agents map and
+  // the ghost detector is the only thing that catches them (after 2min delay).
+  const asyncCompleted = agentManager.drainCompleted()
+  if (asyncCompleted.length > 0) {
+    console.log(
+      `[WorkLoop] Drained ${asyncCompleted.length} async outcome(s): ` +
+      asyncCompleted.map((o) => `${o.sessionKey} (${o.error ? 'error: ' + o.error.slice(0, 100) : o.reply})`).join(", "),
+    )
+  }
+
+  // Merge both sources — reaped (from JSONL inspection) + async (from gateway RPC results)
+  // Deduplicate by taskId since both paths could theoretically produce an outcome for the same task
+  const allOutcomes: typeof reaped = [...reaped]
+  const seenTaskIds = new Set(reaped.map((r) => r.taskId))
+  for (const outcome of asyncCompleted) {
+    if (!seenTaskIds.has(outcome.taskId)) {
+      allOutcomes.push(outcome)
+      seenTaskIds.add(outcome.taskId)
+    }
+  }
+
   // Note: Active agent activity is now tracked via sessions table, not tasks
 
-  if (reaped.length > 0) {
-    for (const outcome of reaped) {
+  if (allOutcomes.length > 0) {
+    for (const outcome of allOutcomes) {
       const isStale = outcome.reply === "stale_timeout"
       await logRun(convex, {
         projectId: project.id,
