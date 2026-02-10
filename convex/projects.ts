@@ -412,3 +412,23 @@ export const isSlugAvailable = query({
     return false
   },
 })
+
+/**
+ * Get project slug by project ID
+ * Used by session watcher to resolve project slug from task's project_id
+ */
+export const getSlugById = query({
+  args: { projectId: v.string() },
+  handler: async (ctx, args): Promise<string | null> => {
+    const project = await ctx.db
+      .query('projects')
+      .withIndex('by_uuid', (q) => q.eq('id', args.projectId))
+      .unique()
+
+    if (!project) {
+      return null
+    }
+
+    return project.slug
+  },
+})

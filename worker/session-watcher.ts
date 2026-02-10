@@ -674,7 +674,7 @@ class SessionWatcher {
 
       // Detect type and extract metadata
       const sessionType = detectSessionType(sessionKey)
-      const projectSlug = extractProjectSlug(sessionKey)
+      let projectSlug = extractProjectSlug(sessionKey)
       // Resolve task ID: look up tasks where agent_session_key matches
       // this session key. The task stores the full session key, so we
       // can match exactly without needing to expand the 8-char prefix.
@@ -686,10 +686,26 @@ class SessionWatcher {
           })
           if (task) {
             taskId = task.id
+            // BUG FIX: Resolve project slug from task's project_id
+            // extractProjectSlug() returns undefined for agent sessions,
+            // so we need to look up the actual project slug
+            const resolvedSlug = await this.convex.query(api.projects.getSlugById, {
+              projectId: task.project_id,
+            })
+            if (resolvedSlug) {
+              projectSlug = resolvedSlug
+            }
           }
         } catch {
           // Non-fatal: task lookup failed, taskId stays undefined
           // The sidebar can still join via agent_session_key on the task
+        }
+
+        // REGRESSION GUARD: Agent sessions with resolved tasks MUST have projectSlug
+        if (taskId && !projectSlug) {
+          console.error(
+            `[SessionWatcher] REGRESSION: Agent session ${sessionKey} has taskId ${taskId} but no projectSlug`
+          )
         }
       }
 
