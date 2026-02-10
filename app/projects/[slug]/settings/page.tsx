@@ -1,11 +1,67 @@
 "use client"
 
 import { use, useState, useEffect } from "react"
-import { Settings, MessageSquare, Save, Loader2, Folder, AlertCircle, CheckCircle2, Clock } from "lucide-react"
+import { Settings, MessageSquare, Save, Loader2, Folder, AlertCircle, CheckCircle2, Clock, Bot, WifiOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { Project } from "@/lib/types"
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface ModelInfo {
+  id: string
+  alias?: string
+  provider: string
+  name: string
+}
+
+interface ModelsResponse {
+  models: ModelInfo[]
+  status: "connected" | "disconnected" | "fallback"
+  cachedAt?: string
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const ROLE_DISPLAY_NAMES: Record<string, { name: string; description: string }> = {
+  dev: {
+    name: "Developer",
+    description: "Implements features, fixes bugs, writes code",
+  },
+  reviewer: {
+    name: "Reviewer",
+    description: "Reviews pull requests and code changes",
+  },
+  pm: {
+    name: "Product Manager",
+    description: "Plans features, manages roadmap",
+  },
+  research: {
+    name: "Researcher",
+    description: "Investigates technical questions and solutions",
+  },
+}
+
+const DEFAULT_ROLE_MODELS: Record<string, string> = {
+  dev: "kimi-coding/k2p5",
+  reviewer: "kimi-coding/k2p5",
+  pm: "gpt",
+  research: "gpt",
+}
 
 type PageProps = {
   params: Promise<{ slug: string }>
@@ -29,6 +85,12 @@ export default function SettingsPage({ params }: PageProps) {
   // Work loop configuration state
   const [workLoopEnabled, setWorkLoopEnabled] = useState<boolean>(false)
 
+  // Role model configuration state
+  const [roleModelOverrides, setRoleModelOverrides] = useState<Record<string, string>>({})
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
+  const [modelsStatus, setModelsStatus] = useState<ModelsResponse["status"]>("disconnected")
+  const [modelsLoading, setModelsLoading] = useState(true)
+
   // Fetch project data
   useEffect(() => {
     async function fetchProject() {
@@ -41,6 +103,7 @@ export default function SettingsPage({ params }: PageProps) {
           setLocalPath(data.project.local_path || '')
           setGithubRepo(data.project.github_repo || '')
           setWorkLoopEnabled(Boolean(data.project.work_loop_enabled))
+          setRoleModelOverrides(data.project.role_model_overrides || {})
         }
       } catch (error) {
         console.error('Failed to fetch project:', error)
@@ -50,6 +113,26 @@ export default function SettingsPage({ params }: PageProps) {
     }
     fetchProject()
   }, [slug])
+
+  // Fetch available models
+  useEffect(() => {
+    async function fetchModels() {
+      try {
+        const response = await fetch('/api/openclaw/models')
+        if (response.ok) {
+          const data: ModelsResponse = await response.json()
+          setAvailableModels(data.models)
+          setModelsStatus(data.status)
+        }
+      } catch (error) {
+        console.error('Failed to fetch models:', error)
+        setModelsStatus('disconnected')
+      } finally {
+        setModelsLoading(false)
+      }
+    }
+    fetchModels()
+  }, [])
 
   // Validate local path
   const validatePath = async (path: string) => {
@@ -156,6 +239,7 @@ export default function SettingsPage({ params }: PageProps) {
           local_path: localPath.trim() || null,
           github_repo: githubRepo.trim() || null,
           work_loop_enabled: workLoopEnabled,
+          role_model_overrides: Object.keys(roleModelOverrides).length > 0 ? roleModelOverrides : null,
         }),
       })
 
@@ -173,6 +257,37 @@ export default function SettingsPage({ params }: PageProps) {
       setSaving(false)
     }
   }
+
+  // Handle role model change
+  const handleRoleModelChange = (role: string, modelId: string | null) => {
+    setRoleModelOverrides(prev => {
+      const updated = { ...prev }
+      if (modelId === null || modelId === DEFAULT_ROLE_MODELS[role]) {
+        delete updated[role]
+      } else {
+        updated[role] = modelId
+      }
+      return updated
+    })
+  }
+
+  // Get display name for a model
+  const getModelDisplayName = (modelId: string): string => {
+    const model = availableModels.find(m => m.id === modelId)
+    if (model?.alias) {
+      return `${model.alias} (${model.id})`
+    }
+    return modelId
+  }
+
+  // Group models by provider
+  const groupedModels = availableModels.reduce((acc, model) => {
+    if (!acc[model.provider]) {
+      acc[model.provider] = []
+    }
+    acc[model.provider].push(model)
+    return acc
+  }, {} as Record<string, ModelInfo[]>) 
 
   if (loading) {
     return (
@@ -196,10 +311,16 @@ export default function SettingsPage({ params }: PageProps) {
     )
   }
 
+  // Check if role model overrides have changed
+  const originalOverrides = project.role_model_overrides || {}
+  const currentOverrides = roleModelOverrides
+  const hasRoleModelChanges = JSON.stringify(originalOverrides) !== JSON.stringify(currentOverrides)
+
   const hasChanges = (chatLayout !== null && chatLayout !== project.chat_layout) ||
     localPath !== (project.local_path || '') ||
     githubRepo !== (project.github_repo || '') ||
-    workLoopEnabled !== Boolean(project.work_loop_enabled)
+    workLoopEnabled !== Boolean(project.work_loop_enabled) ||
+    hasRoleModelChanges
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-8">
@@ -431,6 +552,102 @@ export default function SettingsPage({ params }: PageProps) {
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Role Models Configuration */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Bot className="h-5 w-5 text-[var(--text-primary)]" />
+            <Label className="text-base font-medium text-[var(--text-primary)]">
+              Agent Role Models
+            </Label>
+          </div>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Configure which AI model each agent role uses for this project.
+          </p>
+
+          {/* Gateway status warning */}
+          {modelsStatus === 'disconnected' && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+              <WifiOff className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">
+                  Gateway Disconnected
+                </p>
+                <p className="text-sm text-amber-700 mt-1">
+                  Model list may be outdated. Changes will still be saved, but model availability cannot be verified.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {Object.entries(ROLE_DISPLAY_NAMES).map(([role, { name, description }]) => {
+              const currentModel = roleModelOverrides[role] || DEFAULT_ROLE_MODELS[role]
+              const isOverridden = roleModelOverrides[role] !== undefined
+
+              return (
+                <div key={role} className="p-4 rounded-lg border border-[var(--border)] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium text-[var(--text-primary)]">
+                        {name}
+                      </Label>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        {description}
+                      </p>
+                    </div>
+                    {isOverridden && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRoleModelChange(role, null)}
+                        className="text-xs h-7"
+                      >
+                        Reset to default
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Select
+                      value={currentModel}
+                      onValueChange={(value) => handleRoleModelChange(role, value)}
+                      disabled={modelsLoading}
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Select a model">
+                          {getModelDisplayName(currentModel)}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(groupedModels).map(([provider, models]) => (
+                          <SelectGroup key={provider}>
+                            <SelectLabel className="capitalize">{provider}</SelectLabel>
+                            {models.map((model) => (
+                              <SelectItem key={model.id} value={model.id}>
+                                {model.alias ? `${model.alias} (${model.id})` : model.id}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-[var(--text-secondary)]">Default:</span>
+                    <code className="bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded text-[var(--text-primary)]">
+                      {DEFAULT_ROLE_MODELS[role]}
+                    </code>
+                    {isOverridden && (
+                      <span className="text-blue-600 font-medium">(overridden)</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
