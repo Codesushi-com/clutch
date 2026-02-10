@@ -175,6 +175,7 @@ Options:
 
 Task Create Options:
   --description "..."  Task description (use \\n for newlines)
+  --description -      Read description from stdin (pipe mode)
   --status <status>    Initial status (default: ready)
   --priority <level>   Priority: low/medium/high/urgent (default: medium)
   --role <role>        Role: pm/dev/research/reviewer/conflict_resolver
@@ -183,6 +184,7 @@ Task Create Options:
 Task Update Options:
   --title "..."             New title
   --description "..."       New description (supports \\n for newlines)
+  --description -           Read description from stdin (pipe mode)
   --status <status>         New status
   --priority <level>        New priority
   --role <role>             New role
@@ -200,9 +202,13 @@ Examples:
   clutch tasks list --status ready --json     List ready tasks as JSON
   clutch tasks get abc123                     Get task details
   clutch tasks create --title "Fix bug"       Create a task
+  echo 'Use the \`pr_number\` field' | \
+    clutch tasks create --title "foo" --desc -  Create task with stdin description
   clutch tasks update abc123 --branch fix/xyz Update task branch
   clutch tasks update abc123 --pr-number 42   Update task PR number
   clutch tasks comment abc123 "Progress"      Add comment to task
+  echo 'Use the \`pr_number\` field' | \
+    clutch tasks comment abc123 -               Add comment from stdin
   clutch tasks move abc123 done               Move task to done
   clutch agents list                          Show all active agents
   clutch agents get agent:main:clutch:dev:abc Get agent details
@@ -387,6 +393,34 @@ function formatTokens(tokens: number): string {
  */
 function unescapeString(str: string): string {
   return str.replace(/\\n/g, "\n").replace(/\\t/g, "\t")
+}
+
+/**
+ * Read stdin to completion. Returns null if stdin is a TTY (no pipe).
+ */
+function readStdin(): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) {
+      // No pipe - stdin is interactive
+      resolve(null)
+      return
+    }
+
+    let data = ""
+    process.stdin.setEncoding("utf-8")
+    process.stdin.on("readable", () => {
+      let chunk: string | null
+      while ((chunk = process.stdin.read() as string | null) !== null) {
+        data += chunk
+      }
+    })
+    process.stdin.on("end", () => {
+      resolve(data.trimEnd())
+    })
+    process.stdin.on("error", () => {
+      resolve(null)
+    })
+  })
 }
 
 // ============================================
@@ -975,7 +1009,30 @@ async function cmdTasksCreate(
     process.exit(1)
   }
 
-  const description = typeof flags.description === "string" ? unescapeString(flags.description) : undefined
+  // Handle description: explicit value, stdin via "-", or piped stdin
+  let description: string | undefined
+  const descFlag = flags.description
+
+  if (typeof descFlag === "string") {
+    if (descFlag === "-") {
+      // Explicit "-" means read from stdin
+      const stdin = await readStdin()
+      if (stdin === null) {
+        console.error("Error: --description - requires piped input")
+        process.exit(1)
+      }
+      description = stdin
+    } else {
+      description = unescapeString(descFlag)
+    }
+  } else if (descFlag === undefined) {
+    // No --description flag: check if stdin is piped
+    const stdin = await readStdin()
+    if (stdin !== null) {
+      description = stdin
+    }
+  }
+
   const status = (typeof flags.status === "string" ? flags.status : "ready") as Task["status"]
   const priority = (typeof flags.priority === "string" ? flags.priority : "medium") as Task["priority"]
   const role = typeof flags.role === "string" ? flags.role : undefined
@@ -1050,8 +1107,19 @@ async function cmdTasksUpdate(
   }
 
   if (typeof flags.description === "string") {
-    updates.description = unescapeString(flags.description)
-    updatedFields.push(`description: updated`)
+    if (flags.description === "-") {
+      // Explicit "-" means read from stdin
+      const stdin = await readStdin()
+      if (stdin === null) {
+        console.error("Error: --description - requires piped input")
+        process.exit(1)
+      }
+      updates.description = stdin
+      updatedFields.push(`description: updated (from stdin)`)
+    } else {
+      updates.description = unescapeString(flags.description)
+      updatedFields.push(`description: updated`)
+    }
   }
 
   if (typeof flags.status === "string") {
@@ -1135,9 +1203,25 @@ async function cmdTasksComment(
 
   const { task } = resolved
 
-  if (!message) {
-    console.error("Error: Message is required")
-    process.exit(1)
+  // Handle message: explicit value (may be "-" for stdin), or piped stdin when no message
+  let finalMessage = message
+  if (message === "-") {
+    // Explicit "-" means read from stdin
+    const stdin = await readStdin()
+    if (stdin === null) {
+      console.error("Error: Message '-' requires piped input")
+      process.exit(1)
+    }
+    finalMessage = stdin
+  } else if (!message) {
+    // No message provided: check if stdin is piped
+    const stdin = await readStdin()
+    if (stdin !== null) {
+      finalMessage = stdin
+    } else {
+      console.error("Error: Message is required")
+      process.exit(1)
+    }
   }
 
   const author = typeof flags.author === "string" ? flags.author : "agent"
@@ -1145,7 +1229,7 @@ async function cmdTasksComment(
   const type = typeof flags.type === "string" ? flags.type : "message"
 
   await apiPost(`/tasks/${task.id}/comments`, {
-    content: unescapeString(message),
+    content: unescapeString(finalMessage),
     author,
     author_type: authorType,
     type,
