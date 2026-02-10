@@ -7,6 +7,7 @@ import type { Task } from "../../lib/types"
 import { buildPromptAsync } from "../prompts"
 import { handlePostMergeDeploy } from "./convex-deploy"
 import { handleSelfDeploy } from "./self-deploy"
+import { isPRMerged, findOpenPR, getPRByNumber, type ProjectInfo } from "./github"
 
 // ============================================
 // Types
@@ -23,16 +24,6 @@ interface LogRunParams {
   sessionKey?: string
   details?: Record<string, unknown>
   durationMs?: number
-}
-
-interface ProjectInfo {
-  id: string
-  slug: string
-  name: string
-  work_loop_enabled: boolean
-  work_loop_max_agents?: number | null
-  local_path?: string | null
-  github_repo?: string | null
 }
 
 interface ReviewContext {
@@ -223,19 +214,6 @@ async function processTask(
           prNumber: task.pr_number,
         },
       }
-    }
-  }
-
-  // Check if agent already running for this task (in-memory check)
-  if (agents.has(task.id)) {
-    const existing = agents.get(task.id)
-    return {
-      spawned: false,
-      details: {
-        reason: "reviewer_already_running",
-        taskId: task.id,
-        sessionKey: existing?.sessionKey,
-      },
     }
   }
 
@@ -946,94 +924,6 @@ async function getInReviewTasks(convex: ConvexHttpClient, projectId: string): Pr
     const message = error instanceof Error ? error.message : String(error)
     console.error(`[ReviewPhase] Failed to fetch in_review tasks: ${message}`)
     return []
-  }
-}
-
-// ============================================
-// GitHub PR Lookup
-// ============================================
-
-function findOpenPR(branchName: string, project: ProjectInfo): PRInfo | null {
-  try {
-    // Use --json with all open PRs and filter by prefix, since dev agents
-    // may append descriptive suffixes to branch names (e.g. fix/058806db-chat-sidebar-agent-status)
-    const result = execFileSync(
-      "gh",
-      ["pr", "list", "--state", "open", "--json", "number,title,headRefName"],
-      {
-        encoding: "utf-8",
-        timeout: 10_000,
-        cwd: project.local_path!, // Run from main repo
-      }
-    )
-
-    const prs = JSON.parse(result) as (PRInfo & { headRefName: string })[]
-
-    // Match by exact name or prefix (fix/abcd1234 matches fix/abcd1234-some-description)
-    const match = prs.find(pr => pr.headRefName === branchName || pr.headRefName.startsWith(branchName))
-
-    if (!match) {
-      return null
-    }
-
-    return match
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.warn(`[ReviewPhase] Failed to check PR for branch ${branchName}: ${message}`)
-    return null
-  }
-}
-
-/**
- * Check if a PR has been merged (not just closed).
- * Used to auto-close tasks whose PR was merged but task status wasn't updated.
- */
-function isPRMerged(prNumber: number, project: ProjectInfo): boolean {
-  try {
-    const result = execFileSync(
-      "gh",
-      ["pr", "view", String(prNumber), "--json", "state"],
-      {
-        encoding: "utf-8",
-        timeout: 10_000,
-        cwd: project.local_path!,
-      }
-    )
-
-    const pr = JSON.parse(result) as { state: string }
-    return pr.state === "MERGED"
-  } catch {
-    return false
-  }
-}
-
-/**
- * Get PR info by PR number (direct lookup)
- */
-function getPRByNumber(prNumber: number, project: ProjectInfo): PRInfo | null {
-  try {
-    const result = execFileSync(
-      "gh",
-      ["pr", "view", String(prNumber), "--json", "number,title,state"],
-      {
-        encoding: "utf-8",
-        timeout: 10_000,
-        cwd: project.local_path!,
-      }
-    )
-
-    const pr = JSON.parse(result) as PRInfo & { state: string }
-
-    // Only return if PR is open
-    if (pr.state !== "OPEN") {
-      return null
-    }
-
-    return { number: pr.number, title: pr.title }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.warn(`[ReviewPhase] Failed to get PR #${prNumber}: ${message}`)
-    return null
   }
 }
 

@@ -8,10 +8,13 @@
  *    agent handle but still have agent_* fields set. Happens after loop
  *    restarts when AgentManager loses its in-memory map. Clear them and
  *    move in_progress ghosts back to ready for re-assignment.
- * 2. Stale agent fields — tasks in done/ready that still have agent_*
- *    fields set. Clear them.
+ * 2. Merged PR sweep — check non-done tasks (blocked, in_progress) with
+ *    pr_number to see if their PR was merged. If so, mark them as done.
+ *    This handles cases where a PR is force-merged outside the review phase.
  * 3. Orphan worktrees — worktrees for tasks that are done. Remove them.
- * 4. Stale browser tabs — close agent-opened browser tabs to prevent memory leaks.
+ * 4. Merged remote branches — for done tasks with PR numbers, delete the
+ *    remote branch if the PR was merged.
+ * 5. Stale browser tabs — close agent-opened browser tabs to prevent memory leaks.
  *
  * Agent reaping (finished/stale sessions) is handled earlier in
  * runProjectCycle, before this phase runs. Tasks with issues are moved to
@@ -22,6 +25,7 @@ import { execFileSync } from "node:child_process"
 import type { ConvexHttpClient } from "convex/browser"
 import { api } from "../../convex/_generated/api"
 import type { Task } from "../../lib/types"
+import { isPRMerged, type ProjectInfo } from "./github"
 
 // ============================================
 // Types
@@ -38,16 +42,6 @@ interface LogRunParams {
   sessionKey?: string
   details?: Record<string, unknown>
   durationMs?: number
-}
-
-interface ProjectInfo {
-  id: string
-  slug: string
-  name: string
-  work_loop_enabled: boolean
-  work_loop_max_agents?: number | null
-  local_path?: string | null
-  github_repo?: string | null
 }
 
 interface CleanupContext {
@@ -236,6 +230,29 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
   //    This ensures queries filtering by agent_session_key != null only
   //    return tasks with live agents. The sessions table and task_events
   //    provide the audit trail for which agents worked on tasks.
+  // ------------------------------------------------------------------
+
+  // ------------------------------------------------------------------
+  // 2.5. Check for merged PRs on non-done tasks
+  //
+  //    If a PR is force-merged while a task is blocked or in_progress,
+  //    the task stays stuck forever since merged-PR detection only runs
+  //    in the review phase. This sweep finds non-done tasks with pr_number,
+  //    batch-checks merge status, and marks them as done.
+  // ------------------------------------------------------------------
+  const blockedTasks = await convex.query(api.tasks.getByProject, {
+    projectId: project.id,
+    status: "blocked",
+  })
+  const mergedPRActions = await checkMergedPRsOnNonDoneTasks({
+    convex,
+    project,
+    blockedTasks,
+    inProgressTasks,
+    cycle,
+    log,
+  })
+  actions += mergedPRActions
   // ------------------------------------------------------------------
 
   // ------------------------------------------------------------------
@@ -592,6 +609,124 @@ async function cleanMergedRemoteBranches(ctx: BranchCleanupContext): Promise<num
   }
 
   return actions
+}
+
+// ============================================
+// Merged PR Sweep
+// ============================================
+
+interface MergedPRSweepContext {
+  convex: ConvexHttpClient
+  project: ProjectInfo
+  blockedTasks: Task[]
+  inProgressTasks: Task[]
+  cycle: number
+  log: (params: LogRunParams) => Promise<void>
+}
+
+/**
+ * Check for merged PRs on non-done tasks (blocked, in_progress).
+ *
+ * If a PR is force-merged while a task is blocked or in_progress, the task
+ * stays stuck forever since merged-PR detection only runs in the review phase.
+ * This sweep finds non-done tasks with pr_number, batch-checks merge status,
+ * marks them as done, and logs lifecycle events.
+ *
+ * @returns Number of tasks auto-completed
+ */
+async function checkMergedPRsOnNonDoneTasks(ctx: MergedPRSweepContext): Promise<number> {
+  const { convex, project, blockedTasks, inProgressTasks, cycle, log } = ctx
+
+  // Combine non-done tasks that have PR numbers
+  const nonDoneTasksWithPRs = [...blockedTasks, ...inProgressTasks].filter(
+    (task) => task.pr_number
+  )
+
+  if (nonDoneTasksWithPRs.length === 0) {
+    return 0
+  }
+
+  console.log(`[cleanup] Checking ${nonDoneTasksWithPRs.length} non-done tasks for merged PRs`)
+
+  let completedCount = 0
+
+  for (const task of nonDoneTasksWithPRs) {
+    const prNumber = task.pr_number!
+
+    // Check if PR is merged
+    const merged = isPRMerged(prNumber, project)
+
+    if (!merged) {
+      continue
+    }
+
+    // PR is merged - auto-complete the task
+    console.log(`[cleanup] Auto-completing task ${task.id.slice(0, 8)} — PR #${prNumber} is merged`)
+
+    try {
+      // Move task to done
+      await convex.mutation(api.tasks.move, {
+        id: task.id,
+        status: "done",
+        reason: "pr_already_merged",
+      })
+
+      // Clear agent fields since task is done
+      await convex.mutation(api.tasks.update, {
+        id: task.id,
+        agent_session_key: undefined,
+        agent_spawned_at: undefined,
+      })
+
+      // Add comment explaining the auto-completion
+      await convex.mutation(api.comments.create, {
+        taskId: task.id,
+        author: "work-loop",
+        authorType: "coordinator",
+        content: `PR #${prNumber} was merged while task was ${task.status}. Auto-completing task.`,
+        type: "status_change",
+      })
+
+      // Log PR merged event
+      await convex.mutation(api.task_events.logPRMerged, {
+        taskId: task.id,
+        prNumber: prNumber,
+        mergedBy: "work-loop",
+      })
+
+      // Log cleanup action
+      await log({
+        projectId: project.id,
+        cycle,
+        phase: "cleanup",
+        action: "task_auto_completed_merged_pr",
+        taskId: task.id,
+        details: {
+          prNumber,
+          previousStatus: task.status,
+        },
+      })
+
+      completedCount++
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[cleanup] Failed to auto-complete task ${task.id.slice(0, 8)}:`, msg)
+      await log({
+        projectId: project.id,
+        cycle,
+        phase: "cleanup",
+        action: "task_auto_complete_failed",
+        taskId: task.id,
+        details: { prNumber, error: msg },
+      })
+    }
+  }
+
+  if (completedCount > 0) {
+    console.log(`[cleanup] Auto-completed ${completedCount} task(s) with merged PRs`)
+  }
+
+  return completedCount
 }
 
 // ============================================
