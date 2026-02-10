@@ -108,25 +108,25 @@ export function MarkdownContent({ content, className = "", variant = "chat" }: M
           code: ({ className, children, ...props }) => {
             const match = /language-(\w+)/.exec(className || "")
             if (match) {
-              // Block code (fenced)
+              // Block code (fenced) - use bg-secondary for better contrast
               return isDocument ? (
-                <pre className="bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg p-4 my-4 overflow-x-auto text-sm max-w-full min-w-0">
+                <pre className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-4 my-4 overflow-x-auto text-sm max-w-full min-w-0">
                   <code className={className} {...props}>
                     {children}
                   </code>
                 </pre>
               ) : (
-                <pre className="bg-[var(--bg-primary)] border border-[var(--border)] rounded p-3 my-2 overflow-x-auto text-xs max-w-full min-w-0">
+                <pre className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md p-3 my-2 overflow-x-auto text-sm max-w-full min-w-0">
                   <code className={className} {...props}>
                     {children}
                   </code>
                 </pre>
               )
             } else {
-              // Inline code
+              // Inline code - use bg-secondary with lighter border for better visibility
               return (
                 <code
-                  className={`bg-[var(--bg-primary)] border border-[var(--border)] rounded font-mono break-all ${isDocument ? "px-1.5 py-0.5 text-sm" : "px-1.5 py-0.5 text-xs"}`}
+                  className={`bg-[var(--bg-secondary)] border border-[var(--border)]/60 rounded font-mono break-all ${isDocument ? "px-1.5 py-0.5 text-sm" : "px-1.5 py-0.5 text-sm"}`}
                   {...props}
                 >
                   {children}
@@ -135,19 +135,19 @@ export function MarkdownContent({ content, className = "", variant = "chat" }: M
             }
           },
 
-          // Lists
-          ul: ({ children }) => (
-            <ul className={`list-disc ${isDocument ? "ml-5 mb-4 space-y-2" : "list-inside mb-2 space-y-1"}`}>
+          // Lists - use list-outside for proper bullet/number alignment with text
+          ul: ({ children, ...props }) => (
+            <ul className={`list-disc list-outside ${isDocument ? "ml-5 mb-4 space-y-1.5" : "ml-4 mb-2 space-y-1"}`} {...props}>
               {children}
             </ul>
           ),
-          ol: ({ children }) => (
-            <ol className={`list-decimal ${isDocument ? "ml-5 mb-4 space-y-2" : "list-inside mb-2 space-y-1"}`}>
+          ol: ({ children, ...props }) => (
+            <ol className={`list-decimal list-outside ${isDocument ? "ml-5 mb-4 space-y-1.5" : "ml-4 mb-2 space-y-1"}`} {...props}>
               {children}
             </ol>
           ),
           li: ({ children }) => (
-            <li className={`leading-relaxed font-normal ${isDocument ? "text-base pl-1" : "text-base"}`}>
+            <li className="leading-relaxed font-normal text-base pl-1">
               {children}
             </li>
           ),
@@ -171,7 +171,7 @@ export function MarkdownContent({ content, className = "", variant = "chat" }: M
             </blockquote>
           ),
 
-          // Tables
+          // Tables - consistent text-sm sizing for readability
           table: ({ children }) => isDocument ? (
             <div className="my-4 overflow-x-auto max-w-full min-w-0 rounded-lg border border-[var(--border)]">
               <table className="min-w-full text-sm">
@@ -179,8 +179,8 @@ export function MarkdownContent({ content, className = "", variant = "chat" }: M
               </table>
             </div>
           ) : (
-            <div className="my-2 overflow-x-auto max-w-full min-w-0">
-              <table className="min-w-full border border-[var(--border)] text-xs">
+            <div className="my-2 overflow-x-auto max-w-full min-w-0 rounded border border-[var(--border)]">
+              <table className="min-w-full text-sm">
                 {children}
               </table>
             </div>
@@ -191,11 +191,11 @@ export function MarkdownContent({ content, className = "", variant = "chat" }: M
             </thead>
           ),
           th: ({ children }) => isDocument ? (
-            <th className="border-b border-[var(--border)] px-4 py-2 text-left font-semibold">
+            <th className="border-b border-[var(--border)] px-4 py-2 text-left font-semibold bg-[var(--bg-tertiary)]">
               {children}
             </th>
           ) : (
-            <th className="border border-[var(--border)] px-2 py-1 text-left font-medium">
+            <th className="border-b border-[var(--border)] px-3 py-1.5 text-left font-semibold bg-[var(--bg-tertiary)]">
               {children}
             </th>
           ),
@@ -204,7 +204,7 @@ export function MarkdownContent({ content, className = "", variant = "chat" }: M
               {children}
             </td>
           ) : (
-            <td className="border border-[var(--border)] px-2 py-1">
+            <td className="border-b border-[var(--border)] px-3 py-1.5">
               {children}
             </td>
           ),
