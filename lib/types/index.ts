@@ -74,6 +74,7 @@ export interface Task {
   agent_session_key: string | null
   agent_spawned_at: number | null
   agent_retry_count: number | null
+  reviewer_rejection_count: number | null
   triage_sent_at: number | null
   triage_acked_at: number | null
   auto_triage_count: number | null

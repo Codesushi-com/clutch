@@ -74,6 +74,7 @@ function toTask(doc: {
   agent_session_key?: string
   agent_spawned_at?: number
   agent_retry_count?: number
+  reviewer_rejection_count?: number
   triage_sent_at?: number
   triage_acked_at?: number
   cost_total?: number
@@ -109,6 +110,7 @@ function toTask(doc: {
     agent_session_key: doc.agent_session_key ?? null,
     agent_spawned_at: (doc as { agent_spawned_at?: number }).agent_spawned_at ?? null,
     agent_retry_count: doc.agent_retry_count ?? null,
+    reviewer_rejection_count: (doc as { reviewer_rejection_count?: number }).reviewer_rejection_count ?? null,
     triage_sent_at: doc.triage_sent_at ?? null,
     triage_acked_at: (doc as { triage_acked_at?: number }).triage_acked_at ?? null,
     cost_total: (doc as { cost_total?: number }).cost_total ?? null,

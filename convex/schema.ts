@@ -69,6 +69,8 @@ export default defineSchema({
     agent_session_key: v.optional(v.union(v.string(), v.null())),
     agent_spawned_at: v.optional(v.float64()), // Timestamp when agent was spawned
     agent_retry_count: v.optional(v.number()), // Track retry attempts for orphaned tasks
+    // Reviewer rejection tracking (for retry loop before human triage)
+    reviewer_rejection_count: v.optional(v.number()), // Track reviewer rejections (negative sentiment)
     // Triage tracking (when blocked tasks were reported to Ada)
     triage_sent_at: v.optional(v.number()),
     triage_acked_at: v.optional(v.number()), // when Ada acknowledged the triage

@@ -654,32 +654,76 @@ async function runProjectCycle(
 
           // Step 2: If auto-merge didn't happen, decide between retry vs block
           if (!autoMerged) {
+            // Get rejection count for negative sentiment tracking
+            const rejectionCount = task.task.reviewer_rejection_count ?? 0
+            const maxRejections = 2 // Max 2 rejections before blocking (3rd rejection = block)
+
             if (reviewerSentiment === 'negative') {
-              // Reviewer found issues — block for triage (correct behavior)
-              await convex.mutation(api.tasks.move, {
-                id: outcome.taskId,
-                status: "blocked",
-              })
-              const reviewerOutputPreview = reviewerOutput.slice(0, 500)
-              const reviewBlockReason = reviewerOutputPreview
-                ? `Reviewer finished with concerns. Moving to blocked for triage.\n\n**Reviewer's last output:**\n> ${reviewerOutputPreview}`
-                : `Reviewer finished with concerns (no output captured). Moving to blocked for triage.`
-              await convex.mutation(api.comments.create, {
-                taskId: outcome.taskId,
-                author: "work-loop",
-                authorType: "coordinator",
-                content: reviewBlockReason,
-                type: "status_change",
-              })
-              console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (reviewer found issues)`)
-              await logRun(convex, {
-                projectId: project.id,
-                cycle,
-                phase: "cleanup",
-                action: "task_blocked",
-                taskId: outcome.taskId,
-                details: { reason: "reviewer_negative_feedback", role: outcome.role, sentiment: reviewerSentiment },
-              })
+              if (rejectionCount < maxRejections) {
+                // Rejection 1-2: Move to ready so dev can retry with reviewer feedback in context
+                const newRejectionCount = rejectionCount + 1
+                console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} reviewer rejected (attempt ${newRejectionCount}/${maxRejections}) — moving to ready for dev retry`)
+
+                await convex.mutation(api.tasks.update, {
+                  id: outcome.taskId,
+                  reviewer_rejection_count: newRejectionCount,
+                })
+
+                await convex.mutation(api.tasks.move, {
+                  id: outcome.taskId,
+                  status: "ready",
+                  reason: `Reviewer rejected changes (attempt ${newRejectionCount}/${maxRejections}) — moving to ready for dev retry`,
+                })
+
+                const reviewerOutputPreview = reviewerOutput.slice(0, 500)
+                const retryComment = reviewerOutputPreview
+                  ? `Reviewer rejected the changes (attempt ${newRejectionCount}/${maxRejections}). Moving to ready for dev retry.\n\n**Reviewer's feedback:**\n> ${reviewerOutputPreview}`
+                  : `Reviewer rejected the changes (attempt ${newRejectionCount}/${maxRejections}). Moving to ready for dev retry.`
+
+                await convex.mutation(api.comments.create, {
+                  taskId: outcome.taskId,
+                  author: "work-loop",
+                  authorType: "coordinator",
+                  content: retryComment,
+                  type: "status_change",
+                })
+
+                console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to ready (reviewer rejection ${newRejectionCount}/${maxRejections})`)
+                await logRun(convex, {
+                  projectId: project.id,
+                  cycle,
+                  phase: "cleanup",
+                  action: "task_to_ready_after_rejection",
+                  taskId: outcome.taskId,
+                  details: { reason: "reviewer_rejected", role: outcome.role, sentiment: reviewerSentiment, rejectionCount: newRejectionCount, maxRejections },
+                })
+              } else {
+                // 3rd rejection (or more): Block for human triage to prevent infinite ping-pong
+                await convex.mutation(api.tasks.move, {
+                  id: outcome.taskId,
+                  status: "blocked",
+                })
+                const reviewerOutputPreview = reviewerOutput.slice(0, 500)
+                const reviewBlockReason = reviewerOutputPreview
+                  ? `Reviewer rejected changes after ${maxRejections} retry attempts. Moving to blocked for human triage.\n\n**Reviewer's last output:**\n> ${reviewerOutputPreview}`
+                  : `Reviewer rejected changes after ${maxRejections} retry attempts (no output captured). Moving to blocked for human triage.`
+                await convex.mutation(api.comments.create, {
+                  taskId: outcome.taskId,
+                  author: "work-loop",
+                  authorType: "coordinator",
+                  content: reviewBlockReason,
+                  type: "status_change",
+                })
+                console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (reviewer rejected after ${maxRejections} retries)`)
+                await logRun(convex, {
+                  projectId: project.id,
+                  cycle,
+                  phase: "cleanup",
+                  action: "task_blocked",
+                  taskId: outcome.taskId,
+                  details: { reason: "reviewer_max_rejections_exceeded", role: outcome.role, sentiment: reviewerSentiment, rejectionCount: maxRejections },
+                })
+              }
             } else if (retryCount < maxReviewerRetries) {
               // Positive/neutral sentiment and retries remaining — re-queue for another review
               const newRetryCount = retryCount + 1

@@ -33,6 +33,7 @@ function toTask(doc: {
   agent_session_key?: string
   agent_spawned_at?: number
   agent_retry_count?: number
+  reviewer_rejection_count?: number
   triage_sent_at?: number
   triage_acked_at?: number
   auto_triage_count?: number
@@ -68,6 +69,7 @@ function toTask(doc: {
     agent_spawned_at: (doc as { agent_spawned_at?: number }).agent_spawned_at ?? null,
     // Note: agent session fields removed - now in sessions table
     agent_retry_count: doc.agent_retry_count ?? null,
+    reviewer_rejection_count: (doc as { reviewer_rejection_count?: number }).reviewer_rejection_count ?? null,
     triage_sent_at: (doc as { triage_sent_at?: number }).triage_sent_at ?? null,
     triage_acked_at: (doc as { triage_acked_at?: number }).triage_acked_at ?? null,
     auto_triage_count: (doc as { auto_triage_count?: number }).auto_triage_count ?? null,
@@ -955,6 +957,7 @@ export const update = mutation({
       v.literal('merged')
     )),
     agent_retry_count: v.optional(v.number()),
+    reviewer_rejection_count: v.optional(v.number()),
     triage_sent_at: v.optional(v.number()),
     triage_acked_at: v.optional(v.number()),
     auto_triage_count: v.optional(v.number()),
@@ -1002,6 +1005,7 @@ export const update = mutation({
     if (args.review_count !== undefined) updates.review_count = args.review_count
     if (args.resolution !== undefined) updates.resolution = args.resolution
     if (args.agent_retry_count !== undefined) updates.agent_retry_count = args.agent_retry_count
+    if (args.reviewer_rejection_count !== undefined) updates.reviewer_rejection_count = args.reviewer_rejection_count
     if (args.triage_sent_at !== undefined) updates.triage_sent_at = args.triage_sent_at
     if (args.triage_acked_at !== undefined) updates.triage_acked_at = args.triage_acked_at
     if (args.auto_triage_count !== undefined) updates.auto_triage_count = args.auto_triage_count
@@ -1126,6 +1130,8 @@ export const move = mutation({
       ...(args.status === 'in_review' ? { agent_session_key: null } : {}),
       // Reset retry count when starting fresh (in_progress), otherwise preserve it
       agent_retry_count: args.status === 'in_progress' ? 0 : existing.agent_retry_count,
+      // Reset reviewer rejection count when entering review (fresh review cycle) or done (completed)
+      reviewer_rejection_count: args.status === 'in_review' || args.status === 'done' ? 0 : (existing as { reviewer_rejection_count?: number }).reviewer_rejection_count,
       // Reset triage state when unblocking (moving to ready)
       // This ensures clean state if the task gets blocked again later
       triage_sent_at: args.status === 'ready' ? undefined : existing.triage_sent_at,
