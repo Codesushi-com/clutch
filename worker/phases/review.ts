@@ -211,12 +211,6 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
       await convex.mutation(api.tasks.move, {
         id: task.id,
         status: "ready",
-      })
-      await convex.mutation(api.task_events.logStatusChange, {
-        taskId: task.id,
-        from: 'in_review',
-        to: 'ready',
-        actor: 'work-loop',
         reason: 'recovery_failed_orphaned',
       })
       await convex.mutation(api.comments.create, {
@@ -262,6 +256,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
           await convex.mutation(api.tasks.move, {
             id: task.id,
             status: "done",
+            reason: 'pr_already_merged',
           })
           // Clear agent_session_key since task is done
           await convex.mutation(api.tasks.update, {
@@ -272,15 +267,7 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
 
           // Trigger Convex deploy if PR touched convex/ directory
           await handlePostMergeDeploy(convex, task.pr_number, project, task.id)
-          // Log status change event (in_review -> done) for auto-merged PR
-          await convex.mutation(api.task_events.logStatusChange, {
-            taskId: task.id,
-            from: 'in_review',
-            to: 'done',
-            actor: 'work-loop',
-            reason: 'pr_already_merged',
-          })
-          // Log PR merged event
+          // Log PR merged event (status change is already logged by tasks.move)
           await convex.mutation(api.task_events.logPRMerged, {
             taskId: task.id,
             prNumber: task.pr_number,
@@ -320,18 +307,10 @@ async function processTask(ctx: ReviewContext, task: Task): Promise<TaskProcessR
           agent_retry_count: newRetryCount,
         })
 
-        // Move task back to ready
+        // Move task back to ready (status change event logged by tasks.move)
         await convex.mutation(api.tasks.move, {
           id: task.id,
           status: "ready",
-        })
-
-        // Log status change event
-        await convex.mutation(api.task_events.logStatusChange, {
-          taskId: task.id,
-          from: 'in_review',
-          to: 'ready',
-          actor: 'work-loop',
           reason: 'no_pr_after_timeout',
         })
 
