@@ -47,6 +47,31 @@ OpenClutch is an autonomous software development platform that orchestrates AI a
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Systemd Setup
+
+The systemd service files use templates with placeholders. Before installing:
+
+```bash
+# Generate service files with your paths
+cd systemd
+./setup.sh
+
+# Or with custom paths:
+INSTALL_DIR=/path/to/clutch NODE_PATH=/path/to/node ./setup.sh
+```
+
+This creates `.service` files from the templates. Then install them:
+
+```bash
+# Copy to systemd user directory
+cp *.service ~/.config/systemd/user/
+
+# Reload and enable
+systemctl --user daemon-reload
+systemctl --user enable clutch-server clutch-loop clutch-bridge clutch-session-watcher
+systemctl --user start clutch-server clutch-loop clutch-bridge clutch-session-watcher
+```
+
 ### Process Overview
 
 | Process | Purpose | Description |
@@ -123,6 +148,7 @@ OPENCLAW_HOOKS_URL=http://localhost:18789/hooks
 OPENCLAW_HOOKS_TOKEN=<your-hooks-token>
 
 # OpenClaw (client-side)
+# Use localhost for local dev, or your server IP/domain for network access
 NEXT_PUBLIC_OPENCLAW_API_URL=http://localhost:18789
 NEXT_PUBLIC_OPENCLAW_WS_URL=ws://localhost:18789/ws
 NEXT_PUBLIC_OPENCLAW_TOKEN=<your-gateway-token>
@@ -142,6 +168,12 @@ WORK_LOOP_MAX_REVIEWER_AGENTS=2
 
 # Server
 PORT=3002
+
+# Optional: Additional dev origins for Next.js dev server (comma-separated hostnames)
+# NEXT_PUBLIC_DEV_ORIGINS=192.168.1.100,mydomain.com
+
+# Optional: GitHub repository URL for the settings page
+# NEXT_PUBLIC_GITHUB_URL=https://github.com/yourusername/clutch
 ```
 
 ### OpenClaw Connection
@@ -165,7 +197,14 @@ docker run -d --name convex-local -p 3210:3210 -p 3211:3211 \
 npx convex deploy --url http://localhost:3210 --admin-key <admin-key>
 ```
 
-**Convex Cloud:**
+**Note:** Role prompts are stored externally (configure via `ROLES_DIR` env var, defaults to `../clawd/roles/` relative to this repo):
+- `dev.md` - Developer agent prompt
+- `reviewer.md` - Reviewer agent prompt
+- `pm.md` - Product manager prompt
+- `research.md` - Researcher prompt
+- `conflict_resolver.md` - Conflict resolver prompt
+- `qa.md` - QA agent prompt
+- `pe.md` - Prompt engineer prompt
 
 Set `CONVEX_URL` to your deployment URL and remove self-hosted variables.
 
@@ -356,19 +395,15 @@ pnpm lint
 
 ### Git Worktrees
 
-**Never switch branches in the main repo** when the dev server is running.
+**Never switch branches in your main repo directory** - the dev server runs there on `main`.
 
 For feature work:
 
 ```bash
-# Create worktree
-git worktree add ../clutch-worktrees/fix/my-feature -b fix/my-feature
-cd ../clutch-worktrees/fix/my-feature
-
-# Work and commit...
-
-# Clean up after merge
-git worktree remove ../clutch-worktrees/fix/my-feature
+cd /path/to/clutch
+git worktree add /path/to/clutch-worktrees/fix/<ticket-id> -b fix/<ticket-id>
+cd /path/to/clutch-worktrees/fix/<ticket-id>
+# ... work ...
 ```
 
 ### Pre-commit Hooks

@@ -5,11 +5,11 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory={{WORKING_DIR}}
+WorkingDirectory={{INSTALL_DIR}}
 EnvironmentFile={{ENV_FILE}}
 Environment=NODE_ENV=production
 Environment=PORT=3002
-ExecStart={{NODE_BIN}} ./node_modules/next/dist/bin/next start -p 3002
+ExecStart={{NODE_PATH}} ./node_modules/next/dist/bin/next start -p 3002
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

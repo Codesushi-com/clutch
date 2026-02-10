@@ -1,12 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Allow dev server access from anywhere (dev only)
+  // Allow dev server access from additional origins (dev only)
   // These are hostnames, not full URLs
-  allowedDevOrigins: [
-    "192.168.7.200",
-    "ada.codesushi.com",
-  ],
+  // Configure via NEXT_PUBLIC_DEV_ORIGINS env var (comma-separated)
+  // Example: NEXT_PUBLIC_DEV_ORIGINS=192.168.1.100,mydomain.com
+  allowedDevOrigins: process.env.NEXT_PUBLIC_DEV_ORIGINS
+    ? process.env.NEXT_PUBLIC_DEV_ORIGINS.split(",").map(s => s.trim())
+    : [],
 
   // Enable standalone output for Docker deployment
   output: 'standalone',
