@@ -1,170 +1,146 @@
-"use client";
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+
+interface GatewayStatus {
+  ok: boolean
+  version: string
+  uptime: number
+  defaultModel: string
+}
+
+interface SessionStats {
+  total: number
+  active: number
+  byAgent: Array<{ agentId: string; count: number }>
+}
+
+interface UsageStats {
+  totalTokens: number
+  totalCost: number
+  inputTokens: number
+  outputTokens: number
+}
+
+interface Channel {
+  id: string
+  label: string
+  connected: boolean
+  accountId?: string
+}
+
+interface CronStats {
+  total: number
+  enabled: number
+  disabled: number
+}
+
+interface DashboardError {
+  source: string
+  message: string
+}
+
+interface DashboardData {
+  gateway: GatewayStatus
+  sessions: SessionStats
+  usage24h: UsageStats
+  channels: Channel[]
+  cron: CronStats
+  errors?: DashboardError[]
+}
+
+interface UseOpenClawDashboardReturn {
+  data: DashboardData | null
+  isLoading: boolean
+  error: Error | null
+  refetch: () => void
+}
+
+/** Default refresh interval: 30 seconds */
+const DEFAULT_REFRESH_INTERVAL_MS = 30000
 
 /**
- * OpenClaw Dashboard Hook
- * 
- * Provides gateway status and health information for the dashboard widgets.
- * Includes connection status, version, uptime, and model info.
+ * Hook to fetch and poll OpenClaw dashboard data.
+ *
+ * Aggregates data from multiple OpenClaw RPC methods into a single response
+ * for dashboard widgets. Automatically refreshes every 30 seconds.
+ *
+ * @example
+ * ```tsx
+ * function Dashboard() {
+ *   const { data, isLoading, error } = useOpenClawDashboard()
+ *
+ *   if (isLoading) return <Spinner />
+ *   if (error) return <Error message={error.message} />
+ *
+ *   return (
+ *     <div>
+ *       <GatewayStatus status={data.gateway} />
+ *       <SessionStats stats={data.sessions} />
+ *       <UsageStats stats={data.usage24h} />
+ *     </div>
+ *   )
+ * }
+ * ```
  */
+export function useOpenClawDashboard(
+  refreshIntervalMs = DEFAULT_REFRESH_INTERVAL_MS
+): UseOpenClawDashboardReturn {
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
 
-import { useCallback, useEffect, useState } from "react";
-
-export type GatewayStatus = "connected" | "disconnected" | "degraded";
-
-export interface DashboardData {
-  status: GatewayStatus;
-  version: string;
-  uptime: number; // seconds
-  defaultModel: string;
-  connected: boolean;
-}
-
-interface ApiStatusResponse {
-  status: string;
-  connected: boolean;
-  wsUrl?: string;
-}
-
-interface GatewayStatusResponse {
-  version: string;
-  uptime: number;
-  sessions?: {
-    active: number;
-    total: number;
-  };
-  memory?: {
-    backend: string;
-  };
-  config?: {
-    defaults?: {
-      model?: string;
-    };
-  };
-}
-
-const POLL_INTERVAL_MS = 30000; // 30 seconds
-
-export function useOpenClawDashboard() {
-  const [data, setData] = useState<DashboardData>({
-    status: "disconnected",
-    version: "unknown",
-    uptime: 0,
-    defaultModel: "unknown",
-    connected: false,
-  });
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchStatus = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      // Fetch connection status
-      const statusRes = await fetch("/api/openclaw/status", {
-        signal: AbortSignal.timeout(5000),
-      });
+      const response = await fetch("/api/openclaw/dashboard")
 
-      if (!statusRes.ok) {
-        throw new Error(`HTTP ${statusRes.status}`);
-      }
-
-      const statusData: ApiStatusResponse = await statusRes.json();
-
-      // Fetch gateway details via RPC proxy
-      let gatewayData: GatewayStatusResponse | null = null;
-      if (statusData.connected) {
-        try {
-          const rpcRes = await fetch("/api/openclaw/rpc", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "req",
-              id: `dash-${Date.now()}`,
-              method: "config.get",
-              params: {},
-            }),
-            signal: AbortSignal.timeout(5000),
-          });
-
-          if (rpcRes.ok) {
-            const rpcResult = await rpcRes.json();
-            if (rpcResult.ok && rpcResult.payload) {
-              const config = rpcResult.payload;
-              gatewayData = {
-                version: config.meta?.lastTouchedVersion || "unknown",
-                uptime: 0, // Not directly available
-                sessions: config.sessions,
-                config: {
-                  defaults: config.defaults,
-                },
-              };
-            }
-          }
-        } catch {
-          // Gateway RPC failed but we're still connected - show degraded
+      if (!response.ok) {
+        // For 503 (gateway down), we still get valid JSON with default values
+        if (response.status !== 503) {
+          throw new Error(`Failed to fetch dashboard: ${response.status}`)
         }
       }
 
-      const connected = statusData.connected;
-      let gatewayStatus: GatewayStatus = connected ? "connected" : "disconnected";
-      
-      // If connected but couldn't fetch config, mark as degraded
-      if (connected && !gatewayData) {
-        gatewayStatus = "degraded";
-      }
-
-      setData({
-        status: gatewayStatus,
-        version: gatewayData?.version || "unknown",
-        uptime: gatewayData?.uptime || 0,
-        defaultModel: gatewayData?.config?.defaults?.model || "unknown",
-        connected,
-      });
-      setError(null);
+      const result = (await response.json()) as DashboardData
+      setData(result)
+      setError(null)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to fetch status";
-      setError(message);
-      setData((prev) => ({
-        ...prev,
-        status: "disconnected",
-        connected: false,
-      }));
+      setError(err instanceof Error ? err : new Error(String(err)))
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  }, []);
+  }, [])
 
-  const reconnect = useCallback(async () => {
-    try {
-      const res = await fetch("/api/openclaw/status", {
-        method: "POST",
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      // Refresh status after reconnect attempt
-      await fetchStatus();
-      return true;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Reconnect failed";
-      setError(message);
-      return false;
-    }
-  }, [fetchStatus]);
-
+  // Initial fetch
   useEffect(() => {
-    fetchStatus();
+    fetchData()
+  }, [fetchData])
 
-    const interval = setInterval(fetchStatus, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchStatus]);
+  // Poll for updates
+  useEffect(() => {
+    const interval = setInterval(fetchData, refreshIntervalMs)
+    return () => clearInterval(interval)
+  }, [fetchData, refreshIntervalMs])
+
+  const refetch = useCallback(() => {
+    setIsLoading(true)
+    fetchData()
+  }, [fetchData])
 
   return {
     data,
     isLoading,
     error,
-    refresh: fetchStatus,
-    reconnect,
-  };
+    refetch,
+  }
+}
+
+export type {
+  DashboardData,
+  GatewayStatus,
+  SessionStats,
+  UsageStats,
+  Channel,
+  CronStats,
+  DashboardError,
 }
