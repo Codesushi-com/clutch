@@ -82,12 +82,12 @@ export function formatLastActivity(timestamp: number | null | undefined): string
 }
 
 /**
- * Check if agent is stale (>5min no activity)
+ * Check if agent is stale (>10min no activity)
  */
 export function isAgentStale(lastActiveAt: number | null | undefined): boolean {
   if (!lastActiveAt) return true
-  const fiveMinutes = 5 * 60 * 1000
-  return Date.now() - lastActiveAt > fiveMinutes
+  const tenMinutes = 10 * 60 * 1000
+  return Date.now() - lastActiveAt > tenMinutes
 }
 
 /**
