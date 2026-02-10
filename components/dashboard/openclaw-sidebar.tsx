@@ -2,6 +2,16 @@
 
 import { Activity } from "lucide-react"
 import { SessionsAgentsCard } from "./sessions-agents-card"
+import { ChannelHealthCard, type Channel } from "./channel-health-card"
+
+// Mock channel data - replace with useOpenClawDashboard() hook when available
+const MOCK_CHANNELS: Channel[] = [
+  { id: "discord", type: "discord", name: "Discord", status: "connected" },
+  { id: "telegram", type: "telegram", name: "Telegram", status: "connected" },
+  { id: "signal", type: "signal", name: "Signal", status: "disconnected" },
+  { id: "clutch", type: "clutch", name: "Clutch", status: "connected" },
+  { id: "whatsapp", type: "whatsapp", name: "WhatsApp", status: "connected" },
+]
 
 interface OpenClawSidebarProps {
   children?: React.ReactNode
@@ -27,6 +37,9 @@ export function OpenClawSidebar({ children }: OpenClawSidebarProps) {
       <div className="space-y-3">
         {children ?? (
           <>
+            {/* Channel Health Widget */}
+            <ChannelHealthCard channels={MOCK_CHANNELS} />
+
             {/* Placeholder widget slots */}
             <SidebarCard title="Gateway Status">
               <p className="text-sm text-[var(--text-muted)]">
