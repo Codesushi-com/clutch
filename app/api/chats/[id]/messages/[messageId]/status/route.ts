@@ -11,7 +11,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { id, messageId } = await params
   const body = await request.json()
   
-  const { delivery_status } = body
+  const { delivery_status, retry_count, cooldown_until, failure_reason } = body
   
   if (!delivery_status) {
     return NextResponse.json(
@@ -40,10 +40,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    // Update the message delivery status
+    // Update the message delivery status with optional retry/cooldown fields
     const updatedMessage = await convex.mutation(api.chats.updateDeliveryStatus, {
       message_id: messageId,
       delivery_status,
+      ...(retry_count !== undefined && { retry_count }),
+      ...(cooldown_until !== undefined && { cooldown_until }),
+      ...(failure_reason !== undefined && { failure_reason }),
     })
 
     return NextResponse.json({ 

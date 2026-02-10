@@ -66,15 +66,26 @@ async function updateMessageStatus(
   api: OpenClawPluginApi,
   chatId: string,
   messageId: string,
-  status: "sent" | "delivered" | "processing" | "responded" | "failed"
+  status: "sent" | "delivered" | "processing" | "responded" | "failed",
+  retryCount?: number,
+  cooldownUntil?: number,
+  failureReason?: string
 ): Promise<{ ok: boolean; error?: string }> {
   const clutchUrl = getClutchUrl(api);
 
   try {
+    const body: Record<string, unknown> = { 
+      delivery_status: status 
+    };
+    
+    if (retryCount !== undefined) body.retry_count = retryCount;
+    if (cooldownUntil !== undefined) body.cooldown_until = cooldownUntil;
+    if (failureReason !== undefined) body.failure_reason = failureReason;
+
     const response = await fetch(`${clutchUrl}/api/chats/${chatId}/messages/${messageId}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ delivery_status: status }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -172,47 +183,178 @@ async function sendToClutch(
 }
 
 /**
- * Handle resilience after gateway restart - find stuck messages and mark as failed
+ * Configuration for message recovery and monitoring
  */
-async function handleRestartResilience(api: OpenClawPluginApi): Promise<void> {
+const RECOVERY_CONFIG = {
+  STARTUP_RECOVERY_THRESHOLD_MINUTES: 5,
+  RETRY_THRESHOLD_MINUTES: 5,
+  HEARTBEAT_INTERVAL_MS: 30 * 1000, // 30 seconds
+  PROCESSING_TIMEOUT_MS: 3 * 60 * 1000, // 3 minutes
+  DELIVERED_TIMEOUT_MS: 30 * 1000, // 30 seconds
+  MAX_RETRY_ATTEMPTS: 3,
+};
+
+/**
+ * Handle resilience after gateway restart/reconnect
+ */
+async function handleStartupRecovery(api: OpenClawPluginApi): Promise<void> {
   const clutchUrl = getClutchUrl(api);
 
   try {
-    // Get messages stuck in "sent" or "delivered" status
-    const response = await fetch(`${clutchUrl}/api/chats/messages/stuck`, {
-      method: "GET",
+    api.logger.info("Clutch: performing startup recovery check...");
+
+    // Use the new bulk recovery API
+    const response = await fetch(`${clutchUrl}/api/chats/messages/recover`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        age_threshold_minutes: RECOVERY_CONFIG.STARTUP_RECOVERY_THRESHOLD_MINUTES,
+        action: "mark_failed"
+      }),
     });
 
     if (!response.ok) {
-      api.logger.warn(`Clutch: could not check for stuck messages: HTTP ${response.status}`);
+      api.logger.warn(`Clutch: startup recovery failed: HTTP ${response.status}`);
       return;
     }
 
     const data = await response.json();
-    const stuckMessages = data.messages || [];
-
-    for (const msg of stuckMessages) {
-      // Mark messages older than 5 minutes as failed
-      const age = Date.now() - msg.created_at;
-      if (age > 5 * 60 * 1000) { // 5 minutes
-        api.logger.info(`Clutch: marking stuck message ${msg.id} as failed (age: ${Math.round(age/1000)}s)`);
-        await updateMessageStatus(api, msg.chat_id, msg.id, "failed");
-      }
+    api.logger.info(`Clutch: startup recovery completed - processed ${data.processed} stuck messages`);
+    
+    if (data.processed > 0) {
+      api.logger.info(`Clutch: marked ${data.processed} messages as failed, added system messages to ${data.results[0]?.system_messages_added || 0} chats`);
     }
   } catch (error) {
-    api.logger.warn(`Clutch: error during restart resilience check: ${error}`);
+    api.logger.warn(`Clutch: error during startup recovery: ${error}`);
   }
+}
+
+/**
+ * Heartbeat monitoring for in-flight messages
+ */
+async function startHeartbeatMonitoring(api: OpenClawPluginApi): Promise<void> {
+  const clutchUrl = getClutchUrl(api);
+
+  async function checkStuckMessages() {
+    try {
+      // Check for messages stuck longer than timeout thresholds
+      const response = await fetch(`${clutchUrl}/api/chats/messages/stuck?age_minutes=1&limit=50`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        api.logger.warn(`Clutch: heartbeat check failed: HTTP ${response.status}`);
+        return;
+      }
+
+      const data = await response.json();
+      const stuckMessages = data.messages || [];
+
+      for (const msg of stuckMessages) {
+        const age = msg.age_ms;
+        const status = msg.delivery_status;
+        
+        // Different timeout thresholds for different states
+        let shouldTimeout = false;
+        let timeoutReason = "";
+
+        if (status === "processing" && age > RECOVERY_CONFIG.PROCESSING_TIMEOUT_MS) {
+          shouldTimeout = true;
+          timeoutReason = "processing timeout (agent may be stuck)";
+        } else if (status === "delivered" && age > RECOVERY_CONFIG.DELIVERED_TIMEOUT_MS) {
+          shouldTimeout = true;
+          timeoutReason = "delivery timeout (agent didn't start processing)";
+        } else if (status === "sent" && age > RECOVERY_CONFIG.RETRY_THRESHOLD_MINUTES * 60 * 1000) {
+          // For "sent" messages, try retry first if under retry limit
+          const retryCount = msg.retry_count || 0;
+          if (retryCount < RECOVERY_CONFIG.MAX_RETRY_ATTEMPTS) {
+            api.logger.info(`Clutch: retrying stuck message ${msg.id} (attempt ${retryCount + 1})`);
+            await retryMessage(api, msg.id);
+          } else {
+            shouldTimeout = true;
+            timeoutReason = "max retries exceeded";
+          }
+        }
+
+        if (shouldTimeout) {
+          api.logger.info(`Clutch: timing out message ${msg.id} due to ${timeoutReason} (age: ${Math.round(age/1000)}s)`);
+          await updateMessageStatus(api, msg.chat_id, msg.id, "failed", undefined, undefined, timeoutReason);
+        }
+      }
+    } catch (error) {
+      api.logger.warn(`Clutch: heartbeat monitoring error: ${error}`);
+    }
+  }
+
+  // Start the heartbeat monitoring
+  api.logger.info(`Clutch: starting heartbeat monitoring (interval: ${RECOVERY_CONFIG.HEARTBEAT_INTERVAL_MS}ms)`);
+  setInterval(checkStuckMessages, RECOVERY_CONFIG.HEARTBEAT_INTERVAL_MS);
+}
+
+/**
+ * Retry a specific message
+ */
+async function retryMessage(api: OpenClawPluginApi, messageId: string): Promise<boolean> {
+  const clutchUrl = getClutchUrl(api);
+
+  try {
+    // This will increment retry_count and reset delivery_status to "sent"
+    const response = await fetch(`${clutchUrl}/api/chats/messages/${messageId}/retry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!response.ok) {
+      api.logger.warn(`Clutch: retry failed for message ${messageId}: HTTP ${response.status}`);
+      return false;
+    }
+
+    api.logger.info(`Clutch: successfully retried message ${messageId}`);
+    return true;
+  } catch (error) {
+    api.logger.warn(`Clutch: retry error for message ${messageId}: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Handle cooldown/rate limit responses from the gateway
+ */
+async function handleCooldown(api: OpenClawPluginApi, chatId: string, messageId: string, cooldownMs: number): Promise<void> {
+  const cooldownUntil = Date.now() + cooldownMs;
+  
+  api.logger.info(`Clutch: message ${messageId} in cooldown for ${Math.round(cooldownMs/1000)}s`);
+  
+  // Update message with cooldown timestamp (keeps it in "sent" state)
+  await updateMessageStatus(api, chatId, messageId, "sent", undefined, cooldownUntil, "waiting for model availability");
+  
+  // Schedule auto-retry when cooldown expires
+  setTimeout(async () => {
+    try {
+      // Check if message still needs retry
+      const latestMessage = await getLatestHumanMessage(api, chatId);
+      if (latestMessage && latestMessage.id === messageId && latestMessage.delivery_status === "sent") {
+        api.logger.info(`Clutch: auto-retrying message ${messageId} after cooldown`);
+        await retryMessage(api, messageId);
+      }
+    } catch (error) {
+      api.logger.warn(`Clutch: auto-retry after cooldown failed for message ${messageId}: ${error}`);
+    }
+  }, cooldownMs);
 }
 
 export default function register(api: OpenClawPluginApi) {
   // =========================================================================
-  // Plugin initialization - handle restart resilience  
+  // Plugin initialization - handle restart resilience and monitoring
   // =========================================================================
-  api.logger.info("Clutch channel plugin loading...");
+  api.logger.info("Clutch channel plugin loading with enhanced message recovery...");
   
-  // Handle stuck messages after restart
-  setTimeout(() => handleRestartResilience(api), 2000);
+  // Handle startup recovery after a brief delay
+  setTimeout(() => handleStartupRecovery(api), 2000);
+  
+  // Start heartbeat monitoring for in-flight messages
+  setTimeout(() => startHeartbeatMonitoring(api), 5000);
 
   // =========================================================================
   // message_received hook — update latest human message to "delivered"
@@ -281,11 +423,33 @@ export default function register(api: OpenClawPluginApi) {
     const latestMessage = await getLatestHumanMessage(api, chatId);
 
     if (!event.success) {
-      api.logger.warn(`Clutch: agent_end failed for chat ${chatId}: ${event.error}`);
+      const errorMessage = event.error || "Unknown error";
+      api.logger.warn(`Clutch: agent_end failed for chat ${chatId}: ${errorMessage}`);
       
-      // Mark original message as failed if we found it
-      if (latestMessage) {
-        await updateMessageStatus(api, chatId, latestMessage.id, "failed");
+      // Check if this is a cooldown/rate limit error
+      const isCooldownError = errorMessage.includes("cooldown") || 
+                             errorMessage.includes("rate limit") || 
+                             errorMessage.includes("too many requests");
+      
+      if (isCooldownError && latestMessage) {
+        // Extract cooldown duration if available (basic parsing)
+        const cooldownMatch = errorMessage.match(/(\d+)\s*(second|minute|hour)s?/i);
+        let cooldownMs = 60000; // Default 1 minute
+        
+        if (cooldownMatch) {
+          const value = parseInt(cooldownMatch[1]);
+          const unit = cooldownMatch[2].toLowerCase();
+          if (unit.startsWith("second")) cooldownMs = value * 1000;
+          else if (unit.startsWith("minute")) cooldownMs = value * 60 * 1000;
+          else if (unit.startsWith("hour")) cooldownMs = value * 60 * 60 * 1000;
+        }
+        
+        api.logger.info(`Clutch: detected cooldown for chat ${chatId}, duration: ${cooldownMs}ms`);
+        await handleCooldown(api, chatId, latestMessage.id, cooldownMs);
+      } else if (latestMessage) {
+        // Regular failure
+        const failureReason = isCooldownError ? "Rate limited by gateway" : errorMessage;
+        await updateMessageStatus(api, chatId, latestMessage.id, "failed", undefined, undefined, failureReason);
       }
 
       // Still clear typing indicator even on failure/abort

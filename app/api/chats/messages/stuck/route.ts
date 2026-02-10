@@ -6,32 +6,21 @@ import { api } from "@/convex/_generated/api"
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const limit = Math.min(parseInt(searchParams.get("limit") || "100"), 500)
+  const ageThresholdMinutes = parseInt(searchParams.get("age_minutes") || "5")
   
   try {
     const convex = getConvexClient()
 
-    // Get messages stuck in "sent" or "delivered" states
-    const [sentMessages, deliveredMessages] = await Promise.all([
-      convex.query(api.chats.getMessagesByDeliveryStatus, {
-        delivery_status: "sent",
-        limit: Math.floor(limit / 2),
-      }),
-      convex.query(api.chats.getMessagesByDeliveryStatus, {
-        delivery_status: "delivered", 
-        limit: Math.floor(limit / 2),
-      })
-    ])
-
-    // Combine and sort by creation time (oldest first)
-    const allMessages = [...sentMessages, ...deliveredMessages]
-      .sort((a, b) => a.created_at - b.created_at)
-
-    // Only return human messages (author !== "ada") as these are the ones that should progress
-    const humanMessages = allMessages.filter(msg => msg.author !== "ada")
+    // Use the new getStuckMessages query with age threshold
+    const stuckMessages = await convex.query(api.chats.getStuckMessages, {
+      age_threshold_ms: ageThresholdMinutes * 60 * 1000, // Convert minutes to milliseconds
+      limit,
+    })
 
     return NextResponse.json({ 
-      messages: humanMessages,
-      total: humanMessages.length
+      messages: stuckMessages,
+      total: stuckMessages.length,
+      age_threshold_minutes: ageThresholdMinutes
     })
   } catch (error) {
     console.error("[Stuck Messages API] Error fetching stuck messages:", error)

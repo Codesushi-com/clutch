@@ -315,6 +315,9 @@ export const getMessages = query({
         v.literal("responded"),
         v.literal("failed"),
       )),
+      retry_count: v.optional(v.number()),
+      cooldown_until: v.optional(v.number()),
+      failure_reason: v.optional(v.string()),
       created_at: v.number(),
     })),
     hasMore: v.boolean(),
@@ -356,6 +359,9 @@ export const getMessages = query({
         session_key: m.session_key,
         is_automated: m.is_automated ? 1 : 0,
         delivery_status: m.delivery_status,
+        retry_count: m.retry_count,
+        cooldown_until: m.cooldown_until,
+        failure_reason: m.failure_reason,
         created_at: m.created_at,
       })),
       hasMore,
@@ -379,6 +385,9 @@ export const createMessage = mutation({
       v.literal("responded"),
       v.literal("failed"),
     )),
+    retry_count: v.optional(v.number()),
+    cooldown_until: v.optional(v.number()),
+    failure_reason: v.optional(v.string()),
   },
   returns: v.object({
     id: v.string(),
@@ -395,6 +404,9 @@ export const createMessage = mutation({
       v.literal("responded"),
       v.literal("failed"),
     )),
+    retry_count: v.optional(v.number()),
+    cooldown_until: v.optional(v.number()),
+    failure_reason: v.optional(v.string()),
     created_at: v.number(),
   }),
   handler: async (ctx, args) => {
@@ -414,6 +426,9 @@ export const createMessage = mutation({
       session_key: args.session_key,
       is_automated: args.is_automated ?? false,
       delivery_status: initialDeliveryStatus,
+      retry_count: args.retry_count ?? 0,
+      cooldown_until: args.cooldown_until,
+      failure_reason: args.failure_reason,
       created_at: now,
     })
 
@@ -438,6 +453,9 @@ export const createMessage = mutation({
       session_key: message.session_key,
       is_automated: message.is_automated ? 1 : 0,
       delivery_status: message.delivery_status,
+      retry_count: message.retry_count,
+      cooldown_until: message.cooldown_until,
+      failure_reason: message.failure_reason,
       created_at: message.created_at,
     }
   },
@@ -454,6 +472,9 @@ export const updateDeliveryStatus = mutation({
       v.literal("responded"),
       v.literal("failed"),
     ),
+    retry_count: v.optional(v.number()),
+    cooldown_until: v.optional(v.number()),
+    failure_reason: v.optional(v.string()),
   },
   returns: v.object({
     id: v.string(),
@@ -470,6 +491,9 @@ export const updateDeliveryStatus = mutation({
       v.literal("responded"),
       v.literal("failed"),
     )),
+    retry_count: v.optional(v.number()),
+    cooldown_until: v.optional(v.number()),
+    failure_reason: v.optional(v.string()),
     created_at: v.number(),
   }),
   handler: async (ctx, args) => {
@@ -481,6 +505,9 @@ export const updateDeliveryStatus = mutation({
 
     await ctx.db.patch(message._id, {
       delivery_status: args.delivery_status,
+      ...(args.retry_count !== undefined && { retry_count: args.retry_count }),
+      ...(args.cooldown_until !== undefined && { cooldown_until: args.cooldown_until }),
+      ...(args.failure_reason !== undefined && { failure_reason: args.failure_reason }),
     })
 
     const updated = await ctx.db.get(message._id)
@@ -495,6 +522,9 @@ export const updateDeliveryStatus = mutation({
       session_key: updated.session_key,
       is_automated: updated.is_automated ? 1 : 0,
       delivery_status: updated.delivery_status,
+      retry_count: updated.retry_count,
+      cooldown_until: updated.cooldown_until,
+      failure_reason: updated.failure_reason,
       created_at: updated.created_at,
     }
   },
@@ -521,6 +551,9 @@ export const getMessageByRunId = query({
         v.literal("responded"),
         v.literal("failed"),
       )),
+      retry_count: v.optional(v.number()),
+      cooldown_until: v.optional(v.number()),
+      failure_reason: v.optional(v.string()),
       created_at: v.number(),
     }),
     v.null()
@@ -544,6 +577,9 @@ export const getMessageByRunId = query({
       session_key: m.session_key,
       is_automated: m.is_automated ? 1 : 0,
       delivery_status: m.delivery_status,
+      retry_count: m.retry_count,
+      cooldown_until: m.cooldown_until,
+      failure_reason: m.failure_reason,
       created_at: m.created_at,
     }
   },
@@ -659,6 +695,263 @@ export const clearStaleTyping = mutation({
   },
 })
 
+// ============================================
+// Message Recovery and Retry
+// ============================================
+
+// Retry a failed message
+export const retryMessage = mutation({
+  args: {
+    message_id: v.string(),
+  },
+  returns: v.object({
+    id: v.string(),
+    chat_id: v.string(),
+    author: v.string(),
+    content: v.string(),
+    run_id: v.optional(v.string()),
+    session_key: v.optional(v.string()),
+    is_automated: v.optional(v.number()),
+    delivery_status: v.optional(v.union(
+      v.literal("sent"),
+      v.literal("delivered"),
+      v.literal("processing"),
+      v.literal("responded"),
+      v.literal("failed"),
+    )),
+    retry_count: v.optional(v.number()),
+    cooldown_until: v.optional(v.number()),
+    failure_reason: v.optional(v.string()),
+    created_at: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const message = await ctx.db
+      .query('chatMessages')
+      .withIndex('by_uuid', (q) => q.eq('id', args.message_id))
+      .unique()
+    if (!message) throw new Error('Message not found')
+
+    const currentRetryCount = message.retry_count ?? 0
+    const maxRetries = 3
+
+    if (currentRetryCount >= maxRetries) {
+      throw new Error('Maximum retry attempts exceeded')
+    }
+
+    // Reset to "sent" and increment retry count
+    await ctx.db.patch(message._id, {
+      delivery_status: "sent",
+      retry_count: currentRetryCount + 1,
+      failure_reason: undefined, // Clear previous failure reason
+      cooldown_until: undefined, // Clear cooldown
+    })
+
+    const updated = await ctx.db.get(message._id)
+    if (!updated) throw new Error('Failed to retry message')
+
+    return {
+      id: updated.id,
+      chat_id: updated.chat_id,
+      author: updated.author,
+      content: updated.content,
+      run_id: updated.run_id,
+      session_key: updated.session_key,
+      is_automated: updated.is_automated ? 1 : 0,
+      delivery_status: updated.delivery_status,
+      retry_count: updated.retry_count,
+      cooldown_until: updated.cooldown_until,
+      failure_reason: updated.failure_reason,
+      created_at: updated.created_at,
+    }
+  },
+})
+
+// Get messages that have been stuck for longer than the threshold
+export const getStuckMessages = query({
+  args: {
+    age_threshold_ms: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(v.object({
+    id: v.string(),
+    chat_id: v.string(),
+    author: v.string(),
+    content: v.string(),
+    run_id: v.optional(v.string()),
+    session_key: v.optional(v.string()),
+    is_automated: v.optional(v.number()),
+    delivery_status: v.optional(v.union(
+      v.literal("sent"),
+      v.literal("delivered"),
+      v.literal("processing"),
+      v.literal("responded"),
+      v.literal("failed"),
+    )),
+    retry_count: v.optional(v.number()),
+    cooldown_until: v.optional(v.number()),
+    failure_reason: v.optional(v.string()),
+    created_at: v.number(),
+    age_ms: v.number(),
+  })),
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    const threshold = now - args.age_threshold_ms
+    const limit = args.limit ?? 100
+
+    // Get messages in transitional states that are older than threshold
+    const [sentMessages, deliveredMessages, processingMessages] = await Promise.all([
+      ctx.db
+        .query('chatMessages')
+        .withIndex('by_delivery_status', (q) => q.eq('delivery_status', 'sent'))
+        .filter((q) => q.lt(q.field('created_at'), threshold))
+        .take(Math.floor(limit / 3)),
+      ctx.db
+        .query('chatMessages')
+        .withIndex('by_delivery_status', (q) => q.eq('delivery_status', 'delivered'))
+        .filter((q) => q.lt(q.field('created_at'), threshold))
+        .take(Math.floor(limit / 3)),
+      ctx.db
+        .query('chatMessages')
+        .withIndex('by_delivery_status', (q) => q.eq('delivery_status', 'processing'))
+        .filter((q) => q.lt(q.field('created_at'), threshold))
+        .take(Math.floor(limit / 3)),
+    ])
+
+    const allMessages = [...sentMessages, ...deliveredMessages, ...processingMessages]
+      .filter(msg => msg.author !== "ada") // Only human messages can get stuck
+      .map(m => ({
+        id: m.id,
+        chat_id: m.chat_id,
+        author: m.author,
+        content: m.content,
+        run_id: m.run_id,
+        session_key: m.session_key,
+        is_automated: m.is_automated ? 1 : 0,
+        delivery_status: m.delivery_status,
+        retry_count: m.retry_count,
+        cooldown_until: m.cooldown_until,
+        failure_reason: m.failure_reason,
+        created_at: m.created_at,
+        age_ms: now - m.created_at,
+      }))
+      .sort((a, b) => a.created_at - b.created_at) // Oldest first
+
+    return allMessages.slice(0, limit)
+  },
+})
+
+// Mark multiple messages as failed (for bulk recovery)
+export const markMessagesAsFailed = mutation({
+  args: {
+    message_ids: v.array(v.string()),
+    failure_reason: v.string(),
+  },
+  returns: v.object({
+    updated_count: v.number(),
+    failed_ids: v.array(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    let updated_count = 0
+    const failed_ids: string[] = []
+
+    for (const message_id of args.message_ids) {
+      try {
+        const message = await ctx.db
+          .query('chatMessages')
+          .withIndex('by_uuid', (q) => q.eq('id', message_id))
+          .unique()
+        
+        if (message) {
+          await ctx.db.patch(message._id, {
+            delivery_status: "failed",
+            failure_reason: args.failure_reason,
+          })
+          updated_count++
+        } else {
+          failed_ids.push(message_id)
+        }
+      } catch {
+        failed_ids.push(message_id)
+      }
+    }
+
+    return {
+      updated_count,
+      failed_ids,
+    }
+  },
+})
+
+// Add a system message to a chat (for recovery notifications)
+export const addSystemMessage = mutation({
+  args: {
+    chat_id: v.string(),
+    content: v.string(),
+  },
+  returns: v.object({
+    id: v.string(),
+    chat_id: v.string(),
+    author: v.string(),
+    content: v.string(),
+    run_id: v.optional(v.string()),
+    session_key: v.optional(v.string()),
+    is_automated: v.optional(v.number()),
+    delivery_status: v.optional(v.union(
+      v.literal("sent"),
+      v.literal("delivered"),
+      v.literal("processing"),
+      v.literal("responded"),
+      v.literal("failed"),
+    )),
+    retry_count: v.optional(v.number()),
+    cooldown_until: v.optional(v.number()),
+    failure_reason: v.optional(v.string()),
+    created_at: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    const id = generateId()
+
+    const internalId = await ctx.db.insert('chatMessages', {
+      id,
+      chat_id: args.chat_id,
+      author: "system",
+      content: args.content,
+      is_automated: true,
+      delivery_status: undefined, // System messages don't need delivery tracking
+      retry_count: 0,
+      created_at: now,
+    })
+
+    // Update chat's updated_at
+    const chat = await ctx.db
+      .query('chats')
+      .withIndex('by_uuid', (q) => q.eq('id', args.chat_id))
+      .unique()
+    if (chat) {
+      await ctx.db.patch(chat._id, { updated_at: now })
+    }
+
+    const message = await ctx.db.get(internalId)
+    if (!message) throw new Error('Failed to create system message')
+
+    return {
+      id: message.id,
+      chat_id: message.chat_id,
+      author: message.author,
+      content: message.content,
+      run_id: message.run_id,
+      session_key: message.session_key,
+      is_automated: message.is_automated ? 1 : 0,
+      delivery_status: message.delivery_status,
+      retry_count: message.retry_count,
+      cooldown_until: message.cooldown_until,
+      failure_reason: message.failure_reason,
+      created_at: message.created_at,
+    }
+  },
+})
+
 // Get messages by delivery status (for restart resilience)
 export const getMessagesByDeliveryStatus = query({
   args: {
@@ -684,6 +977,9 @@ export const getMessagesByDeliveryStatus = query({
       v.literal("responded"),
       v.literal("failed"),
     )),
+    retry_count: v.optional(v.number()),
+    cooldown_until: v.optional(v.number()),
+    failure_reason: v.optional(v.string()),
     created_at: v.number(),
   })),
   handler: async (ctx, args) => {
@@ -704,6 +1000,9 @@ export const getMessagesByDeliveryStatus = query({
       session_key: m.session_key,
       is_automated: m.is_automated ? 1 : 0,
       delivery_status: m.delivery_status,
+      retry_count: m.retry_count,
+      cooldown_until: m.cooldown_until,
+      failure_reason: m.failure_reason,
       created_at: m.created_at,
     }))
   },
@@ -730,6 +1029,9 @@ export const getLatestHumanMessage = query({
         v.literal("responded"),
         v.literal("failed"),
       )),
+      retry_count: v.optional(v.number()),
+      cooldown_until: v.optional(v.number()),
+      failure_reason: v.optional(v.string()),
       created_at: v.number(),
     }),
     v.null()
@@ -754,6 +1056,9 @@ export const getLatestHumanMessage = query({
       session_key: message.session_key,
       is_automated: message.is_automated ? 1 : 0,
       delivery_status: message.delivery_status,
+      retry_count: message.retry_count,
+      cooldown_until: message.cooldown_until,
+      failure_reason: message.failure_reason,
       created_at: message.created_at,
     }
   },

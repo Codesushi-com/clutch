@@ -64,7 +64,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   const body = await request.json()
   
-  const { content, author = "dan", run_id, session_key, is_automated } = body
+  const { content, author = "dan", run_id, session_key, is_automated, retry_count, cooldown_until, failure_reason } = body
   
   if (!content) {
     return NextResponse.json(
@@ -104,6 +104,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       ...(run_id && { run_id }),
       ...(session_key && { session_key }),
       is_automated: is_automated ? true : false,
+      ...(retry_count !== undefined && { retry_count }),
+      ...(cooldown_until !== undefined && { cooldown_until }),
+      ...(failure_reason !== undefined && { failure_reason }),
       // delivery_status will be set to "sent" by the mutation for human messages
     })
 

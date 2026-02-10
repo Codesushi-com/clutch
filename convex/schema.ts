@@ -160,6 +160,9 @@ export default defineSchema({
       v.literal("responded"),   // Agent response has been posted
       v.literal("failed"),      // Delivery to gateway failed
     )),
+    retry_count: v.optional(v.number()), // Number of retry attempts (for circuit breaker)
+    cooldown_until: v.optional(v.number()), // Timestamp when cooldown expires (for rate limiting)
+    failure_reason: v.optional(v.string()), // Human-readable failure reason
     created_at: v.number(),
   })
     .index("by_uuid", ["id"])
