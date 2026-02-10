@@ -710,7 +710,34 @@ async function runProjectCycle(
             }
           }
         }
-        // Case 3: Task already done/blocked → agent signaled correctly, no action
+        // Case 3: Non-reviewer agent finished while task is in_review → block (security guard)
+        // Only reviewers should be able to move tasks from in_review to done.
+        // If dev, conflict_resolver, or other roles finish here, something went wrong.
+        else if (currentStatus === "in_review") {
+          await convex.mutation(api.tasks.move, {
+            id: outcome.taskId,
+            status: "blocked",
+          })
+          const guardReason = `Agent with role '${outcome.role}' finished while task was in_review. ` +
+            `Only reviewer agents can transition tasks from in_review. Moving to blocked for triage.`
+          await convex.mutation(api.comments.create, {
+            taskId: outcome.taskId,
+            author: "work-loop",
+            authorType: "coordinator",
+            content: guardReason,
+            type: "status_change",
+          })
+          console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (non-reviewer '${outcome.role}' finished in in_review)`)
+          await logRun(convex, {
+            projectId: project.id,
+            cycle,
+            phase: "cleanup",
+            action: "task_blocked",
+            taskId: outcome.taskId,
+            details: { reason: "non_reviewer_finished_in_review", role: outcome.role },
+          })
+        }
+        // Case 4: Task already done/blocked → agent signaled correctly, no action
         else if (currentStatus === "done") {
           console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} status is done — agent signaled correctly`)
           // Reviewer merged the PR and marked done. Trigger self-deploy if clutch project.
