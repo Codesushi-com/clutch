@@ -46,7 +46,6 @@ next-env.d.ts
 
 # uploads
 /public/uploads/
-pnpm-lock_test.yaml
 
 # Generated systemd service files (from templates)
 /systemd/*.service
