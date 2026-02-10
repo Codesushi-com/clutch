@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
       id: task_id,
       status: "done",
       resolution: "discarded",
+      reason: `Task split into ${subtasks.length} subtasks by ${actor}`
     })
 
     // Set triage_acked_at to acknowledge the triage

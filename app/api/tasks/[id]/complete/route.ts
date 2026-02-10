@@ -46,7 +46,6 @@ export async function POST(
       commentContent += `\n\n**Notes**: ${notes}`
     }
 
-    const now = Date.now()
     const author = agent || task.assignee || "agent"
 
     // Create completion comment
@@ -62,6 +61,7 @@ export async function POST(
     const updatedTask = await convex.mutation(api.tasks.move, {
       id,
       status: newStatus,
+      reason: `Task completed via API by ${author}${prUrl ? ' with PR' : ''}`
     })
 
     // Log event to events table
