@@ -21,7 +21,9 @@
     "demo:up": "docker compose -f docker-compose.demo.yml up -d",
     "demo:down": "docker compose -f docker-compose.demo.yml down",
     "demo:clean": "docker compose -f docker-compose.demo.yml down -v",
-    "demo:deploy": "convex deploy --url http://localhost:3230 --yes"
+    "demo:deploy": "convex deploy --url http://localhost:3230 --yes",
+    "demo:seed": "tsx scripts/seed-demo.ts",
+    "demo:seed:clean": "tsx scripts/seed-demo.ts --clean"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
