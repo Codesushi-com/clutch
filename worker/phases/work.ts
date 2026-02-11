@@ -72,6 +72,7 @@ const ROLE_MODEL_MAP: Record<string, string> = {
   pm: "gpt",
   research: "gpt",
   reviewer: "kimi-coding/k2p5",
+  conflict_resolver: "kimi-coding/k2p5",
   dev: "kimi-coding/k2p5",
 }
 
