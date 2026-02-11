@@ -8,6 +8,11 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./test/setup.ts'],
+    environmentMatchGlobs: [
+      // convex-test tests need edge-runtime environment
+      ['**/convex/**/*.test.ts', '@edge-runtime/vm'],
+      ['**/test/convex/**/*.test.ts', '@edge-runtime/vm'],
+    ],
   },
   resolve: {
     alias: {
