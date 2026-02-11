@@ -5,7 +5,6 @@ import { Send, Square, X, Command, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ContextIndicator } from "@/components/chat/context-indicator"
 import { SlashCommandAutocomplete } from "@/components/chat/slash-command-autocomplete"
-import { PipelineStatus } from "@/components/chat/pipeline-status"
 import { parseSlashCommand, executeSlashCommand, SLASH_COMMANDS, type SlashCommandResult } from "@/lib/slash-commands"
 
 // Generate a UUID with fallback for non-secure contexts
@@ -355,20 +354,6 @@ export function ChatInput({
           ))}
         </div>
       )}
-
-      {/* Pipeline status bar */}
-      <PipelineStatus
-        sessionKey={sessionKey}
-        lastSentAt={lastSentAt}
-        isAssistantTyping={isAssistantTyping}
-        onRetry={() => {
-          // Retry: re-send the last message if we have content
-          if (content.trim()) {
-            void handleSend()
-          }
-        }}
-        onReset={() => onReset?.()}
-      />
 
       {/* Slash command indicator (shown when not using autocomplete or for unknown commands) */}
       {slashCommandMode.active && !showAutocomplete && (
