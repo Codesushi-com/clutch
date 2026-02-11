@@ -48,6 +48,11 @@ export const insertTask = mutation({
     created_at: v.number(),
     updated_at: v.number(),
     completed_at: v.optional(v.number()),
+    branch: v.optional(v.string()),
+    pr_number: v.optional(v.number()),
+    reviewer_rejection_count: v.optional(v.number()),
+    escalated: v.optional(v.boolean()),
+    escalated_at: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("tasks", args as any)
