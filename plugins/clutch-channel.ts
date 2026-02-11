@@ -12,10 +12,11 @@
  *
  * Session key format: clutch:{projectSlug}:{chatId}
  * 
- * Message correlation strategy:
- *   - When agent events fire, query for the latest human message in the chat
- *   - Update its delivery_status based on agent lifecycle
- *   - This avoids complex message ID tracking across RPC boundaries
+ * Message correlation strategy (FIFO):
+ *   - message_received: Mark oldest "sent" message as "delivered"
+ *   - agent_start: Mark oldest "delivered" message as "processing"  
+ *   - agent_end: Mark oldest "processing" message as "responded"/"failed"
+ *   - This ensures each message independently tracks its status, avoiding race conditions
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -103,7 +104,91 @@ async function updateMessageStatus(
 }
 
 /**
- * Get the latest human message from a chat (for status updates)
+ * Get the oldest human message with "sent" status (FIFO for message_received)
+ */
+async function getOldestSentMessage(
+  api: OpenClawPluginApi,
+  chatId: string
+): Promise<{ id: string; delivery_status?: string } | null> {
+  const clutchUrl = getClutchUrl(api);
+
+  try {
+    const response = await fetch(`${clutchUrl}/api/chats/${chatId}/oldest-sent-message`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!response.ok) {
+      api.logger.warn(`Clutch: failed to get oldest sent message for chat ${chatId}: HTTP ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    return data.message;
+  } catch (error) {
+    api.logger.warn(`Clutch: error getting oldest sent message for chat ${chatId}: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Get the oldest human message with "delivered" status (FIFO for agent_start)
+ */
+async function getOldestDeliveredMessage(
+  api: OpenClawPluginApi,
+  chatId: string
+): Promise<{ id: string; delivery_status?: string } | null> {
+  const clutchUrl = getClutchUrl(api);
+
+  try {
+    const response = await fetch(`${clutchUrl}/api/chats/${chatId}/oldest-delivered-message`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!response.ok) {
+      api.logger.warn(`Clutch: failed to get oldest delivered message for chat ${chatId}: HTTP ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    return data.message;
+  } catch (error) {
+    api.logger.warn(`Clutch: error getting oldest delivered message for chat ${chatId}: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Get the oldest human message with "processing" status (FIFO for agent_end)
+ */
+async function getOldestProcessingMessage(
+  api: OpenClawPluginApi,
+  chatId: string
+): Promise<{ id: string; delivery_status?: string } | null> {
+  const clutchUrl = getClutchUrl(api);
+
+  try {
+    const response = await fetch(`${clutchUrl}/api/chats/${chatId}/oldest-processing-message`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!response.ok) {
+      api.logger.warn(`Clutch: failed to get oldest processing message for chat ${chatId}: HTTP ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    return data.message;
+  } catch (error) {
+    api.logger.warn(`Clutch: error getting oldest processing message for chat ${chatId}: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Get the latest human message from a chat (for status updates and cooldown retry)
  */
 async function getLatestHumanMessage(
   api: OpenClawPluginApi,
@@ -112,7 +197,6 @@ async function getLatestHumanMessage(
   const clutchUrl = getClutchUrl(api);
 
   try {
-    // Use the Convex query through the API
     const response = await fetch(`${clutchUrl}/api/chats/${chatId}/latest-human-message`, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
@@ -357,7 +441,7 @@ export default function register(api: OpenClawPluginApi) {
   setTimeout(() => startHeartbeatMonitoring(api), 5000);
 
   // =========================================================================
-  // message_received hook — update latest human message to "delivered"
+  // message_received hook — update oldest "sent" message to "delivered" (FIFO)
   // =========================================================================
   api.on("message_received", async (event, ctx) => {
     const sessionKey = ctx.sessionKey;
@@ -368,21 +452,21 @@ export default function register(api: OpenClawPluginApi) {
 
     const { chatId } = parsed;
 
-    // Find the latest human message in this chat and mark as delivered
-    const latestMessage = await getLatestHumanMessage(api, chatId);
+    // Find the oldest human message with "sent" status and mark as delivered (FIFO)
+    const oldestSentMessage = await getOldestSentMessage(api, chatId);
     
-    if (latestMessage && latestMessage.delivery_status === "sent") {
-      api.logger.info(`Clutch: marking message ${latestMessage.id} as delivered`);
-      const result = await updateMessageStatus(api, chatId, latestMessage.id, "delivered");
+    if (oldestSentMessage && oldestSentMessage.delivery_status === "sent") {
+      api.logger.info(`Clutch: marking oldest sent message ${oldestSentMessage.id} as delivered (FIFO)`);
+      const result = await updateMessageStatus(api, chatId, oldestSentMessage.id, "delivered");
       
       if (!result.ok) {
-        api.logger.warn(`Clutch: failed to mark message ${latestMessage.id} as delivered: ${result.error}`);
+        api.logger.warn(`Clutch: failed to mark message ${oldestSentMessage.id} as delivered: ${result.error}`);
       }
     }
   });
 
   // =========================================================================
-  // agent_start hook — update to "processing"
+  // agent_start hook — update oldest "delivered" message to "processing" (FIFO)
   // =========================================================================
   api.on("agent_start", async (event, ctx) => {
     const sessionKey = ctx.sessionKey;
@@ -393,15 +477,15 @@ export default function register(api: OpenClawPluginApi) {
 
     const { chatId } = parsed;
 
-    // Find the latest human message in this chat and mark as processing
-    const latestMessage = await getLatestHumanMessage(api, chatId);
+    // Find the oldest human message with "delivered" status and mark as processing (FIFO)
+    const oldestDeliveredMessage = await getOldestDeliveredMessage(api, chatId);
     
-    if (latestMessage && (latestMessage.delivery_status === "delivered" || latestMessage.delivery_status === "sent")) {
-      api.logger.info(`Clutch: marking message ${latestMessage.id} as processing`);
-      const result = await updateMessageStatus(api, chatId, latestMessage.id, "processing");
+    if (oldestDeliveredMessage && oldestDeliveredMessage.delivery_status === "delivered") {
+      api.logger.info(`Clutch: marking oldest delivered message ${oldestDeliveredMessage.id} as processing (FIFO)`);
+      const result = await updateMessageStatus(api, chatId, oldestDeliveredMessage.id, "processing");
       
       if (!result.ok) {
-        api.logger.warn(`Clutch: failed to mark message ${latestMessage.id} as processing: ${result.error}`);
+        api.logger.warn(`Clutch: failed to mark message ${oldestDeliveredMessage.id} as processing: ${result.error}`);
       }
     }
   });
@@ -419,8 +503,8 @@ export default function register(api: OpenClawPluginApi) {
 
     const { chatId } = parsed;
 
-    // Get the latest human message for status update
-    const latestMessage = await getLatestHumanMessage(api, chatId);
+    // Get the oldest processing message for status update (FIFO)
+    const processingMessage = await getOldestProcessingMessage(api, chatId);
 
     if (!event.success) {
       const errorMessage = event.error || "Unknown error";
@@ -431,7 +515,7 @@ export default function register(api: OpenClawPluginApi) {
                              errorMessage.includes("rate limit") || 
                              errorMessage.includes("too many requests");
       
-      if (isCooldownError && latestMessage) {
+      if (isCooldownError && processingMessage) {
         // Extract cooldown duration if available (basic parsing)
         const cooldownMatch = errorMessage.match(/(\d+)\s*(second|minute|hour)s?/i);
         let cooldownMs = 60000; // Default 1 minute
@@ -445,11 +529,11 @@ export default function register(api: OpenClawPluginApi) {
         }
         
         api.logger.info(`Clutch: detected cooldown for chat ${chatId}, duration: ${cooldownMs}ms`);
-        await handleCooldown(api, chatId, latestMessage.id, cooldownMs);
-      } else if (latestMessage) {
+        await handleCooldown(api, chatId, processingMessage.id, cooldownMs);
+      } else if (processingMessage) {
         // Regular failure
         const failureReason = isCooldownError ? "Rate limited by gateway" : errorMessage;
-        await updateMessageStatus(api, chatId, latestMessage.id, "failed", undefined, undefined, failureReason);
+        await updateMessageStatus(api, chatId, processingMessage.id, "failed", undefined, undefined, failureReason);
       }
 
       // Still clear typing indicator even on failure/abort
@@ -483,8 +567,8 @@ export default function register(api: OpenClawPluginApi) {
       api.logger.info(`Clutch: no assistant content to save for chat ${chatId}`);
       
       // Mark as responded even with no content  
-      if (latestMessage) {
-        await updateMessageStatus(api, chatId, latestMessage.id, "responded");
+      if (processingMessage) {
+        await updateMessageStatus(api, chatId, processingMessage.id, "responded");
       }
 
       // Still clear typing indicator
@@ -514,15 +598,15 @@ export default function register(api: OpenClawPluginApi) {
       api.logger.info(`Clutch: response saved to chat ${chatId}`);
       
       // Mark original message as responded
-      if (latestMessage) {
-        await updateMessageStatus(api, chatId, latestMessage.id, "responded");
+      if (processingMessage) {
+        await updateMessageStatus(api, chatId, processingMessage.id, "responded");
       }
     } else {
       api.logger.warn(`Clutch: failed to save response to chat ${chatId}: ${result.error}`);
       
       // Mark original message as failed
-      if (latestMessage) {
-        await updateMessageStatus(api, chatId, latestMessage.id, "failed");
+      if (processingMessage) {
+        await updateMessageStatus(api, chatId, processingMessage.id, "failed");
       }
     }
 
@@ -620,5 +704,5 @@ export default function register(api: OpenClawPluginApi) {
     },
   });
 
-  api.logger.info("Clutch channel plugin loaded with delivery status tracking");
+  api.logger.info("Clutch channel plugin loaded with FIFO delivery status tracking");
 }
