@@ -44,6 +44,8 @@ export const insertTask = mutation({
     dispatch_status: v.optional(v.string()),
     dispatch_requested_at: v.optional(v.number()),
     dispatch_requested_by: v.optional(v.string()),
+    agent_session_key: v.optional(v.union(v.string(), v.null())),
+    agent_spawned_at: v.optional(v.number()),
     position: v.number(),
     created_at: v.number(),
     updated_at: v.number(),
