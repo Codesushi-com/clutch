@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+
+let convexAvailable = false;
+
+beforeAll(async () => {
+  try {
+    await fetch("http://127.0.0.1:3210", { signal: AbortSignal.timeout(2000) });
+    convexAvailable = true;
+  } catch {
+    convexAvailable = false;
+  }
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -62,7 +73,7 @@ describe('unescapeString helper', () => {
 });
 
 describe('clutch-cli --json output', () => {
-  it('tasks list --json prints valid JSON', () => {
+  it.skipIf(!convexAvailable)('tasks list --json prints valid JSON', () => {
     const { stdout } = runCli(['tasks', 'list', '--json'], {
       CONVEX_URL: 'http://127.0.0.1:3210',
     });
@@ -73,7 +84,7 @@ describe('clutch-cli --json output', () => {
     expect(parsed).toHaveProperty('project');
   });
 
-  it('tasks get <id> --json prints valid JSON', () => {
+  it.skipIf(!convexAvailable)('tasks get <id> --json prints valid JSON', () => {
     const list = runCli(['tasks', 'list', '--limit', '1', '--json'], {
       CONVEX_URL: 'http://127.0.0.1:3210',
     });
