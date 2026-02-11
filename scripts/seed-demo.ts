@@ -417,6 +417,13 @@ async function main() {
   const taskIds: string[] = []
   const taskIdsByProject: Record<string, string[]> = {}
   const chatIds: string[] = []
+  // Track in_progress tasks for linking with sessions (model + timing data)
+  const inProgressTasks: Array<{
+    taskId: string
+    projectId: string
+    role: Role
+    title: string
+  }> = []
 
   // 1. Create Projects
   console.log("   Creating projects...")
@@ -474,6 +481,14 @@ async function main() {
     taskIds.push(taskId)
     taskIdsByProject[projectId].push(taskId)
 
+    // For in_progress tasks, we'll generate a session key that matches a session
+    const isInProgress = status === "in_progress"
+    const sessionKey = isInProgress ? `agent:main:demo:${taskId.slice(0, 8)}` : undefined
+
+    if (isInProgress) {
+      inProgressTasks.push({ taskId, projectId, role, title })
+    }
+
     const hasBranch = status !== "backlog" && status !== "ready" && rng.boolean(0.7)
     const hasPR = (status === "in_review" || status === "done") && rng.boolean(0.8)
     const isEscalated = status === "blocked" || rng.boolean(0.1)
@@ -508,8 +523,11 @@ async function main() {
       requires_human_review: rng.boolean(0.3),
       tags: JSON.stringify(rng.pickMany(["frontend", "backend", "api", "database", "security", "performance", "testing", "docs"], rng.range(1, 3))),
       session_id: rng.boolean(0.4) ? `agent:main:demo:${taskId.slice(0, 8)}` : undefined,
-      dispatch_status: status === "in_progress" ? rng.pick(["active", "spawning", "pending"]) : undefined,
-      dispatch_requested_at: status === "in_progress" ? Date.now() - rng.range(60000, 3600000) : undefined,
+      // Set agent_session_key for in_progress tasks so they link to sessions
+      agent_session_key: sessionKey,
+      agent_spawned_at: isInProgress ? Date.now() - rng.range(300000, 1800000) : undefined, // 5-30 min ago
+      dispatch_status: isInProgress ? rng.pick(["active", "spawning", "pending"]) : undefined,
+      dispatch_requested_at: isInProgress ? Date.now() - rng.range(60000, 3600000) : undefined,
       dispatch_requested_by: rng.pick(["coordinator", "human-1"]),
       position: i,
       created_at: createdAt,
@@ -653,11 +671,57 @@ async function main() {
   }
   console.log("      ✓ Created 100 work loop runs")
 
-  // 7. Create Sessions (~15-20)
+  // 7. Create Sessions
+  // First, create sessions for in_progress tasks (so active agents show model + timing)
   console.log("   Creating sessions...")
-  const totalSessions = rng.range(15, 20)
 
-  for (let i = 0; i < totalSessions; i++) {
+  // Create sessions for in_progress tasks first (linked for active agents display)
+  for (let i = 0; i < inProgressTasks.length; i++) {
+    const { taskId, projectId, role, title } = inProgressTasks[i]
+    const sessionKey = `agent:main:demo:${taskId.slice(0, 8)}`
+    const project = PROJECTS.find(p => {
+      const projId = projectIds[PROJECTS.indexOf(p)]
+      return projId === projectId
+    }) || PROJECTS[0]
+
+    const model = rng.pick(MODELS)
+    const tokensInput = rng.range(5000, 80000)
+    const tokensOutput = rng.range(2000, 30000)
+    const costInput = (tokensInput / 1000000) * model.inputPrice
+    const costOutput = (tokensOutput / 1000000) * model.outputPrice
+    const sessionCreatedAt = Date.now() - rng.range(300000, 1800000) // 5-30 min ago
+
+    await client.mutation(api.seed.insertSession, {
+      id: generateUUID(9000 + i),
+      session_key: sessionKey,
+      session_id: generateUUID(9500 + i),
+      session_type: "agent",
+      model: model.id,
+      provider: rng.pick(["anthropic", "openai", "google"]),
+      status: rng.pick(["active", "idle"]) as SessionStatus,
+      tokens_input: tokensInput,
+      tokens_output: tokensOutput,
+      tokens_cache_read: rng.boolean(0.3) ? rng.range(100, 5000) : 0,
+      tokens_cache_write: rng.boolean(0.1) ? rng.range(100, 2000) : 0,
+      tokens_total: tokensInput + tokensOutput,
+      cost_input: costInput,
+      cost_output: costOutput,
+      cost_total: costInput + costOutput,
+      last_active_at: Date.now() - rng.range(0, 300000), // Active in last 5 min
+      output_preview: `Working on: ${title.slice(0, 60)}...`,
+      stop_reason: undefined,
+      task_id: taskId,
+      project_slug: project.slug,
+      file_path: `/tmp/sessions/${sessionKey}.json`,
+      created_at: sessionCreatedAt,
+      updated_at: Date.now() - rng.range(0, 60000),
+      completed_at: undefined,
+    })
+  }
+
+  // Create additional random sessions for variety
+  const additionalSessions = rng.range(8, 12)
+  for (let i = 0; i < additionalSessions; i++) {
     const type: SessionType = rng.pick(SESSION_TYPES)
     const status: SessionStatus = rng.pick(SESSION_STATUSES)
     const model = rng.pick(MODELS)
@@ -667,9 +731,9 @@ async function main() {
     const costOutput = (tokensOutput / 1000000) * model.outputPrice
 
     await client.mutation(api.seed.insertSession, {
-      id: generateUUID(9000 + i),
+      id: generateUUID(9100 + i),
       session_key: `${type}:demo:${Date.now()}-${i}`,
-      session_id: generateUUID(9500 + i),
+      session_id: generateUUID(9600 + i),
       session_type: type,
       model: model.id,
       provider: rng.pick(["anthropic", "openai", "google"]),
@@ -693,7 +757,8 @@ async function main() {
       completed_at: status === "completed" ? Date.now() - rng.range(0, 86400000) : undefined,
     })
   }
-  console.log(`      ✓ Created ${totalSessions} sessions`)
+  const totalSessions = inProgressTasks.length + additionalSessions
+  console.log(`      ✓ Created ${totalSessions} sessions (${inProgressTasks.length} linked to active tasks)`)
 
   // 8. Create Roadmap Data
   console.log("   Creating roadmap data...")
