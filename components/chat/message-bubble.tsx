@@ -7,7 +7,7 @@ import { MessageActions } from "./message-actions"
 import { Avatar } from "@/components/ui/avatar"
 import { MarkdownContent } from "./markdown-content"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, ChevronDown, ChevronRight, Bot, Check, AlertCircle, Loader2 } from "lucide-react"
+import { ExternalLink, ChevronDown, ChevronRight, Bot, Check, AlertCircle } from "lucide-react"
 import Link from "next/link"
 
 interface SubAgentDetails {
@@ -56,20 +56,16 @@ interface DeliveryStatusProps {
   onRetry?: () => void
 }
 
-function DeliveryStatus({ status, isOwnMessage, onRetry }: DeliveryStatusProps) {
-  // Don't show anything for legacy messages without status
+function DeliveryStatus({ status, isOwnMessage: _isOwnMessage, onRetry }: DeliveryStatusProps) {
+  // Don't show anything for legacy messages or bot messages without status
   if (!status) return null
-
-  // Only show for user messages (isOwnMessage implies user message)
-  // Agent/bot messages don't need delivery status indicators
-  if (!isOwnMessage) return null
 
   const baseClasses = "inline-flex items-center gap-0.5 text-xs transition-colors duration-200"
   
   switch (status) {
     case 'sent':
       return (
-        <span className={`${baseClasses} text-[var(--text-muted)]`} title="Message saved, waiting for delivery">
+        <span className={`${baseClasses} text-[var(--text-muted)]`} title="Sent">
           <Check className="h-3 w-3" />
         </span>
       )
@@ -85,7 +81,8 @@ function DeliveryStatus({ status, isOwnMessage, onRetry }: DeliveryStatusProps) 
     case 'processing':
       return (
         <span className={`${baseClasses} text-[var(--text-muted)]`} title="Agent is working on it">
-          <Loader2 className="h-3 w-3 animate-spin" />
+          <Check className="h-3 w-3" />
+          <Check className="h-3 w-3 -ml-1.5" />
         </span>
       )
     
@@ -352,8 +349,8 @@ export function MessageBubble({
               {formatDistanceToNow(message.created_at, { addSuffix: true })}
             </span>
 
-            {/* Delivery status - inline for slack layout */}
-            {chatLayout === 'slack' && (
+            {/* Delivery status - inline for slack layout, human messages only */}
+            {chatLayout === 'slack' && message.author !== 'ada' && (
               <DeliveryStatus
                 status={message.delivery_status}
                 isOwnMessage={isOwnMessage}
@@ -392,7 +389,7 @@ export function MessageBubble({
         </div>
 
         {/* Delivery status - under bubble for imessage layout */}
-        {chatLayout === 'imessage' && isOwnMessage && (
+        {chatLayout === 'imessage' && message.author !== 'ada' && (
           <div className="mt-1 text-right">
             <DeliveryStatus
               status={message.delivery_status}

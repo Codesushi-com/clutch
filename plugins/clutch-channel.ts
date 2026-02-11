@@ -444,13 +444,11 @@ export default function register(api: OpenClawPluginApi) {
   // message_received hook — update oldest "sent" message to "delivered" (FIFO)
   // =========================================================================
   api.on("message_received", async (event, ctx) => {
-    const sessionKey = ctx.sessionKey;
-    if (!sessionKey) return;
-
-    const parsed = parseClutchSessionKey(sessionKey);
-    if (!parsed) return;
-
-    const { chatId } = parsed;
+    // message_received context has channelId + conversationId, not sessionKey
+    // For clutch messages, channelId is "clutch" and conversationId is the chatId
+    if (ctx.channelId !== "clutch") return;
+    const chatId = ctx.conversationId;
+    if (!chatId) return;
 
     // Find the oldest human message with "sent" status and mark as delivered (FIFO)
     const oldestSentMessage = await getOldestSentMessage(api, chatId);
@@ -466,9 +464,9 @@ export default function register(api: OpenClawPluginApi) {
   });
 
   // =========================================================================
-  // agent_start hook — update oldest "delivered" message to "processing" (FIFO)
+  // before_agent_start hook — update oldest "delivered" message to "processing" (FIFO)
   // =========================================================================
-  api.on("agent_start", async (event, ctx) => {
+  api.on("before_agent_start", async (event, ctx) => {
     const sessionKey = ctx.sessionKey;
     if (!sessionKey) return;
 

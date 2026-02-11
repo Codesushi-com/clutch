@@ -1,13 +1,14 @@
 # AGENTS.md - OpenClutch Workspace
 
-## Dev Server
-- **Running on port 3002** — do NOT start another
-- Turbopack hot-reloads on save
-- Check status: `curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/`
-- If dead: `rm -f .next/dev/lock && PORT=3002 nohup pnpm dev > /tmp/clutch-next.log 2>&1 &`
+## Production Server
+- **Running on port 3002 via systemd** (`clutch-server.service`) — do NOT start another
+- Uses `next start` (production build), NOT `pnpm dev`
+- Check status: `systemctl --user status clutch-server` or `curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/`
+- If dead: `systemctl --user restart clutch-server`
+- After merging changes to `main`: rebuild and restart with `cd /home/dan/src/clutch && pnpm build && systemctl --user restart clutch-server`
 
 ## Commands
-- `pnpm build` — production build
+- `pnpm build` — production build (required after code changes on main)
 - `pnpm lint` — eslint
 - `pnpm typecheck` — tsc
 
@@ -85,7 +86,7 @@ git worktree remove /path/to/clutch-worktrees/<branch-name>
 
 Branch naming: `fix/<ticket-id-prefix>-<short-desc>` or `feat/<ticket-id-prefix>-<short-desc>`
 
-**Why:** Switching branches in the main repo kills the running dev server, breaking the app for users.
+**Why:** Switching branches in the main repo breaks the production build and disrupts the running server.
 
 ---
 
