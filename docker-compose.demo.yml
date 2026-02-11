@@ -1,0 +1,66 @@
+# OpenClutch Docker Compose - Demo Instance
+# Isolated demo environment for screenshots and testing
+# Fully separate from production instance on ports 3210/3211
+#
+# Quick Start:
+#   1. Start the demo instance:
+#      docker compose -f docker-compose.demo.yml up -d
+#
+#   2. Deploy the Convex schema:
+#      pnpm demo:deploy
+#
+#   3. Access the dashboard at http://localhost:6811
+#
+#   4. Stop and clean up:
+#      docker compose -f docker-compose.demo.yml down -v
+#
+# To generate a new admin key:
+#   docker run --rm ghcr.io/get-convex/convex-backend:latest generate-key
+
+name: openclutch-demo
+
+services:
+  # -----------------------------------------------------------------------------
+  # Convex Backend (Demo Instance)
+  # -----------------------------------------------------------------------------
+  convex:
+    image: ghcr.io/get-convex/convex-backend:latest
+    container_name: openclutch-convex-demo
+    restart: unless-stopped
+    ports:
+      - "3230:3230"  # Convex API port (demo)
+      - "6811:6811"  # Convex dashboard port (demo)
+    volumes:
+      - convex-demo-data:/convex/data
+    environment:
+      # Admin key for Convex demo instance
+      # This is a demo key - generate a new one with:
+      # docker run --rm ghcr.io/get-convex/convex-backend:latest generate-key
+      - CONVEX_ADMIN_KEY=${CONVEX_DEMO_ADMIN_KEY:-convex-self-hosted|00000000000000000000000000000000000000000000000000000000000000000000000000000000}
+      # Storage configuration
+      - CONVEX_STORAGE_TYPE=${CONVEX_STORAGE_TYPE:-sqlite}
+      - CONVEX_SQLITE_PATH=${CONVEX_SQLITE_PATH:-/convex/data/convex.db}
+      # Logging
+      - RUST_LOG=${RUST_LOG:-info}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3230/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - openclutch-demo-network
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  convex-demo-data:
+    driver: local
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  openclutch-demo-network:
+    driver: bridge

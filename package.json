@@ -17,7 +17,11 @@
     "test:ui": "vitest --ui",
     "prepare": "husky",
     "convex:dev": "convex dev",
-    "convex:deploy": "convex deploy"
+    "convex:deploy": "convex deploy",
+    "demo:up": "docker compose -f docker-compose.demo.yml up -d",
+    "demo:down": "docker compose -f docker-compose.demo.yml down",
+    "demo:clean": "docker compose -f docker-compose.demo.yml down -v",
+    "demo:deploy": "convex deploy --url http://localhost:3230 --yes"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
