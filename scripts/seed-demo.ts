@@ -480,6 +480,22 @@ async function main() {
     const rejectionCount = rng.boolean(0.2) ? rng.range(1, 3) : 0
     const priority: TaskPriority = rng.pick(TASK_PRIORITIES)
 
+    // For done tasks, create realistic cycle times (minutes to hours, not days)
+    // completed_at should be reasonably close to created_at for realistic cycle times
+    let createdAt: number
+    let completedAt: number | undefined
+
+    if (status === "done") {
+      // Task completed recently (within last 7 days)
+      completedAt = Date.now() - rng.range(0, 7 * 24 * 60 * 60 * 1000)
+      // Created at shortly before completion (15 min to 4 hours for realistic cycle time)
+      const cycleTimeMs = rng.range(15 * 60 * 1000, 4 * 60 * 60 * 1000)
+      createdAt = completedAt - cycleTimeMs
+    } else {
+      // Non-done tasks can have any creation date
+      createdAt = rng.dateInRange(10, 0)
+    }
+
     await client.mutation(api.seed.insertTask, {
       id: taskId,
       project_id: projectId,
@@ -496,9 +512,9 @@ async function main() {
       dispatch_requested_at: status === "in_progress" ? Date.now() - rng.range(60000, 3600000) : undefined,
       dispatch_requested_by: rng.pick(["coordinator", "human-1"]),
       position: i,
-      created_at: rng.dateInRange(10, 0),
+      created_at: createdAt,
       updated_at: Date.now() - rng.range(0, 86400000),
-      completed_at: status === "done" ? Date.now() - rng.range(0, 172800000) : undefined,
+      completed_at: completedAt,
       branch: hasBranch ? `fix/${taskId.slice(0, 8)}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30)}` : undefined,
       pr_number: hasPR ? rng.range(100, 500) : undefined,
       reviewer_rejection_count: rejectionCount,

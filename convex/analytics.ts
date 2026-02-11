@@ -93,16 +93,6 @@ function calculatePercentiles(values: number[]): { average: number; median: numb
   return { average, median, p90 }
 }
 
-/**
- * Calculate cost from tokens (approximate)
- * Using rough pricing: $0.03 per 1K tokens (blended rate)
- */
-function calculateCost(tokensIn: number, tokensOut: number): number {
-  const INPUT_RATE = 0.00001  // $0.01 per 1K input tokens
-  const OUTPUT_RATE = 0.00003 // $0.03 per 1K output tokens
-  return (tokensIn * INPUT_RATE) + (tokensOut * OUTPUT_RATE)
-}
-
 // ============================================
 // Queries
 // ============================================
@@ -110,6 +100,7 @@ function calculateCost(tokensIn: number, tokensOut: number): number {
 /**
  * Get cost summary analytics
  * Returns total cost, average cost per task, and breakdowns by role and project
+ * Aggregates cost from sessions linked to tasks (sessions.task_id)
  */
 export const costSummary = query({
   args: {
@@ -144,13 +135,9 @@ export const costSummary = query({
       ? tasks.filter((t) => t.created_at >= cutoff)
       : tasks
 
-    // Filter to tasks that have cost data (completed tasks with accumulated cost)
-    const tasksWithCost = filteredTasks.filter(
-      (t) => (t as { cost_total?: number }).cost_total !== undefined && (t as { cost_total?: number }).cost_total! > 0
-    )
-
-    // Calculate totals
+    // Calculate totals - aggregate cost from sessions linked to tasks
     let totalCost = 0
+    const taskCosts = new Map<string, number>() // task_id -> cost
     const byRole: Record<string, { count: number; cost: number }> = {
       pm: { count: 0, cost: 0 },
       dev: { count: 0, cost: 0 },
@@ -168,31 +155,61 @@ export const costSummary = query({
       }
     }
 
-    for (const task of tasksWithCost) {
-      const cost = (task as { cost_total?: number }).cost_total ?? 0
+    // Aggregate cost from sessions for each task
+    for (const task of filteredTasks) {
+      // Get all sessions linked to this task
+      const sessions = await ctx.db
+        .query('sessions')
+        .withIndex('by_task', (q) => q.eq('task_id', task.id))
+        .collect()
 
-      totalCost += cost
-
-      // By role
-      const role = task.role as TaskRole | undefined
-      if (role && byRole[role]) {
-        byRole[role].count++
-        byRole[role].cost += cost
+      // Sum up cost from all sessions for this task
+      let taskCost = 0
+      for (const session of sessions) {
+        taskCost += session.cost_total ?? 0
       }
 
-      // By project
-      if (!byProject[task.project_id]) {
-        byProject[task.project_id] = {
-          name: projectNames[task.project_id] ?? task.project_id,
-          count: 0,
-          cost: 0,
+      // Also check if task has session_id and get that session's cost
+      if (task.session_id) {
+        const sessionByKey = await ctx.db
+          .query('sessions')
+          .withIndex('by_session_key', (q) => q.eq('session_key', task.session_id!))
+          .unique()
+        if (sessionByKey && sessionByKey.cost_total) {
+          // Avoid double counting if already counted via task_id
+          const alreadyCounted = sessions.some(s => s._id === sessionByKey._id)
+          if (!alreadyCounted) {
+            taskCost += sessionByKey.cost_total
+          }
         }
       }
-      byProject[task.project_id].count++
-      byProject[task.project_id].cost += cost
+
+      // Only include tasks that have some cost data
+      if (taskCost > 0) {
+        taskCosts.set(task.id, taskCost)
+        totalCost += taskCost
+
+        // By role
+        const role = task.role as TaskRole | undefined
+        if (role && byRole[role]) {
+          byRole[role].count++
+          byRole[role].cost += taskCost
+        }
+
+        // By project
+        if (!byProject[task.project_id]) {
+          byProject[task.project_id] = {
+            name: projectNames[task.project_id] ?? task.project_id,
+            count: 0,
+            cost: 0,
+          }
+        }
+        byProject[task.project_id].count++
+        byProject[task.project_id].cost += taskCost
+      }
     }
 
-    const totalTasks = tasksWithCost.length
+    const totalTasks = taskCosts.size
     const averageCostPerTask = totalTasks > 0 ? totalCost / totalTasks : 0
 
     return {
@@ -403,6 +420,7 @@ export const successRate = query({
 /**
  * Get throughput analytics
  * Returns tasks completed per day/week with cost data for charting
+ * Aggregates cost from sessions linked to tasks
  */
 export const throughput = query({
   args: {
@@ -464,9 +482,35 @@ export const throughput = query({
 
       buckets[bucketKey].count++
 
-      // Add cost if available
-      const taskCost = (task as { cost_total?: number }).cost_total
-      if (taskCost !== undefined && taskCost > 0) {
+      // Aggregate cost from sessions linked to this task
+      let taskCost = 0
+
+      // Get all sessions linked to this task via task_id
+      const sessions = await ctx.db
+        .query('sessions')
+        .withIndex('by_task', (q) => q.eq('task_id', task.id))
+        .collect()
+
+      for (const session of sessions) {
+        taskCost += session.cost_total ?? 0
+      }
+
+      // Also check if task has session_id and get that session's cost
+      if (task.session_id) {
+        const sessionByKey = await ctx.db
+          .query('sessions')
+          .withIndex('by_session_key', (q) => q.eq('session_key', task.session_id!))
+          .unique()
+        if (sessionByKey && sessionByKey.cost_total) {
+          // Avoid double counting if already counted via task_id
+          const alreadyCounted = sessions.some(s => s._id === sessionByKey._id)
+          if (!alreadyCounted) {
+            taskCost += sessionByKey.cost_total
+          }
+        }
+      }
+
+      if (taskCost > 0) {
         buckets[bucketKey].cost += taskCost
       }
     }
