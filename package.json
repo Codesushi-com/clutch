@@ -26,7 +26,8 @@
     "demo:seed": "tsx scripts/seed-demo.ts",
     "demo:seed:clean": "tsx scripts/seed-demo.ts --clean",
     "demo:dev": "next dev -p 3002 --env-file .env.demo.local",
-    "demo:screenshots": "tsx scripts/demo-screenshots.ts"
+    "demo:screenshots": "tsx scripts/demo-screenshots.ts",
+    "seed:prompts": "tsx scripts/seed-prompts.ts"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",

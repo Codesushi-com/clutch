@@ -16,6 +16,9 @@
 #   5. Deploy the Convex schema (first time only):
 #      docker compose exec app npx convex deploy --yes
 #
+#   6. Seed default prompts (first time only):
+#      docker compose exec app pnpm seed:prompts
+#
 # OpenClaw Note:
 #   OpenClaw (the AI gateway) is NOT included in this compose file.
 #   You need to run OpenClaw separately and configure OPENCLAW_* URLs
@@ -104,6 +107,30 @@ services:
       - openclutch-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # -----------------------------------------------------------------------------
+  # Prompt Seed Init
+  # -----------------------------------------------------------------------------
+  seed-prompts:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: openclutch-seed-prompts
+    restart: "no"
+    command: ["pnpm", "seed:prompts"]
+    environment:
+      - NODE_ENV=production
+      - CLUTCH_API_URL=http://app:3002
+      # Convex configuration
+      - CONVEX_URL=${CONVEX_URL:-http://convex:3210}
+      - CONVEX_SELF_HOSTED_URL=${CONVEX_SELF_HOSTED_URL:-http://convex:3210}
+      - CONVEX_SELF_HOSTED_ADMIN_KEY=${CONVEX_SELF_HOSTED_ADMIN_KEY}
+    depends_on:
+      app:
+        condition: service_started
+    networks:
+      - openclutch-network
 
   # -----------------------------------------------------------------------------
   # Work Loop Worker

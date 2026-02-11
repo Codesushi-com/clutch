@@ -19,6 +19,9 @@ import { runWork } from "./phases/work"
 import { runTriage } from "./phases/triage"
 import { handleSelfDeploy } from "./phases/self-deploy"
 import { sessionFileReader } from "./session-file-reader"
+import { verifyPromptsExist, V2_ROLES } from "./prompt-fetcher"
+import * as fs from "node:fs"
+import * as path from "node:path"
 
 // ============================================
 // Types
@@ -1024,6 +1027,60 @@ async function getEnabledProjects(convex: ConvexHttpClient): Promise<ProjectInfo
 }
 
 /**
+ * Auto-seed prompt versions from roles/*.md files.
+ * Idempotent - skips roles that already have versions.
+ */
+async function autoSeedPrompts(convex: ConvexHttpClient): Promise<void> {
+  const ROLES_DIR = path.join(process.cwd(), "roles")
+
+  console.log("[WorkLoop] Checking if prompts need seeding...")
+
+  // Check which roles are missing
+  const missing = await verifyPromptsExist(convex, [...V2_ROLES])
+
+  if (missing.length === 0) {
+    console.log("[WorkLoop] All prompts already seeded")
+    return
+  }
+
+  console.log(`[WorkLoop] Missing prompts for roles: ${missing.join(", ")}`)
+  console.log("[WorkLoop] Auto-seeding prompts...")
+
+  for (const role of missing) {
+    try {
+      // Read the role template from disk
+      const filePath = path.join(ROLES_DIR, `${role}.md`)
+
+      if (!fs.existsSync(filePath)) {
+        console.warn(`[WorkLoop] Role file not found: ${filePath}`)
+        continue
+      }
+
+      const content = fs.readFileSync(filePath, "utf-8")
+
+      if (!content.trim()) {
+        console.warn(`[WorkLoop] Role file is empty: ${filePath}`)
+        continue
+      }
+
+      // Create v1 in Convex
+      await convex.mutation(api.promptVersions.create, {
+        role,
+        content,
+        created_by: "auto-seed",
+      })
+
+      console.log(`[WorkLoop] Seeded prompt for role: ${role}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[WorkLoop] Failed to seed prompt for role ${role}: ${message}`)
+    }
+  }
+
+  console.log("[WorkLoop] Auto-seeding complete")
+}
+
+/**
  * Main work loop.
  *
  * Runs indefinitely until SIGTERM/SIGINT received.
@@ -1055,6 +1112,9 @@ async function runLoop(): Promise<void> {
     // Don't exit - just return and let the caller handle it
     return
   }
+
+  // Auto-seed prompts on first startup
+  await autoSeedPrompts(convex)
 
   while (running) {
     cycle++

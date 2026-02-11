@@ -282,6 +282,11 @@ export default function PromptsPage() {
                 onDuplicate={handleDuplicate}
                 onStartABTest={handleStartABTest}
                 hasActiveABTest={abTestState?.active ?? false}
+                onSeedPrompts={async () => {
+                  const res = await fetch('/api/prompts/seed', { method: 'POST' })
+                  if (!res.ok) throw new Error('Failed to seed prompts')
+                  await fetchVersions()
+                }}
               />
             </>
           )}

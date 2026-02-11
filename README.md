@@ -163,11 +163,16 @@ pnpm install
 cp .env.example .env.local
 # Edit .env.local with your configuration (see Configuration section)
 
+# Deploy Convex schema
+npx convex deploy
+
 # Start development server
 pnpm dev
 ```
 
 The dev server will be available at `http://localhost:3002`.
+
+**Note:** Role prompts are automatically seeded on first work loop startup. If you need to manually seed prompts (e.g., for a fresh database), run `pnpm seed:prompts`.
 
 ### Running the Full Stack
 

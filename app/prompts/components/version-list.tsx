@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { Check, ChevronDown, ChevronRight, Copy, FlaskConical, GitCompare, Star, User } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy, FlaskConical, GitCompare, Star, User, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,7 @@ interface VersionListProps {
   onDuplicate: (version: PromptVersion) => void
   onStartABTest: (version: PromptVersion) => void
   hasActiveABTest: boolean
+  onSeedPrompts?: () => Promise<void>
 }
 
 export function VersionList({
@@ -28,6 +30,7 @@ export function VersionList({
   onDuplicate,
   onStartABTest,
   hasActiveABTest,
+  onSeedPrompts,
 }: VersionListProps) {
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null)
   const [diffMode, setDiffMode] = useState<'none' | 'selecting' | 'viewing'>('none')
@@ -38,6 +41,40 @@ export function VersionList({
   const filteredVersions = versions.filter(v =>
     v.role === selectedRole && v.model === (selectedModel === 'default' ? undefined : selectedModel)
   ).sort((a, b) => b.version - a.version) // Newest first
+
+  const [isSeeding, setIsSeeding] = useState(false)
+
+  const handleSeedPrompts = async () => {
+    if (!onSeedPrompts) {
+      // Fallback: call API directly
+      setIsSeeding(true)
+      try {
+        const res = await fetch('/api/prompts/seed', { method: 'POST' })
+        if (!res.ok) throw new Error('Failed to seed prompts')
+        const data = await res.json()
+        toast.success(`Seeded ${data.summary.created} prompts`)
+        // Refresh the page to show new versions
+        window.location.reload()
+      } catch (error) {
+        console.error('Error seeding prompts:', error)
+        toast.error('Failed to seed prompts')
+      } finally {
+        setIsSeeding(false)
+      }
+      return
+    }
+
+    setIsSeeding(true)
+    try {
+      await onSeedPrompts()
+      toast.success('Prompts seeded successfully')
+    } catch (error) {
+      console.error('Error seeding prompts:', error)
+      toast.error('Failed to seed prompts')
+    } finally {
+      setIsSeeding(false)
+    }
+  }
 
   const handleStartDiff = (version: PromptVersion) => {
     if (diffMode === 'none') {
@@ -69,10 +106,37 @@ export function VersionList({
   }
 
   if (filteredVersions.length === 0) {
+    // Check if any versions exist for any role (global empty state)
+    const hasAnyVersions = versions.length > 0
+
     return (
       <div className="flex flex-col items-center justify-center h-64 text-[var(--text-muted)]">
         <p className="text-sm">No versions found for this role</p>
-        <p className="text-xs mt-1">Create a new version to get started</p>
+        {!hasAnyVersions && (
+          <>
+            <p className="text-xs mt-1 mb-4">Initialize default prompts to get started</p>
+            <button
+              onClick={handleSeedPrompts}
+              disabled={isSeeding}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-[var(--accent-foreground)] rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSeeding ? (
+                <>
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Initializing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  Initialize default prompts
+                </>
+              )}
+            </button>
+          </>
+        )}
+        {hasAnyVersions && (
+          <p className="text-xs mt-1">Create a new version to get started</p>
+        )}
       </div>
     )
   }
