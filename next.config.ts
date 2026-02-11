@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
     ? process.env.NEXT_PUBLIC_DEV_ORIGINS.split(",").map(s => s.trim())
     : [],
 
+  // Build output directory — override via NEXT_DIST_DIR for zero-downtime deploys
+  // (build to staging dir, then atomically swap with .next)
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
+
   // Enable standalone output for Docker deployment
   output: 'standalone',
 
