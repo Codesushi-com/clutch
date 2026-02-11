@@ -137,6 +137,7 @@ Task Commands:
   tasks list [--project <slug>] [--status <status>] [--limit <n>] [--json]
                                       List tasks for a project
   tasks get <id> [--json]             Get task details (id can be short prefix)
+  tasks info <id> [--json]            Alias for 'tasks get'
   tasks create --project <slug> --title "..." [options]
                                       Create a new task
   tasks update <id> [options]         Update task fields
@@ -1524,6 +1525,7 @@ async function main(): Promise<void> {
       await cmdTasksList(convex, project!, flags)
       break
     case command.startsWith("tasks get "):
+    case command.startsWith("tasks info "):
       await cmdTasksGet(convex, project!, positional[2], flags, explicitProject)
       break
     case command === "tasks create":
