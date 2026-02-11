@@ -37,7 +37,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const {
     title,
     description,
-    status,
+    status: rawStatus,
     priority,
     role,
     assignee,
@@ -49,6 +49,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     pr_number,
     agent_session_key,
   } = body
+
+  // Normalize common agent hallucinations for status values
+  const STATUS_ALIASES: Record<string, string> = {
+    "review": "in_review",
+    "in-review": "in_review",
+    "in-progress": "in_progress",
+    "progress": "in_progress",
+  }
+  const status = rawStatus !== undefined
+    ? (STATUS_ALIASES[rawStatus] ?? rawStatus) as typeof rawStatus
+    : undefined
 
   try {
     const convex = getConvexClient()
