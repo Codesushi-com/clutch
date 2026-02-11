@@ -165,16 +165,21 @@ export const insertTaskDependency = mutation({
   },
 })
 
-// ============================================================================
-// Work Loop Tables
-// ============================================================================
-
 export const insertWorkLoopRun = mutation({
   args: {
     id: v.string(),
     project_id: v.string(),
     cycle: v.number(),
-    phase: v.string(),
+    phase: v.union(
+      v.literal("cleanup"),
+      v.literal("triage"),
+      v.literal("notify"),
+      v.literal("review"),
+      v.literal("work"),
+      v.literal("analyze"),
+      v.literal("idle"),
+      v.literal("error")
+    ),
     action: v.string(),
     task_id: v.optional(v.string()),
     session_key: v.optional(v.string()),
@@ -191,7 +196,12 @@ export const insertWorkLoopState = mutation({
   args: {
     id: v.string(),
     project_id: v.string(),
-    status: v.string(),
+    status: v.union(
+      v.literal("running"),
+      v.literal("paused"),
+      v.literal("stopped"),
+      v.literal("error")
+    ),
     current_phase: v.optional(v.string()),
     current_cycle: v.number(),
     active_agents: v.number(),
@@ -205,9 +215,17 @@ export const insertWorkLoopState = mutation({
   },
 })
 
-// ============================================================================
-// Prompt & Analysis Tables
-// ============================================================================
+export const insertTypingState = mutation({
+  args: {
+    chat_id: v.string(),
+    author: v.string(),
+    state: v.union(v.literal("thinking"), v.literal("typing")),
+    updated_at: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("typingState", args as any)
+  },
+})
 
 export const insertPromptVersion = mutation({
   args: {
@@ -221,7 +239,11 @@ export const insertPromptVersion = mutation({
     created_by: v.string(),
     active: v.boolean(),
     created_at: v.number(),
-    ab_status: v.optional(v.string()),
+    ab_status: v.optional(v.union(
+      v.literal("control"),
+      v.literal("challenger"),
+      v.literal("none")
+    )),
     ab_split_percent: v.optional(v.number()),
     ab_started_at: v.optional(v.number()),
     ab_min_tasks: v.optional(v.number()),
@@ -239,12 +261,22 @@ export const insertTaskAnalysis = mutation({
     role: v.string(),
     model: v.string(),
     prompt_version_id: v.string(),
-    outcome: v.string(),
+    outcome: v.union(
+      v.literal("success"),
+      v.literal("failure"),
+      v.literal("partial"),
+      v.literal("abandoned")
+    ),
     token_count: v.optional(v.number()),
     duration_ms: v.optional(v.number()),
     failure_modes: v.optional(v.string()),
     amendments: v.optional(v.string()),
-    amendment_status: v.optional(v.string()),
+    amendment_status: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("applied"),
+      v.literal("rejected"),
+      v.literal("deferred")
+    )),
     amendment_resolved_at: v.optional(v.number()),
     amendment_reject_reason: v.optional(v.string()),
     analysis_summary: v.string(),
@@ -262,7 +294,7 @@ export const insertPromptMetric = mutation({
     role: v.string(),
     model: v.string(),
     prompt_version_id: v.string(),
-    period: v.string(),
+    period: v.union(v.literal("day"), v.literal("week"), v.literal("all_time")),
     period_start: v.number(),
     total_tasks: v.number(),
     success_count: v.number(),
@@ -280,10 +312,6 @@ export const insertPromptMetric = mutation({
   },
 })
 
-// ============================================================================
-// Task Events & Model Pricing
-// ============================================================================
-
 export const insertTaskEvent = mutation({
   args: {
     id: v.string(),
@@ -293,9 +321,9 @@ export const insertTaskEvent = mutation({
     timestamp: v.number(),
     actor: v.optional(v.string()),
     data: v.optional(v.string()),
-    cost_input: v.optional(v.number()),
-    cost_output: v.optional(v.number()),
-    cost_total: v.optional(v.number()),
+    cost_input: v.optional(v.float64()),
+    cost_output: v.optional(v.float64()),
+    cost_total: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("task_events", args as any)
@@ -315,18 +343,25 @@ export const insertModelPricing = mutation({
   },
 })
 
-// ============================================================================
-// Feature & Requirements Tables
-// ============================================================================
-
 export const insertFeature = mutation({
   args: {
     id: v.string(),
     project_id: v.string(),
     title: v.string(),
     description: v.optional(v.string()),
-    status: v.string(),
-    priority: v.string(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("planned"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("deferred")
+    ),
+    priority: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent")
+    ),
     position: v.number(),
     created_at: v.number(),
     updated_at: v.number(),
@@ -344,8 +379,18 @@ export const insertRequirement = mutation({
     title: v.string(),
     description: v.optional(v.string()),
     category: v.optional(v.string()),
-    status: v.string(),
-    priority: v.string(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("approved"),
+      v.literal("implemented"),
+      v.literal("deferred")
+    ),
+    priority: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent")
+    ),
     position: v.number(),
     created_at: v.number(),
     updated_at: v.number(),
@@ -363,7 +408,13 @@ export const insertRoadmapPhase = mutation({
     name: v.string(),
     goal: v.string(),
     description: v.optional(v.string()),
-    status: v.string(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("planned"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("deferred")
+    ),
     depends_on: v.optional(v.string()),
     success_criteria: v.optional(v.string()),
     position: v.number(),
@@ -389,29 +440,35 @@ export const insertPhaseRequirement = mutation({
   },
 })
 
-// ============================================================================
-// Sessions & Feature Builder
-// ============================================================================
-
 export const insertSession = mutation({
   args: {
     id: v.string(),
     session_key: v.optional(v.string()),
     session_id: v.string(),
-    session_type: v.string(),
+    session_type: v.union(
+      v.literal("main"),
+      v.literal("chat"),
+      v.literal("agent"),
+      v.literal("cron")
+    ),
     model: v.optional(v.string()),
     provider: v.optional(v.string()),
-    status: v.string(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("idle"),
+      v.literal("completed"),
+      v.literal("stale")
+    ),
     tokens_input: v.optional(v.number()),
     tokens_output: v.optional(v.number()),
     tokens_cache_read: v.optional(v.number()),
     tokens_cache_write: v.optional(v.number()),
     tokens_total: v.optional(v.number()),
-    cost_input: v.optional(v.number()),
-    cost_output: v.optional(v.number()),
-    cost_cache_read: v.optional(v.number()),
-    cost_cache_write: v.optional(v.number()),
-    cost_total: v.optional(v.number()),
+    cost_input: v.optional(v.float64()),
+    cost_output: v.optional(v.float64()),
+    cost_cache_read: v.optional(v.float64()),
+    cost_cache_write: v.optional(v.float64()),
+    cost_total: v.optional(v.float64()),
     last_active_at: v.optional(v.number()),
     output_preview: v.optional(v.string()),
     stop_reason: v.optional(v.string()),
@@ -432,7 +489,12 @@ export const insertFeatureBuilderSession = mutation({
     id: v.string(),
     project_id: v.string(),
     user_id: v.optional(v.string()),
-    status: v.string(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("completed"),
+      v.literal("cancelled"),
+      v.literal("error")
+    ),
     current_step: v.string(),
     completed_steps: v.array(v.string()),
     feature_data: v.optional(v.string()),
@@ -455,7 +517,12 @@ export const insertFeatureBuilderAnalytics = mutation({
   args: {
     id: v.string(),
     project_id: v.string(),
-    period: v.string(),
+    period: v.union(
+      v.literal("day"),
+      v.literal("week"),
+      v.literal("month"),
+      v.literal("all_time")
+    ),
     period_start: v.number(),
     sessions_started: v.number(),
     sessions_completed: v.number(),
@@ -473,56 +540,42 @@ export const insertFeatureBuilderAnalytics = mutation({
   },
 })
 
-// ============================================================================
-// Clear All Mutation - for clean seeding
-// ============================================================================
-
 export const clearAll = mutation({
   args: {},
   handler: async (ctx) => {
-    // Delete from all tables in dependency order (children before parents)
+    // Delete all rows from all tables
     const tables = [
-      // Task-related (most dependent)
-      "taskDependencies",
-      "taskAnalyses",
-      "task_events",
+      "projects",
+      "tasks",
       "comments",
+      "chats",
+      "chatMessages",
+      "notifications",
+      "events",
       "signals",
-      // Session-related
+      "taskDependencies",
+      "workLoopRuns",
+      "workLoopState",
+      "typingState",
+      "promptVersions",
+      "taskAnalyses",
+      "promptMetrics",
+      "task_events",
+      "model_pricing",
+      "features",
+      "requirements",
+      "roadmapPhases",
+      "phaseRequirements",
       "sessions",
       "featureBuilderSessions",
       "featureBuilderAnalytics",
-      // Chat-related
-      "chatMessages",
-      "chats",
-      // Work loop
-      "workLoopRuns",
-      "workLoopState",
-      // Feature/requirements
-      "phaseRequirements",
-      "requirements",
-      "roadmapPhases",
-      "features",
-      // Prompt/analytics
-      "promptMetrics",
-      "promptVersions",
-      // Model pricing
-      "model_pricing",
-      // Events/notifications
-      "events",
-      "notifications",
-      // Core
-      "tasks",
-      "projects",
     ] as const
 
     for (const table of tables) {
-      const records = await ctx.db.query(table).collect()
-      for (const record of records) {
-        await ctx.db.delete(record._id)
+      const rows = await ctx.db.query(table).collect()
+      for (const row of rows) {
+        await ctx.db.delete(row._id)
       }
     }
-
-    return { deleted: tables.length }
   },
 })
