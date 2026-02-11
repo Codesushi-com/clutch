@@ -50,5 +50,8 @@ next-env.d.ts
 /public/uploads/
 pnpm-lock_test.yaml
 
+# database backups
+/backups/
+
 # Generated systemd service files (from templates)
 /systemd/*.service
