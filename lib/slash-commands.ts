@@ -373,16 +373,47 @@ async function handleIssueCommand(
     };
   }
 
-  // Pass through to the agent as a regular message — the agent has
-  // sessions_spawn and can decompose the request into well-scoped tasks.
-  // The /issue prefix in the message tells the agent to use the task
-  // decomposition workflow rather than answering conversationally.
+  // Build the augmented prompt with canned instructions
+  const projectFlag = projectSlug ? ` --project ${projectSlug}` : "";
+
+  const augmentedMessage = [
+    "You are tasked with decomposing a feature request into properly scoped Clutch tasks. Follow these instructions carefully:",
+    "",
+    "## Research Phase",
+    "1. Read AGENTS.md to understand the codebase structure and conventions",
+    "2. Examine relevant source files to understand existing patterns",
+    "3. Identify any similar existing features or components",
+    "",
+    "## Task Creation Guidelines",
+    `- Use \`clutch tasks create${projectFlag}\` for all task creation`,
+    "- Use \`clutch tasks dep-add <task-id> <depends-on-task-id>\` for dependency chains",
+    "- Create tasks with clear titles, descriptions, and acceptance criteria",
+    "- Set appropriate priority (default: high for features, medium for chores)",
+    "- Set status to \`ready\` for tasks that can be worked on immediately",
+    "",
+    "## Clarification Phase",
+    "- Ask the user clarifying questions if the request is ambiguous",
+    "- Push back if the scope is unclear or too broad",
+    "- Never create GitHub Issues — always use Clutch tasks",
+    "",
+    "## Reporting",
+    "After creating tasks, report back with:",
+    "1. The task breakdown with IDs",
+    "2. The dependency order (what should be done first)",
+    "3. Any assumptions made or clarifications needed",
+    "",
+    "---",
+    "",
+    `User request: ${descriptionText}`,
+  ].join("\n");
+
+  // Return augmented message to be sent to the agent
   return {
     isCommand: true,
     shouldSendMessage: true,
     command: "issue",
     args,
-    response: null,
+    response: augmentedMessage,
     isError: false,
     action: null,
   };
