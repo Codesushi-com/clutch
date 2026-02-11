@@ -135,6 +135,30 @@ For production deployment with all four processes:
 ./run.sh all-logs      # All processes
 ```
 
+### Demo Environment
+
+For screenshots, demos, and onboarding without affecting production data:
+
+```bash
+# Quick start: start, deploy, seed, and run
+pnpm demo:up && pnpm demo:deploy && pnpm demo:seed && pnpm demo:dev
+
+# Or step by step:
+pnpm demo:up        # Start demo Convex on ports 3230/6811
+pnpm demo:deploy    # Deploy schema
+pnpm demo:seed      # Seed with realistic demo data
+pnpm demo:dev       # Start dev server with demo config
+```
+
+The demo environment includes:
+- 4 sample projects with realistic data
+- 40-50 tasks across all statuses
+- Chat threads, work loop history, sessions
+- Roadmap with phases and features
+- Fully functional UI without touching production
+
+See [docs/demo-environment.md](./docs/demo-environment.md) for complete documentation.
+
 ## Configuration
 
 Create `.env.local` from the example below:
