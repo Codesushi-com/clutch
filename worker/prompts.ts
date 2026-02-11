@@ -329,6 +329,9 @@ git fetch origin main
 git worktree add ${params.worktreeDir} origin/main -b ${branchName}
 cd ${params.worktreeDir}
 
+# Install dependencies (worktrees don't inherit node_modules)
+pnpm install
+
 # Record the branch name on the task
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"branch": "${branchName}"}'
 

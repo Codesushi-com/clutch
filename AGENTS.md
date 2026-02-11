@@ -80,6 +80,9 @@ git worktree add /path/to/clutch-worktrees/<branch-name> -b <branch-name>
 # Work in the worktree
 cd /path/to/clutch-worktrees/<branch-name>
 
+# IMPORTANT: Install dependencies (worktrees don't inherit node_modules)
+pnpm install
+
 # When done (after PR merged), clean up
 git worktree remove /path/to/clutch-worktrees/<branch-name>
 ```
