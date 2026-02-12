@@ -20,6 +20,196 @@
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { promises as fs } from "fs";
+import path from "path";
+import crypto from "crypto";
+
+// Configuration for image processing
+const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "images");
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+
+// Supported image MIME types
+const ALLOWED_IMAGE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+];
+
+// File extensions for MIME types
+const MIME_TO_EXT: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/jpg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+};
+
+/**
+ * Ensure the upload directory exists
+ */
+async function ensureUploadDir(): Promise<void> {
+  try {
+    await fs.access(UPLOAD_DIR);
+  } catch {
+    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  }
+}
+
+/**
+ * Generate a unique filename for an image
+ */
+function generateImageFilename(mimeType: string): string {
+  const timestamp = Date.now();
+  const random = crypto.randomBytes(4).toString("hex");
+  const ext = MIME_TO_EXT[mimeType] || ".png";
+  return `${timestamp}-${random}${ext}`;
+}
+
+/**
+ * Detect MIME type from file extension
+ */
+function detectMimeTypeFromExt(ext: string): string | null {
+  const extLower = ext.toLowerCase();
+  switch (extLower) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".gif":
+      return "image/gif";
+    case ".webp":
+      return "image/webp";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Load image from an absolute path and return a markdown image tag
+ */
+async function loadImageFromAbsolutePath(
+  fullPath: string,
+  originalPath: string,
+): Promise<string | null> {
+  try {
+    // Read file
+    const buffer = await fs.readFile(fullPath);
+
+    // Check size
+    if (buffer.length > MAX_IMAGE_SIZE) {
+      console.warn(`[ImageProcessor] Image too large: ${buffer.length} bytes`);
+      return null;
+    }
+
+    // Detect MIME type from file extension
+    const ext = path.extname(originalPath).toLowerCase();
+    const mimeType = detectMimeTypeFromExt(ext);
+
+    if (!mimeType || !ALLOWED_IMAGE_TYPES.includes(mimeType)) {
+      console.warn(`[ImageProcessor] Unsupported image type: ${ext}`);
+      return null;
+    }
+
+    // Ensure upload directory exists
+    await ensureUploadDir();
+
+    // Generate filename and save
+    const filename = generateImageFilename(mimeType);
+    const filePath = path.join(UPLOAD_DIR, filename);
+    await fs.writeFile(filePath, buffer);
+
+    // Clean up the original file in /tmp (best effort)
+    try {
+      await fs.unlink(fullPath);
+      console.log(`[ImageProcessor] Cleaned up temp file: ${fullPath}`);
+    } catch {
+      // Ignore cleanup errors - OS will handle stale files
+    }
+
+    // Return public URL
+    return `/uploads/images/${filename}`;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[ImageProcessor] Failed to load image from ${originalPath}: ${message}`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Parse IMAGE: tags from text content
+ * Returns extracted image paths and cleaned text
+ * IMAGE: tags allow absolute paths (must be within /tmp/openclaw-images/)
+ */
+export function parseImageTags(text: string): {
+  cleanedText: string;
+  imagePaths: string[];
+} {
+  const imagePaths: string[] = [];
+  const lines = text.split("\n");
+  const keptLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Match lines that start with IMAGE: (possibly with leading whitespace)
+    if (trimmed.startsWith("IMAGE:")) {
+      const imagePath = trimmed.slice(6).trim(); // Remove "IMAGE:" prefix
+      // Validate path - must be absolute and within /tmp/openclaw-images/
+      if (
+        imagePath &&
+        imagePath.startsWith("/tmp/openclaw-images/") &&
+        !imagePath.includes("..")
+      ) {
+        imagePaths.push(imagePath);
+      } else if (!imagePath) {
+        // Empty IMAGE: tag - strip it
+        continue;
+      } else {
+        // Invalid path, keep the line as-is
+        keptLines.push(line);
+      }
+    } else {
+      keptLines.push(line);
+    }
+  }
+
+  return {
+    cleanedText: keptLines.join("\n").trim(),
+    imagePaths,
+  };
+}
+
+/**
+ * Process message content and extract IMAGE: tags
+ * Returns the processed content with image markdown tags
+ */
+async function processImageTags(content: string): Promise<string> {
+  const { cleanedText, imagePaths } = parseImageTags(content);
+
+  // Process any IMAGE: tags
+  const imageParts: string[] = [];
+  for (const imagePath of imagePaths) {
+    const imageUrl = await loadImageFromAbsolutePath(imagePath, imagePath);
+    if (imageUrl) {
+      imageParts.push(`![image](${imageUrl})`);
+    }
+  }
+
+  // Combine cleaned text with any processed images
+  const parts: string[] = [];
+  if (cleanedText) {
+    parts.push(cleanedText);
+  }
+  if (imageParts.length > 0) {
+    parts.push(...imageParts);
+  }
+
+  return parts.join("\n\n");
+}
 
 function getClutchUrl(api: OpenClawPluginApi): string {
   return api.config.env?.CLUTCH_URL || api.config.env?.CLUTCH_API_URL || "http://localhost:3002";
@@ -230,9 +420,12 @@ async function sendToClutch(
   const { runId, sessionKey, mediaUrl, isAutomated } = options || {};
 
   try {
+    // Process IMAGE: tags in the content
+    const processedContent = await processImageTags(content);
+
     const body: Record<string, unknown> = {
       author: "ada",
-      content: mediaUrl ? `${content}\n\n📎 ${mediaUrl}` : content,
+      content: mediaUrl ? `${processedContent}\n\n📎 ${mediaUrl}` : processedContent,
       is_automated: isAutomated ?? false,
     };
 
