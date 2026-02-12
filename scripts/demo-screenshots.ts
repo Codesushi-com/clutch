@@ -20,6 +20,8 @@ import { execSync } from "child_process"
 
 const BASE_URL = "http://localhost:3003"
 const OUTPUT_DIR = "./docs"
+const MAX_WAIT_MS = 15000
+const WARNING_THRESHOLD_MS = 10000
 
 // Screenshots needed for README
 const SCREENSHOTS = [
@@ -29,6 +31,8 @@ const SCREENSHOTS = [
     description: "Observatory Live tab with multiple projects, active agents, recent activity",
     waitFor: 8000,
     fullPage: false,
+    // Wait for either active agent cards OR the "No active agents" message (both indicate data loaded)
+    waitForSelector: '[data-testid="agent-card"], .rounded-lg.border, .text-center.py-8.text-muted-foreground',
   },
   {
     file: "board-screenshot.png",
@@ -36,6 +40,13 @@ const SCREENSHOTS = [
     description: "Kanban board with tasks in Backlog, Ready, In Progress, In Review, Done",
     waitFor: 10000,
     fullPage: false,
+    // Wait for task cards or column content (not loading state)
+    waitForSelector: '[data-testid="task-card"], [data-rfd-droppable-id]',
+    // Additional check: ensure we're not seeing "Loading..."
+    waitForFunction: () => {
+      const loadingText = document.querySelector('.text-\\[var\\(--text-secondary\\)\\]')
+      return !loadingText || loadingText.textContent !== 'Loading...'
+    },
   },
   {
     file: "chat-screenshot.png",
@@ -43,6 +54,8 @@ const SCREENSHOTS = [
     description: "Chat page with agent conversation messages",
     waitFor: 10000,
     fullPage: false,
+    // Wait for chat list items or the "Select a chat" state (both indicate data loaded)
+    waitForSelector: '[data-testid="chat-list-item"], .chat-list-item, [role="listitem"], .text-center .MessageSquare',
   },
   {
     file: "work-loop-screenshot.png",
@@ -50,6 +63,8 @@ const SCREENSHOTS = [
     description: "Analytics tab with cost/performance charts",
     waitFor: 8000,
     fullPage: false,
+    // Wait for chart containers to be present
+    waitForSelector: '.recharts-wrapper, [class*="chart"], canvas',
   },
   {
     file: "roadmap-screenshot.png",
@@ -57,6 +72,12 @@ const SCREENSHOTS = [
     description: "Roadmap with phases, requirements, coverage",
     waitFor: 10000,
     fullPage: false,
+    // Wait for phase cards OR the "No Roadmap Yet" state (both indicate data loaded)
+    waitForSelector: '[class*="phase"], [data-testid="phase-card"], .rounded-lg.border, .text-center.py-12',
+    // Additional check: ensure loading spinner is gone
+    waitForFunction: () => {
+      return document.querySelector('.animate-spin') === null
+    },
   },
   {
     file: "sessions-screenshot.png",
@@ -64,6 +85,8 @@ const SCREENSHOTS = [
     description: "Sessions list with token counts, costs, models, durations",
     waitFor: 8000,
     fullPage: false,
+    // Wait for session list items or empty state
+    waitForSelector: '[data-testid="session-row"], [class*="session"], table tbody tr, .text-center',
   },
   {
     file: "prompt-lab-screenshot.png",
@@ -71,6 +94,12 @@ const SCREENSHOTS = [
     description: "Prompt Lab with role templates, versions, amendments",
     waitFor: 8000,
     fullPage: false,
+    // Wait for role sidebar or version list (not loading spinner)
+    waitForSelector: '[data-testid="role-sidebar"], [class*="role"], [class*="version"], [class*="VersionList"]',
+    // Additional check: ensure loading spinner is gone
+    waitForFunction: () => {
+      return document.querySelector('.animate-spin') === null
+    },
   },
 ]
 
@@ -98,6 +127,97 @@ async function optimizePng(filePath: string) {
   }
 }
 
+/**
+ * Wait for page to be ready for screenshot
+ * Uses multiple strategies:
+ * 1. Wait for specific selector if provided
+ * 2. Wait for custom function condition if provided
+ * 3. Fallback to minimum wait time
+ */
+async function waitForPageReady(
+  page: Page,
+  config: typeof SCREENSHOTS[0]
+): Promise<{ success: boolean; durationMs: number; warning?: string }> {
+  const startTime = Date.now()
+  let warning: string | undefined
+
+  try {
+    // Strategy 1: Wait for specific selector
+    if (config.waitForSelector) {
+      try {
+        await page.waitForSelector(config.waitForSelector, { timeout: MAX_WAIT_MS })
+        const duration = Date.now() - startTime
+        if (duration > WARNING_THRESHOLD_MS) {
+          warning = `Page took ${duration}ms to load (threshold: ${WARNING_THRESHOLD_MS}ms)`
+        }
+        return { success: true, durationMs: duration, warning }
+      } catch {
+        // Selector timeout - will try fallback
+        console.log(`      ⚠️  Selector "${config.waitForSelector}" not found within ${MAX_WAIT_MS}ms`)
+      }
+    }
+
+    // Strategy 2: Wait for custom function condition
+    if (config.waitForFunction) {
+      try {
+        await page.waitForFunction(config.waitForFunction, { timeout: MAX_WAIT_MS })
+        const duration = Date.now() - startTime
+        if (duration > WARNING_THRESHOLD_MS) {
+          warning = `Page took ${duration}ms to load (threshold: ${WARNING_THRESHOLD_MS}ms)`
+        }
+        return { success: true, durationMs: duration, warning }
+      } catch {
+        // Function timeout - will try fallback
+        console.log(`      ⚠️  Custom wait condition not met within ${MAX_WAIT_MS}ms`)
+      }
+    }
+
+    // Strategy 3: Fallback to minimum wait time
+    const remainingWait = Math.max(5000, config.waitFor - (Date.now() - startTime))
+    if (remainingWait > 0) {
+      console.log(`      ⏱️  Falling back to fixed wait: ${remainingWait}ms`)
+      await page.waitForTimeout(remainingWait)
+    }
+
+    const duration = Date.now() - startTime
+    if (duration > WARNING_THRESHOLD_MS) {
+      warning = `Page took ${duration}ms to load (used fallback, threshold: ${WARNING_THRESHOLD_MS}ms)`
+    }
+    return { success: true, durationMs: duration, warning }
+
+  } catch (error) {
+    const duration = Date.now() - startTime
+    return { 
+      success: false, 
+      durationMs: duration, 
+      warning: `Failed to wait for page ready after ${duration}ms: ${error instanceof Error ? error.message : String(error)}` 
+    }
+  }
+}
+
+/**
+ * Verify that the page is not showing a loading state
+ */
+async function verifyNoLoadingState(page: Page): Promise<boolean> {
+  const loadingText = await page.locator('text=Loading...').count()
+  const loadingBoardText = await page.locator('text=Loading board...').count()
+  const loadingMessagesText = await page.locator('text=Loading messages...').count()
+  
+  if (loadingText > 0 || loadingBoardText > 0 || loadingMessagesText > 0) {
+    console.log(`      ⚠️  Page still showing loading text`)
+    return false
+  }
+
+  // Check for spinners
+  const spinners = await page.locator('.animate-spin').count()
+  if (spinners > 0) {
+    console.log(`      ⚠️  Page still showing ${spinners} loading spinner(s)`)
+    return false
+  }
+
+  return true
+}
+
 async function takeScreenshot(browser: Browser, config: typeof SCREENSHOTS[0]) {
   const url = `${BASE_URL}${config.path}`
   const outputPath = path.join(OUTPUT_DIR, config.file)
@@ -114,22 +234,34 @@ async function takeScreenshot(browser: Browser, config: typeof SCREENSHOTS[0]) {
 
   try {
     // Navigate to page
+    const navStart = Date.now()
     await page.goto(url, { waitUntil: "networkidle", timeout: 30000 })
+    console.log(`      🌐 Navigation: ${Date.now() - navStart}ms`)
 
-    // Wait for content to load
-    await page.waitForTimeout(config.waitFor)
+    // Wait for page to be ready
+    const waitResult = await waitForPageReady(page, config)
+    console.log(`      ⏱️  Wait time: ${waitResult.durationMs}ms`)
+    
+    if (waitResult.warning) {
+      console.log(`      ⚠️  ${waitResult.warning}`)
+    }
 
     // For chat page, click into the first chat to show actual conversation
     if (config.path.includes("/chat")) {
       try {
-        // Wait for chat list to be visible
-        await page.waitForSelector('[data-testid="chat-list-item"], .chat-list-item, [role="listitem"]', { timeout: 5000 })
+        // Wait a bit more for chat list to be clickable
+        await page.waitForTimeout(1000)
+        
         // Click the first chat in the list
         const chatItem = await page.locator('[data-testid="chat-list-item"], .chat-list-item, [role="listitem"]').first()
         if (await chatItem.isVisible().catch(() => false)) {
           await chatItem.click()
           // Wait for chat content to load
           await page.waitForTimeout(2000)
+          
+          // Wait for messages to appear
+          await page.waitForSelector('[class*="message"], .MessageBubble, [data-testid="message"]', { timeout: 5000 })
+            .catch(() => console.log(`      ⚠️  No messages found after clicking chat`))
         }
       } catch {
         // If selectors don't work, try generic approach
@@ -138,6 +270,19 @@ async function takeScreenshot(browser: Browser, config: typeof SCREENSHOTS[0]) {
           await firstRow.click()
           await page.waitForTimeout(2000)
         }
+      }
+    }
+
+    // Verify no loading state
+    const isReady = await verifyNoLoadingState(page)
+    if (!isReady) {
+      console.log(`      ⏱️  Extra wait for loading state to clear...`)
+      await page.waitForTimeout(3000)
+      
+      // Final check
+      const finalCheck = await verifyNoLoadingState(page)
+      if (!finalCheck) {
+        console.log(`      ⚠️  WARNING: Page may still be in loading state`)
       }
     }
 
@@ -159,6 +304,11 @@ async function takeScreenshot(browser: Browser, config: typeof SCREENSHOTS[0]) {
 
     const stats = fs.statSync(outputPath)
     const sizeKB = Math.round(stats.size / 1024)
+
+    // Warn if screenshot is suspiciously small (likely still loading)
+    if (sizeKB < 20) {
+      console.log(`      ⚠️  WARNING: Screenshot is very small (${sizeKB}KB) - may be incomplete`)
+    }
 
     console.log(`      ✓ Saved (${sizeKB}KB)`)
   } catch (error) {
@@ -201,13 +351,15 @@ async function main() {
 
   let successCount = 0
   let failCount = 0
+  const warnings: string[] = []
 
   for (const screenshot of SCREENSHOTS) {
     try {
       await takeScreenshot(browser, screenshot)
       successCount++
-    } catch {
+    } catch (error) {
       failCount++
+      warnings.push(`${screenshot.file}: ${error instanceof Error ? error.message : String(error)}`)
     }
     console.log()
   }
@@ -216,6 +368,14 @@ async function main() {
 
   console.log("✅ Screenshot capture complete!")
   console.log(`   Success: ${successCount}, Failed: ${failCount}`)
+
+  if (warnings.length > 0) {
+    console.log()
+    console.log("⚠️  Warnings:")
+    for (const warning of warnings) {
+      console.log(`   - ${warning}`)
+    }
+  }
 
   if (failCount > 0) {
     process.exit(1)
