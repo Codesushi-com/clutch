@@ -926,6 +926,7 @@ async function main() {
   console.log("   Creating roadmap data...")
   for (let pIdx = 0; pIdx < projectIds.length; pIdx++) {
     const projectId = projectIds[pIdx]
+    let prevPhaseId: string | undefined = undefined
 
     // Create phases
     for (let i = 0; i < PHASES.length; i++) {
@@ -941,7 +942,7 @@ async function main() {
         goal: phase.goal,
         description: `Phase ${i + 1} of the project focusing on ${phase.goal.toLowerCase()}.`,
         status: phaseStatus,
-        depends_on: i > 0 ? JSON.stringify([generateUUID(SEED_RANGES.phases.start + pIdx * 10 + i - 1, `phase[project=${pIdx},phase=${i-1}]`)]) : undefined,
+        depends_on: prevPhaseId ? JSON.stringify([prevPhaseId]) : undefined,
         success_criteria: JSON.stringify([
           "All tests passing",
           "Documentation complete",
@@ -952,6 +953,9 @@ async function main() {
         created_at: rng.dateInRange(14, 7),
         updated_at: Date.now() - rng.range(0, 86400000),
       })
+
+      // Store current phase ID for next iteration's depends_on
+      prevPhaseId = phaseId
 
       // Create features for each phase
       const featureCount = rng.range(2, 4)
