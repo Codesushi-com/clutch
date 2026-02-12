@@ -3,6 +3,7 @@
 import { useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import remarkBreaks from "remark-breaks"
 import rehypeHighlight from "rehype-highlight"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { X } from "lucide-react"
@@ -21,7 +22,7 @@ export function MarkdownContent({ content, className = "", variant = "chat" }: M
     <>
       <div className={`markdown-content chat-text ${isDocument ? "overflow-auto" : "overflow-hidden"} ${className}`}>
         <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkBreaks]}
         rehypePlugins={[rehypeHighlight]}
         components={{
           // Headers - larger for documents, compact for chat
