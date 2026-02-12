@@ -148,11 +148,21 @@ async function optimizePng(filePath: string) {
 }
 
 /**
+ * Calculate remaining time within global timeout budget
+ */
+function getRemainingTime(startTime: number, budgetMs: number): number {
+  return Math.max(0, budgetMs - (Date.now() - startTime))
+}
+
+/**
  * Wait for page to be ready for screenshot
- * Uses multiple strategies:
+ * Uses multiple strategies racing against each other:
  * 1. Wait for specific selector if provided
  * 2. Wait for custom function condition if provided
  * 3. Fallback to minimum wait time
+ *
+ * All strategies share a global timeout budget (MAX_WAIT_MS) to prevent
+ * excessive wait times when multiple strategies are configured.
  */
 async function waitForPageReady(
   page: Page,
@@ -162,55 +172,66 @@ async function waitForPageReady(
   let warning: string | undefined
 
   try {
+    // Build array of wait promises that will race against each other
+    const waitPromises: Array<Promise<{ strategy: string; durationMs: number }>> = []
+
     // Strategy 1: Wait for specific selector
     if (config.waitForSelector) {
-      try {
-        await page.waitForSelector(config.waitForSelector, { timeout: MAX_WAIT_MS })
-        const duration = Date.now() - startTime
-        if (duration > WARNING_THRESHOLD_MS) {
-          warning = `Page took ${duration}ms to load (threshold: ${WARNING_THRESHOLD_MS}ms)`
-        }
-        return { success: true, durationMs: duration, warning }
-      } catch {
-        // Selector timeout - will try fallback
-        console.log(`      ⚠️  Selector "${config.waitForSelector}" not found within ${MAX_WAIT_MS}ms`)
-      }
+      waitPromises.push(
+        (async () => {
+          const timeout = getRemainingTime(startTime, MAX_WAIT_MS)
+          await page.waitForSelector(config.waitForSelector!, { timeout })
+          return { strategy: "selector", durationMs: Date.now() - startTime }
+        })()
+      )
     }
 
     // Strategy 2: Wait for custom function condition
     if (config.waitForFunction) {
-      try {
-        await page.waitForFunction(config.waitForFunction, { timeout: MAX_WAIT_MS })
-        const duration = Date.now() - startTime
-        if (duration > WARNING_THRESHOLD_MS) {
-          warning = `Page took ${duration}ms to load (threshold: ${WARNING_THRESHOLD_MS}ms)`
-        }
-        return { success: true, durationMs: duration, warning }
-      } catch {
-        // Function timeout - will try fallback
-        console.log(`      ⚠️  Custom wait condition not met within ${MAX_WAIT_MS}ms`)
-      }
+      waitPromises.push(
+        (async () => {
+          const timeout = getRemainingTime(startTime, MAX_WAIT_MS)
+          await page.waitForFunction(config.waitForFunction!, { timeout })
+          return { strategy: "function", durationMs: Date.now() - startTime }
+        })()
+      )
     }
 
-    // Strategy 3: Fallback to minimum wait time
-    const remainingWait = Math.max(5000, config.waitFor - (Date.now() - startTime))
-    if (remainingWait > 0) {
-      console.log(`      ⏱️  Falling back to fixed wait: ${remainingWait}ms`)
-      await page.waitForTimeout(remainingWait)
+    // Strategy 3: Minimum wait time (always included as a safety minimum)
+    const minimumWaitMs = config.waitFor ?? 5000
+    waitPromises.push(
+      (async () => {
+        const timeout = getRemainingTime(startTime, MAX_WAIT_MS)
+        const waitTime = Math.min(minimumWaitMs, timeout)
+        if (waitTime > 0) {
+          await page.waitForTimeout(waitTime)
+        }
+        return { strategy: "minimum", durationMs: Date.now() - startTime }
+      })()
+    )
+
+    // Race all strategies - whichever completes first wins
+    const result = await Promise.race(waitPromises)
+
+    // Log which strategy won (for debugging)
+    if (result.strategy !== "minimum") {
+      console.log(`      ✓ Ready via ${result.strategy} strategy`)
+    } else {
+      console.log(`      ⏱️  Used minimum wait time`)
     }
 
     const duration = Date.now() - startTime
     if (duration > WARNING_THRESHOLD_MS) {
-      warning = `Page took ${duration}ms to load (used fallback, threshold: ${WARNING_THRESHOLD_MS}ms)`
+      warning = `Page took ${duration}ms to load (threshold: ${WARNING_THRESHOLD_MS}ms)`
     }
     return { success: true, durationMs: duration, warning }
 
   } catch (error) {
     const duration = Date.now() - startTime
-    return { 
-      success: false, 
-      durationMs: duration, 
-      warning: `Failed to wait for page ready after ${duration}ms: ${error instanceof Error ? error.message : String(error)}` 
+    return {
+      success: false,
+      durationMs: duration,
+      warning: `Failed to wait for page ready after ${duration}ms: ${error instanceof Error ? error.message : String(error)}`
     }
   }
 }
