@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { promises as fs } from "fs"
 import path from "path"
-import { processMessageContent } from "../worker/image-processor"
+import { processMessageContent, parseMediaTags } from "../worker/image-processor"
 
 // Test data - small 1x1 PNG in base64
 const TEST_PNG_BASE64 =
@@ -241,6 +241,142 @@ describe("processMessageContent", () => {
       const result = await processMessageContent(content)
       // May or may not produce output depending on how it's handled
       expect(typeof result).toBe("string")
+    })
+  })
+
+  describe("MEDIA: tag parsing", () => {
+    it("should parse MEDIA: tags from text", () => {
+      const text = "Here is an image:\nMEDIA:./screenshots/test.png\nIsn't it nice?"
+      const result = parseMediaTags(text)
+      expect(result.mediaPaths).toEqual(["./screenshots/test.png"])
+      expect(result.cleanedText).toBe("Here is an image:\nIsn't it nice?")
+    })
+
+    it("should parse multiple MEDIA: tags", () => {
+      const text = "MEDIA:./image1.png\nSome text\nMEDIA:./image2.jpg"
+      const result = parseMediaTags(text)
+      expect(result.mediaPaths).toEqual(["./image1.png", "./image2.jpg"])
+      expect(result.cleanedText).toBe("Some text")
+    })
+
+    it("should handle text without MEDIA: tags", () => {
+      const text = "Just some regular text without media"
+      const result = parseMediaTags(text)
+      expect(result.mediaPaths).toEqual([])
+      expect(result.cleanedText).toBe(text)
+    })
+
+    it("should reject absolute paths", () => {
+      const text = "MEDIA:/etc/passwd\nMEDIA:~/secrets.txt\nMEDIA:../escape.png"
+      const result = parseMediaTags(text)
+      expect(result.mediaPaths).toEqual([])
+      expect(result.cleanedText).toBe(text)
+    })
+
+    it("should reject file:// protocol paths", () => {
+      const text = "MEDIA:file:///etc/passwd"
+      const result = parseMediaTags(text)
+      expect(result.mediaPaths).toEqual([])
+    })
+
+    it("should handle empty MEDIA: tags", () => {
+      const text = "MEDIA:\nSome text"
+      const result = parseMediaTags(text)
+      expect(result.mediaPaths).toEqual([])
+      expect(result.cleanedText).toBe("Some text")
+    })
+
+    it("should handle whitespace around MEDIA: tags", () => {
+      const text = "  MEDIA:  ./image.png  \nText"
+      const result = parseMediaTags(text)
+      expect(result.mediaPaths).toEqual(["./image.png"])
+      expect(result.cleanedText).toBe("Text")
+    })
+
+    it("should handle text with only MEDIA: tags", () => {
+      const text = "MEDIA:./image.png"
+      const result = parseMediaTags(text)
+      expect(result.mediaPaths).toEqual(["./image.png"])
+      expect(result.cleanedText).toBe("")
+    })
+  })
+
+  describe("MEDIA: tag processing in content blocks", () => {
+    // Create a test image file
+    beforeEach(async () => {
+      await fs.mkdir(path.join(process.cwd(), "test-temp"), { recursive: true })
+      await fs.writeFile(
+        path.join(process.cwd(), "test-temp", "test-media.png"),
+        Buffer.from(TEST_PNG_BASE64, "base64"),
+      )
+    })
+
+    afterEach(async () => {
+      try {
+        await fs.rm(path.join(process.cwd(), "test-temp"), { recursive: true })
+      } catch {
+        // Ignore cleanup errors
+      }
+    })
+
+    it("should process MEDIA: tags in text blocks", async () => {
+      const content = [
+        { type: "text", text: "Here is an image:\nMEDIA:./test-temp/test-media.png\nCool!" },
+      ]
+      const result = await processMessageContent(content)
+      expect(result).toContain("Here is an image:")
+      expect(result).toContain("Cool!")
+      expect(result).toMatch(/!\[image\]\(\/uploads\/images\/\d+-[a-f0-9]+\.png\)/)
+    })
+
+    it("should handle text block with only MEDIA: tag", async () => {
+      const content = [{ type: "text", text: "MEDIA:./test-temp/test-media.png" }]
+      const result = await processMessageContent(content)
+      expect(result).toMatch(/!\[image\]\(\/uploads\/images\/\d+-[a-f0-9]+\.png\)/)
+    })
+
+    it("should handle multiple MEDIA: tags in one text block", async () => {
+      // Create a second test image
+      await fs.writeFile(
+        path.join(process.cwd(), "test-temp", "test-media2.png"),
+        Buffer.from(TEST_PNG_BASE64, "base64"),
+      )
+
+      const content = [
+        { type: "text", text: "MEDIA:./test-temp/test-media.png\nMEDIA:./test-temp/test-media2.png" },
+      ]
+      const result = await processMessageContent(content)
+      // Should have two image markdowns
+      const matches = result.match(/!\[image\]\(\/uploads\/images\/\d+-[a-f0-9]+\.png\)/g)
+      expect(matches?.length).toBe(2)
+    })
+
+    it("should skip invalid MEDIA: paths and keep the text", async () => {
+      const content = [
+        { type: "text", text: "MEDIA:/etc/passwd\nSome text" },
+      ]
+      const result = await processMessageContent(content)
+      // The MEDIA: line should be kept as text since it was invalid
+      expect(result).toContain("MEDIA:/etc/passwd")
+      expect(result).toContain("Some text")
+    })
+
+    it("should handle mixed text, images, and MEDIA: tags", async () => {
+      const content = [
+        { type: "text", text: "Here is a local image:" },
+        { type: "text", text: "MEDIA:./test-temp/test-media.png" },
+        { type: "text", text: "And here is a base64 image:" },
+        {
+          type: "image_url",
+          image_url: { url: TEST_PNG_DATA_URL },
+        },
+      ]
+      const result = await processMessageContent(content)
+      expect(result).toContain("Here is a local image:")
+      expect(result).toContain("And here is a base64 image:")
+      // Should have two images
+      const matches = result.match(/!\[image\]\(\/uploads\/images\/\d+-[a-f0-9]+\.png\)/g)
+      expect(matches?.length).toBe(2)
     })
   })
 })
