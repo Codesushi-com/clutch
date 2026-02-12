@@ -2,6 +2,10 @@
 # Isolated demo environment for screenshots and testing
 # Fully separate from production instance on ports 3210/3211
 #
+# ⚠️ SAFETY NOTICE ⚠️
+# This compose file is completely isolated from production.
+# It uses ports 3230/3231 exclusively and its own named volume.
+#
 # Quick Start:
 #   1. Start the demo instance:
 #      docker compose -f docker-compose.demo.yml up -d
@@ -9,10 +13,10 @@
 #   2. Deploy the Convex schema:
 #      pnpm demo:deploy
 #
-#   3. Access the dashboard at http://localhost:6811
+#   3. Access the dashboard at http://localhost:3231
 #
 #   4. Stop and clean up:
-#      docker compose -f docker-compose.demo.yml down -v
+#      pnpm demo:reset
 #
 # To generate a new admin key:
 #   docker run --rm ghcr.io/get-convex/convex-backend:latest generate-key
@@ -29,7 +33,7 @@ services:
     restart: unless-stopped
     ports:
       - "3230:3210"  # Convex API port (demo) - maps external 3230 to internal 3210
-      - "6811:3211"  # Convex dashboard port (demo) - maps external 6811 to internal 3211
+      - "3231:3211"  # Convex dashboard port (demo) - maps external 3231 to internal 3211
     volumes:
       - convex-demo-data:/convex/data
     environment:
@@ -39,7 +43,7 @@ services:
       # Logging
       - RUST_LOG=${RUST_LOG:-info}
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3230/version"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3210/version"]
       interval: 10s
       timeout: 5s
       retries: 5

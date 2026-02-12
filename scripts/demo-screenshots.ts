@@ -18,6 +18,26 @@ import fs from "fs"
 import path from "path"
 import { execSync } from "child_process"
 
+// Safety check: verify we're not targeting production
+function verifyDemoEnvironment(): void {
+  // Check for safety bypass
+  if (process.env.DEMO_UNSAFE_BYPASS === "true") {
+    console.warn("⚠️  DEMO_UNSAFE_BYPASS is set - skipping environment verification")
+    return
+  }
+
+  // Verify demo:screenshots is running against demo environment
+  const isDemoPort = BASE_URL.includes(":3003") || BASE_URL.includes(":3002")
+  if (!isDemoPort) {
+    console.error("❌ ERROR: demo:screenshots must target demo/dev server, not production")
+    console.error(`   Current BASE_URL: ${BASE_URL}`)
+    console.error("   Expected: http://localhost:3003 (demo server)")
+    process.exit(1)
+  }
+
+  console.log("✅ Demo environment verified")
+}
+
 const BASE_URL = "http://localhost:3003"
 const OUTPUT_DIR = "./docs"
 const MAX_WAIT_MS = 15000
@@ -323,6 +343,10 @@ async function main() {
   console.log("📸 OpenClutch Demo Screenshots")
   console.log("   Base URL:", BASE_URL)
   console.log("   Output:", OUTPUT_DIR)
+  console.log()
+
+  // Verify demo environment before proceeding
+  verifyDemoEnvironment()
   console.log()
 
   // Check if dev server is running

@@ -13,12 +13,66 @@
 
 import { ConvexHttpClient } from "convex/browser"
 import { api } from "../convex/_generated/api.js"
+import { execSync } from "child_process"
 
 // Parse command line arguments
 const args = process.argv.slice(2)
 const shouldClean = args.includes("--clean")
 const urlIndex = args.indexOf("--url")
 const convexUrl = urlIndex >= 0 ? args[urlIndex + 1] : process.env.CONVEX_URL || "http://localhost:3230"
+
+/**
+ * Run safety checks before destructive operations
+ */
+function runSafetyChecks(): boolean {
+  // Skip if explicitly bypassed
+  if (process.env.DEMO_UNSAFE_BYPASS === "true") {
+    console.warn("⚠️  SAFETY CHECKS BYPASSED")
+    return true
+  }
+
+  // Only run safety checks when cleaning (destructive operation)
+  if (!shouldClean) {
+    return true
+  }
+
+  console.log("🔒 Running safety checks before clearing data...")
+
+  try {
+    // Check if we're targeting the production URL
+    if (convexUrl.includes(":3210")) {
+      console.error("❌ ERROR: Attempting to clean production Convex instance!")
+      console.error("   URL contains production port 3210")
+      console.error("   Use --url http://localhost:3230 for demo instance")
+      return false
+    }
+
+    // Verify demo port is being used
+    if (!convexUrl.includes(":3230")) {
+      console.warn("⚠️  WARNING: URL does not contain demo port 3230")
+      console.warn(`   Current URL: ${convexUrl}`)
+      console.warn("   Make sure you're targeting the demo instance!")
+    }
+
+    // Run full safety check script if available
+    try {
+      execSync("tsx scripts/demo-safety-check.ts", {
+        stdio: "inherit",
+      })
+    } catch {
+      console.error("❌ Safety checks failed. Aborting.")
+      console.log("")
+      console.log("To bypass safety checks (DANGEROUS):")
+      console.log("  DEMO_UNSAFE_BYPASS=true pnpm demo:seed --clean")
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error("❌ Safety check error:", error)
+    return false
+  }
+}
 
 // Seeded random number generator for deterministic output
 class SeededRNG {
@@ -437,6 +491,12 @@ async function main() {
   console.log(`   Convex URL: ${convexUrl}`)
   console.log(`   Clean mode: ${shouldClean}`)
   console.log()
+
+  // Run safety checks before any destructive operations
+  if (shouldClean && !runSafetyChecks()) {
+    console.error("❌ Aborting due to safety check failure")
+    process.exit(1)
+  }
 
   const client = new ConvexHttpClient(convexUrl)
 
