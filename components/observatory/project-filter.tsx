@@ -109,8 +109,8 @@ export function ProjectFilter({
             All Projects
           </span>
         </SelectItem>
-        {enabledProjects.map((project: ProjectWithCount) => (
-          <SelectItem key={project.id} value={project.id}>
+        {enabledProjects.map((project: ProjectWithCount, index: number) => (
+          <SelectItem key={`${project.id}-${index}`} value={project.id}>
             <span className="flex items-center gap-2">
               <ColorDot color={project.color} />
               {project.name}

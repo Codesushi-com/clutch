@@ -61,8 +61,11 @@ class SeededRNG {
 
 const rng = new SeededRNG(42)
 
+// Track all used UUIDs to detect collisions
+const usedUUIDs = new Map<string, string>()
+
 // Helper to generate UUID v4 (deterministic based on seed)
-function generateUUID(seed: number): string {
+function generateUUID(seed: number, context?: string): string {
   const hex = "0123456789abcdef"
   let uuid = ""
   const seededRNG = new SeededRNG(seed)
@@ -77,8 +80,43 @@ function generateUUID(seed: number): string {
       uuid += hex[seededRNG.range(0, 15)]
     }
   }
+
+  // Check for collisions
+  if (usedUUIDs.has(uuid)) {
+    const existingContext = usedUUIDs.get(uuid)
+    console.warn(`⚠️  UUID collision detected: ${uuid}`)
+    console.warn(`   Context 1: ${existingContext}`)
+    console.warn(`   Context 2: ${context || `seed ${seed}`}`)
+  } else {
+    usedUUIDs.set(uuid, context || `seed ${seed}`)
+  }
+
   return uuid
 }
+
+// Seed range constants - ensure no overlaps between entity types
+const SEED_RANGES = {
+  projects: { start: 1000, count: 10 },           // 1000-1009
+  workLoopStates: { start: 2000, count: 10 },     // 2000-2009
+  tasks: { start: 3000, count: 100 },             // 3000-3099
+  dependencies: { start: 4000, count: 50 },       // 4000-4049
+  comments: { start: 5000, count: 200 },          // 5000-5199
+  chats: { start: 6000, count: 20 },              // 6000-6019
+  chatMessages: { start: 7000, count: 2000 },     // 7000-8999 (20 chats * 100 max messages)
+  workLoopRuns: { start: 10000, count: 200 },     // 10000-10199
+  sessions: { start: 11000, count: 200 },         // 11000-11199 (100 sessions + 100 session_ids)
+  phases: { start: 12000, count: 50 },            // 12000-12049
+  features: { start: 13000, count: 500 },         // 13000-13499
+  requirements: { start: 20000, count: 5000 },    // 20000-24999
+  promptVersions: { start: 30000, count: 100 },   // 30000-30099 (7 roles * 10 versions)
+  taskAnalyses: { start: 40000, count: 10000 },   // 40000-49999
+  promptMetrics: { start: 50000, count: 100 },    // 50000-50099
+  notifications: { start: 60000, count: 50 },     // 60000-60049
+  events: { start: 70000, count: 100 },           // 70000-70099
+  signals: { start: 80000, count: 50 },           // 80000-80049
+  modelPricing: { start: 90000, count: 10 },      // 90000-90009
+  taskEvents: { start: 100000, count: 100 },      // 100000-100099
+} as const
 
 // Type definitions
 const CHAT_LAYOUTS = ["slack", "imessage"] as const
@@ -429,7 +467,7 @@ async function main() {
   console.log("   Creating projects...")
   for (let i = 0; i < PROJECTS.length; i++) {
     const p = PROJECTS[i]
-    const projectId = generateUUID(1000 + i)
+    const projectId = generateUUID(SEED_RANGES.projects.start + i, `project[${p.slug}]`)
     projectIds.push(projectId)
     taskIdsByProject[projectId] = []
 
@@ -454,7 +492,7 @@ async function main() {
     // Create work loop state for each project
     const workLoopPhase: WorkLoopPhase = rng.pick(WORK_LOOP_PHASES)
     await client.mutation(api.seed.insertWorkLoopState, {
-      id: generateUUID(2000 + i),
+      id: generateUUID(SEED_RANGES.workLoopStates.start + i, `workLoopState[${p.slug}]`),
       project_id: projectId,
       status: p.workLoopStatus,
       current_phase: workLoopPhase,
@@ -537,7 +575,7 @@ async function main() {
     const role: Role = rng.pick(ROLES)
     const status: TaskStatus = rng.pick(TASK_STATUSES)
     const title: string = rng.pick(TASK_TITLES[role])
-    const taskId = generateUUID(3000 + i)
+    const taskId = generateUUID(SEED_RANGES.tasks.start + i, `task[${i}]`)
 
     taskIds.push(taskId)
     taskIdsByProject[projectId].push(taskId)
@@ -613,7 +651,7 @@ async function main() {
     const task = rng.pick(taskIds)
     const dependsOn = rng.pick(taskIds.filter(t => t !== task))
     await client.mutation(api.seed.insertTaskDependency, {
-      id: generateUUID(4000 + i),
+      id: generateUUID(SEED_RANGES.dependencies.start + i, `dependency[${i}]`),
       task_id: task,
       depends_on_id: dependsOn,
       created_at: rng.dateInRange(7, 0),
@@ -640,7 +678,7 @@ async function main() {
     const author: string = authorType === "human" ? rng.pick(["alice", "bob", "carol"]) : rng.pick(["coordinator", "agent-dev-1", "agent-reviewer-1"])
 
     await client.mutation(api.seed.insertComment, {
-      id: generateUUID(5000 + i),
+      id: generateUUID(SEED_RANGES.comments.start + i, `comment[${i}]`),
       task_id: taskId,
       author,
       author_type: authorType,
@@ -660,7 +698,7 @@ async function main() {
   for (const projectId of projectIds) {
     // Create exactly 2 chats per project
     for (let projectChatIndex = 0; projectChatIndex < 2; projectChatIndex++) {
-      const chatId = generateUUID(6000 + chatIndex)
+      const chatId = generateUUID(SEED_RANGES.chats.start + chatIndex, `chat[${chatIndex}]`)
       chatIds.push(chatId)
 
       // Pick a conversation template (cycle through available ones)
@@ -684,7 +722,7 @@ async function main() {
       const baseTime = Date.now() - conversationTemplate.length * rng.range(300000, 600000)
       for (let j = 0; j < conversationTemplate.length; j++) {
         const msg = conversationTemplate[j]
-        const messageId = generateUUID(7000 + chatIndex * 100 + j)
+        const messageId = generateUUID(SEED_RANGES.chatMessages.start + chatIndex * 100 + j, `chatMessage[chat=${chatIndex},msg=${j}]`)
 
         await client.mutation(api.seed.insertChatMessage, {
           id: messageId,
@@ -721,7 +759,7 @@ async function main() {
     const projectId = rng.pick(projectIds)
     const phase: WorkLoopPhase = rng.pick(WORK_LOOP_PHASES)
     await client.mutation(api.seed.insertWorkLoopRun, {
-      id: generateUUID(8000 + i),
+      id: generateUUID(SEED_RANGES.workLoopRuns.start + i, `workLoopRun[${i}]`),
       project_id: projectId,
       cycle: rng.range(1, 500),
       phase,
@@ -756,9 +794,9 @@ async function main() {
     const sessionCreatedAt = Date.now() - rng.range(300000, 1800000) // 5-30 min ago
 
     await client.mutation(api.seed.insertSession, {
-      id: generateUUID(9000 + i),
+      id: generateUUID(SEED_RANGES.sessions.start + i, `session[${i}]`),
       session_key: sessionKey,
-      session_id: generateUUID(9500 + i),
+      session_id: generateUUID(SEED_RANGES.sessions.start + 100 + i, `session.session_id[${i}]`),
       session_type: "agent",
       model: model.id,
       provider: rng.pick(["anthropic", "openai", "google"]),
@@ -795,9 +833,9 @@ async function main() {
     const costOutput = (tokensOutput / 1000000) * model.outputPrice
 
     await client.mutation(api.seed.insertSession, {
-      id: generateUUID(9100 + i),
+      id: generateUUID(SEED_RANGES.sessions.start + 20 + i, `additionalSession[${i}]`),
       session_key: `${type}:demo:${Date.now()}-${i}`,
-      session_id: generateUUID(9600 + i),
+      session_id: generateUUID(SEED_RANGES.sessions.start + 150 + i, `additionalSession.session_id[${i}]`),
       session_type: type,
       model: model.id,
       provider: rng.pick(["anthropic", "openai", "google"]),
@@ -832,7 +870,7 @@ async function main() {
     // Create phases
     for (let i = 0; i < PHASES.length; i++) {
       const phase = PHASES[i]
-      const phaseId = generateUUID(10000 + pIdx * 100 + i)
+      const phaseId = generateUUID(SEED_RANGES.phases.start + pIdx * 10 + i, `phase[project=${pIdx},phase=${i}]`)
       const phaseStatus: FeatureStatus = rng.pick(FEATURE_STATUSES)
 
       await client.mutation(api.seed.insertRoadmapPhase, {
@@ -843,7 +881,7 @@ async function main() {
         goal: phase.goal,
         description: `Phase ${i + 1} of the project focusing on ${phase.goal.toLowerCase()}.`,
         status: phaseStatus,
-        depends_on: i > 0 ? JSON.stringify([generateUUID(10000 + pIdx * 100 + i - 1)]) : undefined,
+        depends_on: i > 0 ? JSON.stringify([generateUUID(SEED_RANGES.phases.start + pIdx * 10 + i - 1, `phase[project=${pIdx},phase=${i-1}]`)]) : undefined,
         success_criteria: JSON.stringify([
           "All tests passing",
           "Documentation complete",
@@ -858,7 +896,7 @@ async function main() {
       // Create features for each phase
       const featureCount = rng.range(2, 4)
       for (let j = 0; j < featureCount; j++) {
-        const featureId = generateUUID(11000 + pIdx * 1000 + i * 100 + j)
+        const featureId = generateUUID(SEED_RANGES.features.start + pIdx * 100 + i * 10 + j, `feature[project=${pIdx},phase=${i},feature=${j}]`)
         const featureStatus: FeatureStatus = rng.pick(FEATURE_STATUSES)
 
         await client.mutation(api.seed.insertFeature, {
@@ -888,7 +926,7 @@ async function main() {
           const reqStatus: RequirementStatus = rng.pick(REQUIREMENT_STATUSES)
           const reqPriority: TaskPriority = rng.pick(TASK_PRIORITIES)
           await client.mutation(api.seed.insertRequirement, {
-            id: generateUUID(12000 + pIdx * 10000 + i * 1000 + j * 100 + k),
+            id: generateUUID(SEED_RANGES.requirements.start + pIdx * 1000 + i * 100 + j * 10 + k, `req[project=${pIdx},phase=${i},feature=${j},req=${k}]`),
             project_id: projectId,
             feature_id: featureId,
             title: rng.pick([
@@ -1082,7 +1120,7 @@ The goal is continuous improvement through systematic analysis.`,
 
     // Create prompt versions
     for (let i = 0; i < versionCount; i++) {
-      const promptId = generateUUID(13000 + PROMPT_ROLES.indexOf(role) * 1000 + i)
+      const promptId = generateUUID(SEED_RANGES.promptVersions.start + PROMPT_ROLES.indexOf(role) * 10 + i, `promptVersion[role=${role},ver=${i}]`)
       promptVersionsByRole[role].push(promptId)
 
       // Determine A/B test status
@@ -1139,7 +1177,7 @@ The goal is continuous improvement through systematic analysis.`,
         }
 
         await client.mutation(api.seed.insertTaskAnalysis, {
-          id: generateUUID(14000 + PROMPT_ROLES.indexOf(role) * 10000 + i * 1000 + j),
+          id: generateUUID(SEED_RANGES.taskAnalyses.start + PROMPT_ROLES.indexOf(role) * 1000 + i * 100 + j, `taskAnalysis[role=${role},ver=${i},analysis=${j}]`),
           task_id: rng.pick(taskIds),
           session_key: `analysis-${Date.now()}-${role}-${i}-${j}`,
           role,
@@ -1175,7 +1213,7 @@ The goal is continuous improvement through systematic analysis.`,
       const abandonedCount = totalTasks - successCount - failureCount - partialCount
 
       await client.mutation(api.seed.insertPromptMetric, {
-        id: generateUUID(15000 + PROMPT_ROLES.indexOf(role) * 100 + PERIODS.indexOf(period)),
+        id: generateUUID(SEED_RANGES.promptMetrics.start + PROMPT_ROLES.indexOf(role) * 10 + PERIODS.indexOf(period), `promptMetric[role=${role},period=${period}]`),
         role,
         model: rng.pick(MODELS).id,
         prompt_version_id: activeVersionId,
@@ -1210,7 +1248,7 @@ The goal is continuous improvement through systematic analysis.`,
     const severity: Severity = type === "escalation" ? "critical" : rng.pick(SEVERITIES)
 
     await client.mutation(api.seed.insertNotification, {
-      id: generateUUID(16000 + i),
+      id: generateUUID(SEED_RANGES.notifications.start + i, `notification[${i}]`),
       task_id: rng.boolean(0.7) ? rng.pick(taskIds) : undefined,
       project_id: rng.boolean(0.5) ? rng.pick(projectIds) : undefined,
       type,
@@ -1242,7 +1280,7 @@ The goal is continuous improvement through systematic analysis.`,
   for (let i = 0; i < eventCount; i++) {
     const eventType: EventType = rng.pick(EVENT_TYPES)
     await client.mutation(api.seed.insertEvent, {
-      id: generateUUID(17000 + i),
+      id: generateUUID(SEED_RANGES.events.start + i, `event[${i}]`),
       project_id: rng.boolean(0.8) ? rng.pick(projectIds) : undefined,
       task_id: rng.boolean(0.7) ? rng.pick(taskIds) : undefined,
       type: eventType,
@@ -1262,7 +1300,7 @@ The goal is continuous improvement through systematic analysis.`,
     const blocking = kind === "blocker" || rng.boolean(0.2)
 
     await client.mutation(api.seed.insertSignal, {
-      id: generateUUID(18000 + i),
+      id: generateUUID(SEED_RANGES.signals.start + i, `signal[${i}]`),
       task_id: rng.pick(taskIds),
       session_key: `session-${Date.now()}-${i}`,
       agent_id: rng.pick(["agent-dev-1", "agent-reviewer-1", "agent-pm-1"]),
@@ -1289,7 +1327,7 @@ The goal is continuous improvement through systematic analysis.`,
   for (let i = 0; i < MODELS.length; i++) {
     const model = MODELS[i]
     await client.mutation(api.seed.insertModelPricing, {
-      id: generateUUID(19000 + i),
+      id: generateUUID(SEED_RANGES.modelPricing.start + i, `modelPricing[${model.id}]`),
       model: model.id,
       input_per_1m: model.inputPrice,
       output_per_1m: model.outputPrice,
@@ -1311,7 +1349,7 @@ The goal is continuous improvement through systematic analysis.`,
     const eventType: TaskEventType = rng.pick(TASK_EVENT_TYPES)
 
     await client.mutation(api.seed.insertTaskEvent, {
-      id: generateUUID(20000 + i),
+      id: generateUUID(SEED_RANGES.taskEvents.start + i, `taskEvent[${i}]`),
       task_id: rng.pick(taskIds),
       project_id: rng.pick(projectIds),
       event_type: eventType,
