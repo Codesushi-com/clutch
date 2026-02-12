@@ -945,7 +945,7 @@ export const update = mutation({
     tags: v.optional(v.string()),
     session_id: v.optional(v.string()),
     agent_session_key: v.optional(v.union(v.string(), v.null())),
-    agent_spawned_at: v.optional(v.float64()),
+    agent_spawned_at: v.optional(v.union(v.float64(), v.null())),
     prompt_version_id: v.optional(v.string()),
     branch: v.optional(v.string()),
     pr_number: v.optional(v.number()),

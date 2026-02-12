@@ -794,33 +794,41 @@ async function runProjectCycle(
             }
           }
         }
-        // Case 3: Non-reviewer agent finished while task is in_review → block (security guard)
-        // Only reviewers should be able to move tasks from in_review to done.
-        // If conflict_resolver, pm, or other non-dev roles finish here, something went wrong.
-        // Dev finishing in in_review is the happy path (created PR, moved to in_review, done).
+        // Case 3: Non-reviewer, non-dev agent (e.g., conflict_resolver) finished while task is in_review
+        // Clear the agent fields so the review phase can spawn a proper reviewer. Leave task in in_review.
         else if (currentStatus === "in_review" && outcome.role !== "dev") {
-          await convex.mutation(api.tasks.move, {
-            id: outcome.taskId,
-            status: "blocked",
-          })
-          const guardReason = `Agent with role '${outcome.role}' finished while task was in_review. ` +
-            `Only reviewer agents can transition tasks from in_review. Moving to blocked for triage.`
-          await convex.mutation(api.comments.create, {
-            taskId: outcome.taskId,
-            author: "work-loop",
-            authorType: "coordinator",
-            content: guardReason,
-            type: "status_change",
-          })
-          console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} moved to blocked (non-reviewer '${outcome.role}' finished in in_review)`)
-          await logRun(convex, {
-            projectId: project.id,
-            cycle,
-            phase: "cleanup",
-            action: "task_blocked",
-            taskId: outcome.taskId,
-            details: { reason: "non_reviewer_finished_in_review", role: outcome.role },
-          })
+          console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} agent (role=${outcome.role}) finished in in_review — clearing agent fields for reviewer spawn`)
+          try {
+            await convex.mutation(api.tasks.update, {
+              id: outcome.taskId,
+              agent_session_key: null,
+              agent_spawned_at: null,
+              agent_retry_count: 0, // Reset retry count for the upcoming reviewer (don't carry over conflict_resolver retries)
+            })
+            console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} agent fields cleared — ready for reviewer spawn`)
+            await logRun(convex, {
+              projectId: project.id,
+              cycle,
+              phase: "cleanup",
+              action: "agent_cleared_for_reviewer",
+              taskId: outcome.taskId,
+              details: { role: outcome.role, reason: "conflict_resolver_finished" },
+            })
+          } catch (clearErr) {
+            console.warn(`[WorkLoop] Failed to clear agent fields for ${outcome.taskId}:`, clearErr)
+            // Move to blocked since we couldn't clear the agent fields — needs human attention
+            await convex.mutation(api.tasks.move, {
+              id: outcome.taskId,
+              status: "blocked",
+            })
+            await convex.mutation(api.comments.create, {
+              taskId: outcome.taskId,
+              author: "work-loop",
+              authorType: "coordinator",
+              content: `Failed to clear agent session after ${outcome.role} finished. Moving to blocked for triage.`,
+              type: "status_change",
+            })
+          }
         }
         // Case 4: Task already done/blocked → agent signaled correctly, no action
         else if (currentStatus === "done") {
@@ -832,6 +840,16 @@ async function runProjectCycle(
           }
         } else {
           console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} status is ${currentStatus} — agent signaled correctly`)
+          // Clear agent_session_key so the task isn't stuck.
+          try {
+            await convex.mutation(api.tasks.update, {
+              id: outcome.taskId,
+              agent_session_key: null,
+              agent_spawned_at: null,
+            })
+          } catch (clearErr) {
+            console.warn(`[WorkLoop] Failed to clear agent fields for ${outcome.taskId}:`, clearErr)
+          }
         }
       } catch (err) {
         // Non-fatal — log and continue
