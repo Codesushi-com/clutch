@@ -467,9 +467,70 @@ async function main() {
   }
   console.log(`      ✓ Created ${PROJECTS.length} projects`)
 
-  // 2. Create Tasks (~40-50 across projects)
-  console.log("   Creating tasks...")
-  const totalTasks = rng.range(40, 50)
+  // 2. Create guaranteed in_progress tasks for each project (for Active Agents display)
+  console.log("   Creating guaranteed active tasks per project...")
+  const inProgressTaskTitles = [
+    "Implement user authentication flow",
+    "Add database migration for new schema",
+    "Fix race condition in concurrent writes",
+    "Optimize API response caching",
+    "Implement webhook retry logic",
+    "Add request validation middleware",
+    "Create feature flag system",
+    "Update dependency security patches",
+  ]
+
+  for (let pIdx = 0; pIdx < projectIds.length; pIdx++) {
+    const projectId = projectIds[pIdx]
+
+    // Create exactly 2 in_progress tasks per project
+    for (let j = 0; j < 2; j++) {
+      const taskId = generateUUID(2500 + pIdx * 10 + j)
+      const role: Role = rng.pick(ROLES)
+      const title = inProgressTaskTitles[(pIdx * 2 + j) % inProgressTaskTitles.length]
+      const sessionKey = `agent:main:demo:${taskId.slice(0, 8)}`
+
+      taskIds.push(taskId)
+      taskIdsByProject[projectId].push(taskId)
+      inProgressTasks.push({ taskId, projectId, role, title })
+
+      await client.mutation(api.seed.insertTask, {
+        id: taskId,
+        project_id: projectId,
+        title,
+        description: `Implement ${title.toLowerCase()}. This is a high-priority task currently being worked on by an agent.`,
+        status: "in_progress",
+        priority: rng.pick(["high", "urgent", "medium"]),
+        role: role as string,
+        assignee: rng.pick(["agent-dev-1", "agent-dev-2", "agent-reviewer-1"]),
+        requires_human_review: rng.boolean(0.3),
+        tags: JSON.stringify(rng.pickMany(["frontend", "backend", "api", "database", "security", "performance"], rng.range(1, 3))),
+        session_id: sessionKey,
+        agent_session_key: sessionKey,
+        agent_spawned_at: Date.now() - rng.range(300000, 1800000), // 5-30 min ago
+        dispatch_status: rng.pick(["active", "spawning"]),
+        dispatch_requested_at: Date.now() - rng.range(60000, 3600000),
+        dispatch_requested_by: rng.pick(["coordinator", "human-1"]),
+        position: j,
+        created_at: Date.now() - rng.range(600000, 3600000), // 10-60 min ago
+        updated_at: Date.now() - rng.range(0, 300000),
+        branch: `fix/${taskId.slice(0, 8)}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30)}`,
+        reviewer_rejection_count: 0,
+        escalated: false,
+      })
+    }
+  }
+  console.log(`      ✓ Created ${projectIds.length * 2} guaranteed in_progress tasks`)
+
+  // 3. Create additional random Tasks (~36-42 across projects)
+  console.log("   Creating additional random tasks...")
+  const totalTasks = rng.range(36, 42)
+
+  // Track position offset per project (we already created 2 guaranteed tasks per project)
+  const positionOffsetByProject: Record<string, number> = {}
+  for (const projectId of projectIds) {
+    positionOffsetByProject[projectId] = 2
+  }
 
   for (let i = 0; i < totalTasks; i++) {
     const projectId = rng.pick(projectIds)
@@ -488,6 +549,9 @@ async function main() {
     if (isInProgress) {
       inProgressTasks.push({ taskId, projectId, role, title })
     }
+
+    // Get current position offset for this project and increment
+    const position = positionOffsetByProject[projectId]++
 
     const hasBranch = status !== "backlog" && status !== "ready" && rng.boolean(0.7)
     const hasPR = (status === "in_review" || status === "done") && rng.boolean(0.8)
@@ -529,7 +593,7 @@ async function main() {
       dispatch_status: isInProgress ? rng.pick(["active", "spawning", "pending"]) : undefined,
       dispatch_requested_at: isInProgress ? Date.now() - rng.range(60000, 3600000) : undefined,
       dispatch_requested_by: rng.pick(["coordinator", "human-1"]),
-      position: i,
+      position,
       created_at: createdAt,
       updated_at: Date.now() - rng.range(0, 86400000),
       completed_at: completedAt,
@@ -677,7 +741,7 @@ async function main() {
 
   // Create sessions for in_progress tasks first (linked for active agents display)
   for (let i = 0; i < inProgressTasks.length; i++) {
-    const { taskId, projectId, role, title } = inProgressTasks[i]
+    const { taskId, projectId, title } = inProgressTasks[i]
     const sessionKey = `agent:main:demo:${taskId.slice(0, 8)}`
     const project = PROJECTS.find(p => {
       const projId = projectIds[PROJECTS.indexOf(p)]
