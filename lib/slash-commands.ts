@@ -40,6 +40,11 @@ export const SLASH_COMMANDS = {
     description: "Show available slash commands",
     usage: "/help",
   },
+  compact: {
+    name: "/compact",
+    description: "Flush memories and compact session context",
+    usage: "/compact",
+  },
 } as const;
 
 /** Type for known command names */
@@ -60,7 +65,7 @@ export interface SlashCommandResult {
   /** Whether the response is an error */
   isError: boolean;
   /** Action to perform after showing response */
-  action?: "clear_chat" | "refresh_session" | "create_chat" | null;
+  action?: "clear_chat" | "refresh_session" | "create_chat" | "compact_after_response" | null;
   /** Optional title for actions that create new resources (e.g., new chat) */
   title?: string;
 }
@@ -126,6 +131,9 @@ export async function executeSlashCommand(
 
       case "help":
         return handleHelpCommand();
+
+      case "compact":
+        return await handleCompactCommand(sessionKey);
 
       default:
         // Unknown command - send as message with warning
@@ -299,6 +307,25 @@ function handleHelpCommand(): SlashCommandResult {
     response,
     isError: false,
     action: null,
+  };
+}
+
+/**
+ * Handle /compact - Flush memories and compact session context
+ *
+ * Sends a memory flush prompt to the agent, then triggers session compaction.
+ * The agent stores durable memories during its response turn, and compaction
+ * happens immediately after, summarizing the conversation context.
+ */
+async function handleCompactCommand(sessionKey: string): Promise<SlashCommandResult> {
+  return {
+    isCommand: true,
+    shouldSendMessage: true,
+    command: "compact",
+    args: [],
+    response: "Pre-compaction memory flush. Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY.",
+    isError: false,
+    action: "compact_after_response",
   };
 }
 
