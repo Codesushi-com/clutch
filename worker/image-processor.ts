@@ -252,13 +252,128 @@ function isImageBlock(block: ContentBlock): boolean {
 }
 
 /**
+ * Parse MEDIA: tags from text content
+ * Returns extracted media paths and cleaned text
+ */
+export function parseMediaTags(text: string): {
+  cleanedText: string
+  mediaPaths: string[]
+} {
+  const mediaPaths: string[] = []
+  const lines = text.split("\n")
+  const keptLines: string[] = []
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    // Match lines that start with MEDIA: (possibly with leading whitespace)
+    if (trimmed.startsWith("MEDIA:")) {
+      const mediaPath = trimmed.slice(6).trim() // Remove "MEDIA:" prefix
+      // Validate path - only allow safe relative paths starting with ./
+      if (
+        mediaPath &&
+        !mediaPath.startsWith("/") &&
+        !mediaPath.startsWith("~") &&
+        !mediaPath.includes("..") &&
+        !mediaPath.startsWith("file://")
+      ) {
+        // Remove file:// prefix if present after validation
+        const cleanPath = mediaPath.replace(/^file:\/\//, "")
+        mediaPaths.push(cleanPath)
+      } else if (!mediaPath) {
+        // Empty MEDIA: tag - strip it
+        continue
+      } else {
+        // Invalid path, keep the line as-is
+        keptLines.push(line)
+      }
+    } else {
+      keptLines.push(line)
+    }
+  }
+
+  return {
+    cleanedText: keptLines.join("\n").trim(),
+    mediaPaths,
+  }
+}
+
+/**
+ * Load image from a local path and return a markdown image tag
+ */
+async function loadLocalImage(mediaPath: string): Promise<string | null> {
+  try {
+    // Resolve relative to cwd
+    const fullPath = path.resolve(process.cwd(), mediaPath)
+
+    // Security check: ensure path is within cwd
+    const cwd = process.cwd()
+    if (!fullPath.startsWith(cwd)) {
+      console.warn(`[ImageProcessor] Path outside cwd rejected: ${mediaPath}`)
+      return null
+    }
+
+    // Read file
+    const buffer = await fs.readFile(fullPath)
+
+    // Check size
+    if (buffer.length > MAX_IMAGE_SIZE) {
+      console.warn(`[ImageProcessor] Image too large: ${buffer.length} bytes`)
+      return null
+    }
+
+    // Detect MIME type from file extension
+    const ext = path.extname(mediaPath).toLowerCase()
+    let mimeType: string
+    switch (ext) {
+      case ".png":
+        mimeType = "image/png"
+        break
+      case ".jpg":
+      case ".jpeg":
+        mimeType = "image/jpeg"
+        break
+      case ".gif":
+        mimeType = "image/gif"
+        break
+      case ".webp":
+        mimeType = "image/webp"
+        break
+      default:
+        console.warn(`[ImageProcessor] Unsupported image extension: ${ext}`)
+        return null
+    }
+
+    // Validate MIME type
+    if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) {
+      console.warn(`[ImageProcessor] Unsupported image type: ${mimeType}`)
+      return null
+    }
+
+    // Ensure upload directory exists
+    await ensureUploadDir()
+
+    // Generate filename and save
+    const filename = generateImageFilename(mimeType)
+    const filePath = path.join(UPLOAD_DIR, filename)
+    await fs.writeFile(filePath, buffer)
+
+    // Return public URL
+    return `/uploads/images/${filename}`
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[ImageProcessor] Failed to load local image: ${message}`)
+    return null
+  }
+}
+
+/**
  * Process message content and extract images
  * Returns the processed content with image markdown tags
  */
 export async function processMessageContent(
   content: string | ContentBlock[],
 ): Promise<string> {
-  // If content is a simple string, return as-is
+  // If content is a simple string, return as-is (MEDIA: tags not expected in plain strings)
   if (typeof content === "string") {
     return content
   }
@@ -274,8 +389,21 @@ export async function processMessageContent(
     const blockType = block.type
 
     if (blockType === "text" && block.text) {
-      // Text block - add to content
-      parts.push(String(block.text))
+      // Text block - check for MEDIA: tags
+      const { cleanedText, mediaPaths } = parseMediaTags(String(block.text))
+
+      // Add cleaned text if there's any left
+      if (cleanedText) {
+        parts.push(cleanedText)
+      }
+
+      // Process any MEDIA: tags as local images
+      for (const mediaPath of mediaPaths) {
+        const imageUrl = await loadLocalImage(mediaPath)
+        if (imageUrl) {
+          parts.push(`![image](${imageUrl})`)
+        }
+      }
     } else if (isImageBlock(block)) {
       // Image block - process and convert to markdown
       const imageMarkdown = await processImageBlock(block)
