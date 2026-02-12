@@ -2,6 +2,9 @@
 
 > AI agent orchestration platform. Coordinate specialized sub-agents to build software autonomously.
 
+[![CI](https://github.com/Codesushi-com/clutch/actions/workflows/ci.yml/badge.svg)](https://github.com/Codesushi-com/clutch/actions/workflows/ci.yml)
+[![Deploy Site](https://github.com/Codesushi-com/clutch/actions/workflows/deploy-site.yml/badge.svg)](https://github.com/Codesushi-com/clutch/actions/workflows/deploy-site.yml)
+
 ![OpenClutch Observatory](./docs/observatory-screenshot.png)
 
 OpenClutch is an autonomous software development platform that orchestrates AI agents to plan, code, review, and deploy changes. It replaces manual project management with an intelligent work loop that continuously assigns tasks to specialized agents, monitors progress, and ensures quality through automated reviews.

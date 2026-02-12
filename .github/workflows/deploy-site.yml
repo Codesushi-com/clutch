@@ -1,0 +1,68 @@
+name: Deploy Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/deploy-site.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-west-1
+  S3_BUCKET: clutch.md
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+
+jobs:
+  deploy:
+    name: Deploy to S3 + CloudFront
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsClutchDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          echo "Syncing site files to S3..."
+          aws s3 sync site/ s3://${{ env.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "max-age=31536000,immutable" \
+            --exclude "*.html" \
+            --exclude "*.json" \
+            --exclude "*.xml" \
+            --exclude "*.txt"
+          
+          # Deploy HTML files with no-cache for instant updates
+          aws s3 sync site/ s3://${{ env.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "no-cache,max-age=0" \
+            --include "*.html" \
+            --include "*.json" \
+            --include "*.xml" \
+            --include "*.txt"
+
+      - name: Invalidate CloudFront cache
+        run: |
+          echo "Creating CloudFront invalidation..."
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
+
+      - name: Verify deployment
+        run: |
+          echo "Deployment complete!"
+          echo "Site URL: https://clutch.md"

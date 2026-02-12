@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clutch.md — AI Agent Orchestration</title>
+  <meta name="description" content="OpenClutch is an autonomous software development platform that orchestrates AI agents to plan, code, review, and deploy changes.">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      line-height: 1.6;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    
+    header {
+      padding: 24px 0;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    
+    .logo {
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    
+    .hero {
+      padding: 120px 0 80px;
+      text-align: center;
+    }
+    
+    .hero h1 {
+      font-size: clamp(40px, 8vw, 72px);
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, #fff 0%, #a5a5a5 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .hero p {
+      font-size: 20px;
+      color: #888;
+      max-width: 600px;
+      margin: 0 auto 40px;
+    }
+    
+    .cta-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    .btn {
+      padding: 14px 32px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      color: #fff;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(99, 102, 241, 0.3);
+    }
+    
+    .btn-secondary {
+      background: #1a1a1a;
+      color: #e5e5e5;
+      border: 1px solid #2a2a2a;
+    }
+    
+    .btn-secondary:hover {
+      background: #252525;
+      border-color: #3a3a3a;
+    }
+    
+    .features {
+      padding: 80px 0;
+      border-top: 1px solid #1a1a1a;
+    }
+    
+    .features h2 {
+      text-align: center;
+      font-size: 32px;
+      margin-bottom: 64px;
+      color: #fff;
+    }
+    
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 32px;
+    }
+    
+    .feature {
+      padding: 32px;
+      background: #111;
+      border-radius: 12px;
+      border: 1px solid #1a1a1a;
+    }
+    
+    .feature-icon {
+      font-size: 32px;
+      margin-bottom: 16px;
+    }
+    
+    .feature h3 {
+      font-size: 20px;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+    
+    .feature p {
+      color: #888;
+      font-size: 15px;
+    }
+    
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid #1a1a1a;
+      text-align: center;
+      color: #666;
+      font-size: 14px;
+    }
+    
+    footer a {
+      color: #888;
+      text-decoration: none;
+    }
+    
+    footer a:hover {
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="/" class="logo">
+        <div class="logo-icon">🎯</div>
+        Clutch
+      </a>
+    </div>
+  </header>
+  
+  <section class="hero">
+    <div class="container">
+      <h1>AI Agent Orchestration</h1>
+      <p>Coordinate specialized sub-agents to build software autonomously. OpenClutch replaces manual project management with an intelligent work loop.</p>
+      <div class="cta-buttons">
+        <a href="https://github.com/Codesushi-com/clutch" class="btn btn-primary">View on GitHub</a>
+        <a href="/docs" class="btn btn-secondary">Documentation</a>
+      </div>
+    </div>
+  </section>
+  
+  <section class="features">
+    <div class="container">
+      <h2>Features</h2>
+      <div class="feature-grid">
+        <div class="feature">
+          <div class="feature-icon">🔄</div>
+          <h3>Work Loop Engine</h3>
+          <p>Continuous task scheduling with automatic triage, work assignment, and review pipelines.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">📊</div>
+          <h3>Observatory Dashboard</h3>
+          <p>Real-time monitoring with Live, Triage, Analytics, Models, and Prompts tabs.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🤖</div>
+          <h3>Agent Orchestration</h3>
+          <p>Coordinate multiple AI agents across projects with configurable roles.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">💬</div>
+          <h3>Bidirectional Chat</h3>
+          <p>WebSocket integration with OpenClaw for seamless agent communication.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">⚡</div>
+          <h3>Real-time Backend</h3>
+          <p>Convex-powered reactive data layer for instant UI updates.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🔀</div>
+          <h3>GitHub Integration</h3>
+          <p>Automated PR creation, review, and merge workflows.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <footer>
+    <div class="container">
+      <p>Open source under MIT License · <a href="https://github.com/Codesushi-com/clutch">GitHub</a></p>
+    </div>
+  </footer>
+</body>
+</html>
