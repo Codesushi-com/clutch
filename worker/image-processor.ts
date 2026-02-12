@@ -312,6 +312,23 @@ async function loadLocalImage(mediaPath: string): Promise<string | null> {
       return null
     }
 
+    return await loadImageFromAbsolutePath(fullPath, mediaPath)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[ImageProcessor] Failed to load local image: ${message}`)
+    return null
+  }
+}
+
+/**
+ * Load image from an absolute path and return a markdown image tag
+ * Used for IMAGE: tags that reference /tmp/openclaw-images/
+ */
+async function loadImageFromAbsolutePath(
+  fullPath: string,
+  originalPath: string,
+): Promise<string | null> {
+  try {
     // Read file
     const buffer = await fs.readFile(fullPath)
 
@@ -322,7 +339,7 @@ async function loadLocalImage(mediaPath: string): Promise<string | null> {
     }
 
     // Detect MIME type from file extension
-    const ext = path.extname(mediaPath).toLowerCase()
+    const ext = path.extname(originalPath).toLowerCase()
     let mimeType: string
     switch (ext) {
       case ".png":
@@ -357,12 +374,65 @@ async function loadLocalImage(mediaPath: string): Promise<string | null> {
     const filePath = path.join(UPLOAD_DIR, filename)
     await fs.writeFile(filePath, buffer)
 
+    // Clean up the original file in /tmp (best effort)
+    try {
+      await fs.unlink(fullPath)
+      console.log(`[ImageProcessor] Cleaned up temp file: ${fullPath}`)
+    } catch {
+      // Ignore cleanup errors - OS will handle stale files
+    }
+
     // Return public URL
     return `/uploads/images/${filename}`
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    console.error(`[ImageProcessor] Failed to load local image: ${message}`)
+    console.error(
+      `[ImageProcessor] Failed to load image from ${originalPath}: ${message}`,
+    )
     return null
+  }
+}
+
+/**
+ * Parse IMAGE: tags from text content
+ * Returns extracted image paths and cleaned text
+ * IMAGE: tags allow absolute paths (unlike MEDIA: which is restricted to cwd)
+ */
+export function parseImageTags(text: string): {
+  cleanedText: string
+  imagePaths: string[]
+} {
+  const imagePaths: string[] = []
+  const lines = text.split("\n")
+  const keptLines: string[] = []
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    // Match lines that start with IMAGE: (possibly with leading whitespace)
+    if (trimmed.startsWith("IMAGE:")) {
+      const imagePath = trimmed.slice(6).trim() // Remove "IMAGE:" prefix
+      // Validate path - must be absolute and within /tmp/openclaw-images/
+      if (
+        imagePath &&
+        imagePath.startsWith("/tmp/openclaw-images/") &&
+        !imagePath.includes("..")
+      ) {
+        imagePaths.push(imagePath)
+      } else if (!imagePath) {
+        // Empty IMAGE: tag - strip it
+        continue
+      } else {
+        // Invalid path, keep the line as-is
+        keptLines.push(line)
+      }
+    } else {
+      keptLines.push(line)
+    }
+  }
+
+  return {
+    cleanedText: keptLines.join("\n").trim(),
+    imagePaths,
   }
 }
 
@@ -373,9 +443,29 @@ async function loadLocalImage(mediaPath: string): Promise<string | null> {
 export async function processMessageContent(
   content: string | ContentBlock[],
 ): Promise<string> {
-  // If content is a simple string, return as-is (MEDIA: tags not expected in plain strings)
+  // If content is a simple string, check for IMAGE: tags
   if (typeof content === "string") {
-    return content
+    const { cleanedText, imagePaths } = parseImageTags(content)
+
+    // Process any IMAGE: tags
+    const imageParts: string[] = []
+    for (const imagePath of imagePaths) {
+      const imageUrl = await loadImageFromAbsolutePath(imagePath, imagePath)
+      if (imageUrl) {
+        imageParts.push(`![image](${imageUrl})`)
+      }
+    }
+
+    // Combine cleaned text with any processed images
+    const parts: string[] = []
+    if (cleanedText) {
+      parts.push(cleanedText)
+    }
+    if (imageParts.length > 0) {
+      parts.push(...imageParts)
+    }
+
+    return parts.join("\n\n")
   }
 
   // Process array of content blocks
@@ -389,15 +479,30 @@ export async function processMessageContent(
     const blockType = block.type
 
     if (blockType === "text" && block.text) {
-      // Text block - check for MEDIA: tags
-      const { cleanedText, mediaPaths } = parseMediaTags(String(block.text))
+      // Text block - check for MEDIA: and IMAGE: tags
+      const textContent = String(block.text)
+
+      // First check for IMAGE: tags
+      const { cleanedText: textAfterImage, imagePaths } =
+        parseImageTags(textContent)
+
+      // Then check for MEDIA: tags in the remaining text
+      const { cleanedText, mediaPaths } = parseMediaTags(textAfterImage)
 
       // Add cleaned text if there's any left
       if (cleanedText) {
         parts.push(cleanedText)
       }
 
-      // Process any MEDIA: tags as local images
+      // Process IMAGE: tags (absolute paths)
+      for (const imagePath of imagePaths) {
+        const imageUrl = await loadImageFromAbsolutePath(imagePath, imagePath)
+        if (imageUrl) {
+          parts.push(`![image](${imageUrl})`)
+        }
+      }
+
+      // Process MEDIA: tags (relative paths within cwd)
       for (const mediaPath of mediaPaths) {
         const imageUrl = await loadLocalImage(mediaPath)
         if (imageUrl) {
