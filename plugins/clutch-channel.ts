@@ -25,8 +25,28 @@ import path from "path";
 import crypto from "crypto";
 
 // Configuration for image processing
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "images");
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+
+/**
+ * Get the upload directory for images.
+ * Uses CLUTCH_UPLOAD_DIR env var if set, otherwise falls back to process.cwd().
+ * This is needed because the plugin runs inside the OpenClaw gateway process
+ * (cwd = /home/dan/clawd) but needs to write to the Clutch public directory.
+ */
+function getUploadDir(api: OpenClawPluginApi): string {
+  const envDir = api.config.env?.CLUTCH_UPLOAD_DIR;
+  if (envDir) {
+    return envDir;
+  }
+  // Fallback: derive from CLUTCH_URL if it points to localhost:3002
+  const clutchUrl = api.config.env?.CLUTCH_URL;
+  if (clutchUrl?.includes(":3002")) {
+    // Assume standard development setup: clutch is at /home/dan/src/openclutch
+    return "/home/dan/src/openclutch/public/uploads/images";
+  }
+  // Final fallback: use cwd (will be wrong in production, but backwards compatible)
+  return path.join(process.cwd(), "public", "uploads", "images");
+}
 
 // Supported image MIME types
 const ALLOWED_IMAGE_TYPES = [
@@ -49,11 +69,11 @@ const MIME_TO_EXT: Record<string, string> = {
 /**
  * Ensure the upload directory exists
  */
-async function ensureUploadDir(): Promise<void> {
+async function ensureUploadDir(uploadDir: string): Promise<void> {
   try {
-    await fs.access(UPLOAD_DIR);
+    await fs.access(uploadDir);
   } catch {
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+    await fs.mkdir(uploadDir, { recursive: true });
   }
 }
 
@@ -91,6 +111,7 @@ function detectMimeTypeFromExt(ext: string): string | null {
  * Load image from an absolute path and return a markdown image tag
  */
 async function loadImageFromAbsolutePath(
+  api: OpenClawPluginApi,
   fullPath: string,
   originalPath: string,
 ): Promise<string | null> {
@@ -113,12 +134,13 @@ async function loadImageFromAbsolutePath(
       return null;
     }
 
-    // Ensure upload directory exists
-    await ensureUploadDir();
+    // Get upload directory and ensure it exists
+    const uploadDir = getUploadDir(api);
+    await ensureUploadDir(uploadDir);
 
     // Generate filename and save
     const filename = generateImageFilename(mimeType);
-    const filePath = path.join(UPLOAD_DIR, filename);
+    const filePath = path.join(uploadDir, filename);
     await fs.writeFile(filePath, buffer);
 
     // Clean up the original file in /tmp (best effort)
@@ -187,13 +209,13 @@ export function parseImageTags(text: string): {
  * Process message content and extract IMAGE: tags
  * Returns the processed content with image markdown tags
  */
-async function processImageTags(content: string): Promise<string> {
+async function processImageTags(api: OpenClawPluginApi, content: string): Promise<string> {
   const { cleanedText, imagePaths } = parseImageTags(content);
 
   // Process any IMAGE: tags
   const imageParts: string[] = [];
   for (const imagePath of imagePaths) {
-    const imageUrl = await loadImageFromAbsolutePath(imagePath, imagePath);
+    const imageUrl = await loadImageFromAbsolutePath(api, imagePath, imagePath);
     if (imageUrl) {
       imageParts.push(`![image](${imageUrl})`);
     }
@@ -421,7 +443,7 @@ async function sendToClutch(
 
   try {
     // Process IMAGE: tags in the content
-    const processedContent = await processImageTags(content);
+    const processedContent = await processImageTags(api, content);
 
     const body: Record<string, unknown> = {
       author: "ada",

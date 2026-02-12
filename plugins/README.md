@@ -56,6 +56,16 @@ Or add to your shell profile / OpenClaw environment config.
 
 Default: `http://localhost:3002`
 
+### Image Upload Directory
+
+The `clutch-channel` plugin needs to write uploaded images to the Clutch public directory. Set `CLUTCH_UPLOAD_DIR` to the absolute path:
+
+```bash
+export CLUTCH_UPLOAD_DIR=/home/dan/src/openclutch/public/uploads/images
+```
+
+If not set, the plugin will attempt to derive the path from `CLUTCH_URL` (for localhost:3002, it assumes `/home/dan/src/openclutch/public/uploads/images`).
+
 ## Usage
 
 Once installed, agents can use these tools:
