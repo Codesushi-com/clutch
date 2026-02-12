@@ -515,12 +515,13 @@ async function main() {
   const taskIds: string[] = []
   const taskIdsByProject: Record<string, string[]> = {}
   const chatIds: string[] = []
-  // Track in_progress tasks for linking with sessions (model + timing data)
+  // Track in_progress and in_review tasks for linking with sessions (model + timing data)
   const inProgressTasks: Array<{
     taskId: string
     projectId: string
     role: Role
     title: string
+    isReviewer?: boolean
   }> = []
 
   // 1. Create Projects
@@ -642,17 +643,22 @@ async function main() {
 
     // For in_progress tasks, we'll generate a session key that matches a session
     const isInProgress = status === "in_progress"
+    const isInReview = status === "in_review"
     const sessionKey = isInProgress ? `agent:main:demo:${taskId.slice(0, 8)}` : undefined
+    // in_review tasks should have a recently-completed reviewer session key
+    // so they don't trigger OrphanedTaskWarning in the UI
+    const reviewerSessionKey = isInReview ? `agent:main:demo:reviewer:${taskId.slice(0, 8)}` : undefined
 
-    if (isInProgress) {
-      inProgressTasks.push({ taskId, projectId, role, title })
+    if (isInProgress || isInReview) {
+      inProgressTasks.push({ taskId, projectId, role, title, isReviewer: isInReview })
     }
 
     // Get current position offset for this project and increment
     const position = positionOffsetByProject[projectId]++
 
-    const hasBranch = status !== "backlog" && status !== "ready" && rng.boolean(0.7)
-    const hasPR = (status === "in_review" || status === "done") && rng.boolean(0.8)
+    // in_review tasks should always have a branch and PR (they came from a dev agent)
+    const hasBranch = isInReview || isInProgress || (status !== "backlog" && status !== "ready" && rng.boolean(0.7))
+    const hasPR = isInReview || ((status === "done") && rng.boolean(0.8))
     const isEscalated = status === "blocked" || rng.boolean(0.1)
     const rejectionCount = rng.boolean(0.2) ? rng.range(1, 3) : 0
     const priority: TaskPriority = rng.pick(TASK_PRIORITIES)
@@ -681,15 +687,18 @@ async function main() {
       status,
       priority,
       role: role as string,
-      assignee: rng.boolean(0.6) ? rng.pick(["agent-dev-1", "agent-dev-2", "agent-reviewer-1", "human-1"]) : undefined,
+      // in_review tasks should always have a reviewer assignee
+      assignee: isInReview ? rng.pick(["agent-reviewer-1", "agent-reviewer-2"]) :
+        (rng.boolean(0.6) ? rng.pick(["agent-dev-1", "agent-dev-2", "agent-reviewer-1", "human-1"]) : undefined),
       requires_human_review: rng.boolean(0.3),
       tags: JSON.stringify(rng.pickMany(["frontend", "backend", "api", "database", "security", "performance", "testing", "docs"], rng.range(1, 3))),
       session_id: rng.boolean(0.4) ? `agent:main:demo:${taskId.slice(0, 8)}` : undefined,
-      // Set agent_session_key for in_progress tasks so they link to sessions
-      agent_session_key: sessionKey,
-      agent_spawned_at: isInProgress ? Date.now() - rng.range(300000, 1800000) : undefined, // 5-30 min ago
-      dispatch_status: isInProgress ? rng.pick(["active", "spawning", "pending"]) : undefined,
-      dispatch_requested_at: isInProgress ? Date.now() - rng.range(60000, 3600000) : undefined,
+      // in_progress tasks get active agent session; in_review tasks get a reviewer session
+      agent_session_key: sessionKey ?? reviewerSessionKey,
+      agent_spawned_at: isInProgress ? Date.now() - rng.range(300000, 1800000) : // 5-30 min ago
+        isInReview ? Date.now() - rng.range(60000, 900000) : undefined, // 1-15 min ago for reviewers
+      dispatch_status: (isInProgress || isInReview) ? rng.pick(["active", "spawning"]) : undefined,
+      dispatch_requested_at: (isInProgress || isInReview) ? Date.now() - rng.range(60000, 3600000) : undefined,
       dispatch_requested_by: rng.pick(["coordinator", "human-1"]),
       position,
       created_at: createdAt,
@@ -837,10 +846,13 @@ async function main() {
   // First, create sessions for in_progress tasks (so active agents show model + timing)
   console.log("   Creating sessions...")
 
-  // Create sessions for in_progress tasks first (linked for active agents display)
+  // Create sessions for in_progress and in_review tasks (linked for active agents display)
   for (let i = 0; i < inProgressTasks.length; i++) {
-    const { taskId, projectId, title } = inProgressTasks[i]
-    const sessionKey = `agent:main:demo:${taskId.slice(0, 8)}`
+    const { taskId, projectId, title, isReviewer } = inProgressTasks[i]
+    // Must match the agent_session_key set on the task
+    const sessionKey = isReviewer
+      ? `agent:main:demo:reviewer:${taskId.slice(0, 8)}`
+      : `agent:main:demo:${taskId.slice(0, 8)}`
     const project = PROJECTS.find(p => {
       const projId = projectIds[PROJECTS.indexOf(p)]
       return projId === projectId
@@ -893,7 +905,7 @@ async function main() {
     const costOutput = (tokensOutput / 1000000) * model.outputPrice
 
     await client.mutation(api.seed.insertSession, {
-      id: generateUUID(SEED_RANGES.sessions.start + 20 + i, `additionalSession[${i}]`),
+      id: generateUUID(SEED_RANGES.sessions.start + 50 + i, `additionalSession[${i}]`),
       session_key: `${type}:demo:${Date.now()}-${i}`,
       session_id: generateUUID(SEED_RANGES.sessions.start + 150 + i, `additionalSession.session_id[${i}]`),
       session_type: type,

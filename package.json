@@ -22,7 +22,7 @@
     "demo:down": "docker compose -f docker-compose.demo.yml --env-file .env.demo.local down",
     "demo:reset": "tsx scripts/demo-reset.ts",
     "demo:clean": "tsx scripts/demo-reset.ts --force",
-    "demo:deploy": "convex deploy --url http://localhost:3230 --yes",
+    "demo:deploy": "bash -c 'source .env.demo.local && convex deploy --url http://localhost:3230 --admin-key $CONVEX_SELF_HOSTED_ADMIN_KEY --yes'",
     "demo:seed": "tsx scripts/seed-demo.ts",
     "demo:seed:clean": "tsx scripts/seed-demo.ts --clean",
     "demo:dev": "next dev -p 3002 --env-file .env.demo.local",
