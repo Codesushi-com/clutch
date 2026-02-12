@@ -395,6 +395,70 @@ clutch deploy convex --project clutch
 **Priorities:** `low`, `medium`, `high`, `urgent`  
 **Roles:** `pm`, `dev`, `research`, `reviewer`, `conflict_resolver`
 
+## Landing Page Deployment (clutch.md)
+
+The clutch.md landing page is a static site deployed to AWS S3 + CloudFront.
+
+### Prerequisites
+
+- AWS CLI with `personal` profile configured
+- OpenTofu (or Terraform) installed
+- Access to the `dbachelder/infra` repo (for the static-site module)
+
+### Infrastructure Setup
+
+The infrastructure is defined in the `infra/` directory using OpenTofu:
+
+```bash
+cd infra/
+
+# Initialize OpenTofu (downloads providers and modules)
+tofu init
+
+# Plan the deployment
+tofu plan
+
+# Apply the infrastructure
+tofu apply
+```
+
+This creates:
+- S3 bucket for static hosting (`clutch.md`)
+- CloudFront distribution with HTTPS
+- ACM certificate (us-east-1)
+- Route 53 DNS records (apex + www)
+
+### Deploy the Site
+
+```bash
+# Deploy to production
+./deploy.sh prod
+
+# Or just
+./deploy.sh
+```
+
+The deploy script:
+1. Runs `pnpm build` to generate static output
+2. Syncs `out/` directory to S3 with `--delete`
+3. Creates CloudFront invalidation for `/*`
+
+### Infrastructure Outputs
+
+After applying, get the outputs with:
+
+```bash
+cd infra/
+tofu output
+```
+
+Key outputs:
+- `bucket_name` — S3 bucket for manual uploads
+- `cloudfront_distribution_id` — For cache invalidation
+- `website_url` — https://clutch.md
+
+---
+
 ## Deployment
 
 ### Systemd Setup

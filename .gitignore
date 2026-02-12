@@ -54,5 +54,21 @@ pnpm-lock_test.yaml
 # database backups
 /backups/
 
+# OpenTofu / Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+.tofu/
+tofu.auto.tfvars
+tofu.auto.tfvars.json
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
 # Generated systemd service files (from templates)
 /systemd/*.service
