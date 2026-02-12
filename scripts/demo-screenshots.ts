@@ -38,7 +38,7 @@ function verifyDemoEnvironment(): void {
   console.log("✅ Demo environment verified")
 }
 
-const BASE_URL = "http://localhost:3003"
+const BASE_URL = "http://localhost:3002"
 const OUTPUT_DIR = "./docs"
 const MAX_WAIT_MS = 15000
 const WARNING_THRESHOLD_MS = 10000
@@ -378,7 +378,7 @@ async function main() {
     }
   } catch {
     console.error("❌ Dev server not responding at", BASE_URL)
-    console.error("   Make sure to run: PORT=3003 pnpm dev")
+    console.error("   Make sure to run: pnpm demo:dev")
     process.exit(1)
   }
 
