@@ -3,6 +3,12 @@
  * Clutch CLI - Command line interface for Clutch operations
  *
  * Usage:
+ *   clutch projects list [--json]                List all projects
+ *   clutch projects get <slug> [--json]          Get project details
+ *   clutch projects create --name "..." --slug "..." [--description "..."] [--github-repo "..."] [--local-path "..."] [--work-loop]
+ *                                                Create a project
+ *   clutch projects update <slug> [options]      Update a project
+ *   clutch projects delete <slug> [--confirm]    Delete a project
  *   clutch agents list                           List active agents and their tasks
  *   clutch agents get <session-key>              Get agent detail + last output
  *   clutch sessions list [--active]              List sessions
@@ -30,6 +36,25 @@ interface ProjectInfo {
   name: string
   local_path?: string | null
   github_repo?: string | null
+}
+
+interface Project {
+  id: string
+  slug: string
+  name: string
+  description?: string | null
+  color?: string
+  repo_url?: string | null
+  context_path?: string | null
+  local_path?: string | null
+  github_repo?: string | null
+  chat_layout?: "slack" | "imessage"
+  work_loop_enabled?: boolean
+  work_loop_max_agents?: number | null
+  work_loop_schedule?: string | null
+  role_model_overrides?: Record<string, string> | null
+  created_at: number
+  updated_at: number
 }
 
 interface Signal {
@@ -133,6 +158,15 @@ OpenClutch CLI - Manage your OpenClutch projects
 Usage:
   clutch <command> [options]
 
+Project Commands:
+  projects list [--json]                     List all projects
+  projects get <slug> [--json]               Get project details
+  projects create --name "..." --slug "..." [--description "..."] [--github-repo "..."] [--local-path "..."] [--work-loop]
+                                             Create a new project
+  projects update <slug> [--name "..."] [--description "..."] [--github-repo "..."] [--local-path "..."] [--work-loop true/false]
+                                             Update a project
+  projects delete <slug> [--confirm]         Delete a project (requires confirmation)
+
 Task Commands:
   tasks list [--project <slug>] [--status <status>] [--limit <n>] [--json]
                                       List tasks for a project
@@ -200,6 +234,14 @@ Task Comment Options:
   --type <type>             Comment type: message/status_change/request_input/completion (default: message)
 
 Examples:
+  clutch projects list                        List all projects
+  clutch projects list --json                 List projects as JSON
+  clutch projects get my-project              Get project details
+  clutch projects create --name "My Project" --slug my-project --description "A new project"
+                                              Create a new project
+  clutch projects update my-project --work-loop true
+                                              Enable work loop for project
+  clutch projects delete my-project --confirm Delete a project
   clutch tasks list                           List tasks for current project
   clutch tasks list --status ready --json     List ready tasks as JSON
   clutch tasks get abc123                     Get task details
@@ -1475,6 +1517,253 @@ async function cmdTasksDepRm(
 }
 
 // ============================================
+// Project Commands
+// ============================================
+
+async function cmdProjectsList(flags: Record<string, string | boolean>): Promise<void> {
+  const jsonOutput = flags.json === true
+
+  try {
+    const result = await apiGet("/projects") as { projects: Project[] }
+    const projects = result.projects
+
+    if (jsonOutput) {
+      console.log(JSON.stringify({ projects }, null, 2))
+      return
+    }
+
+    if (projects.length === 0) {
+      console.log("\nNo projects found.")
+      return
+    }
+
+    console.log(`\nProjects (${projects.length}):\n`)
+    console.log("Slug                 Name                           Local Path                        GitHub Repo")
+    console.log("-".repeat(120))
+
+    for (const project of projects) {
+      const slug = project.slug.slice(0, 20).padEnd(20)
+      const name = project.name.slice(0, 30).padEnd(31)
+      const localPath = (project.local_path || "-").slice(0, 33).padEnd(33)
+      const githubRepo = project.github_repo || "-"
+      console.log(`${slug} ${name} ${localPath} ${githubRepo}`)
+    }
+
+    console.log("")
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Failed to fetch projects: ${message}`)
+    process.exit(1)
+  }
+}
+
+async function cmdProjectsGet(slug: string, flags: Record<string, string | boolean>): Promise<void> {
+  const jsonOutput = flags.json === true
+
+  try {
+    const result = await apiGet(`/projects/${slug}`) as { project: Project & { task_count?: number } }
+    const project = result.project
+
+    if (jsonOutput) {
+      console.log(JSON.stringify({ project }, null, 2))
+      return
+    }
+
+    console.log(`\nProject Details\n`)
+    console.log(`ID:              ${project.id}`)
+    console.log(`Name:            ${project.name}`)
+    console.log(`Slug:            ${project.slug}`)
+    console.log(`Description:     ${project.description || "-"}`)
+    console.log(`Color:           ${project.color || "-"}`)
+    console.log(``)
+    console.log(`Local Path:      ${project.local_path || "-"}`)
+    console.log(`GitHub Repo:     ${project.github_repo || "-"}`)
+    console.log(`Repo URL:        ${project.repo_url || "-"}`)
+    console.log(``)
+    console.log(`Chat Layout:     ${project.chat_layout || "-"}`)
+    console.log(`Context Path:    ${project.context_path || "-"}`)
+    console.log(``)
+    console.log(`Work Loop:       ${project.work_loop_enabled ? "enabled" : "disabled"}`)
+    if (project.work_loop_max_agents !== undefined && project.work_loop_max_agents !== null) {
+      console.log(`Max Agents:      ${project.work_loop_max_agents}`)
+    }
+    if (project.work_loop_schedule) {
+      console.log(`Schedule:        ${project.work_loop_schedule}`)
+    }
+    if (project.task_count !== undefined) {
+      console.log(`Tasks:           ${project.task_count}`)
+    }
+    console.log(``)
+    console.log(`Created:         ${new Date(project.created_at).toISOString()}`)
+    console.log(`Updated:         ${new Date(project.updated_at).toISOString()}`)
+
+    if (project.role_model_overrides && Object.keys(project.role_model_overrides).length > 0) {
+      console.log(``)
+      console.log(`Role Model Overrides:`)
+      for (const [role, model] of Object.entries(project.role_model_overrides)) {
+        console.log(`  ${role}: ${model}`)
+      }
+    }
+
+    console.log("")
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes("404")) {
+      console.error(`Project "${slug}" not found`)
+    } else {
+      console.error(`Failed to fetch project: ${message}`)
+    }
+    process.exit(1)
+  }
+}
+
+async function cmdProjectsCreate(flags: Record<string, string | boolean>): Promise<void> {
+  const name = typeof flags.name === "string" ? flags.name : undefined
+  const slug = typeof flags.slug === "string" ? flags.slug : undefined
+
+  if (!name) {
+    console.error("Error: --name is required")
+    process.exit(1)
+  }
+
+  if (!slug) {
+    console.error("Error: --slug is required")
+    process.exit(1)
+  }
+
+  const body: Record<string, unknown> = {
+    name,
+    slug,
+  }
+
+  if (typeof flags.description === "string") {
+    body.description = flags.description
+  }
+
+  if (typeof flags["github-repo"] === "string") {
+    body.github_repo = flags["github-repo"]
+  }
+
+  if (typeof flags["local-path"] === "string") {
+    body.local_path = flags["local-path"]
+  }
+
+  if (flags["work-loop"] === true) {
+    body.work_loop_enabled = true
+  }
+
+  try {
+    const result = await apiPost("/projects", body) as { project: Project }
+
+    if (flags.json === true) {
+      console.log(JSON.stringify({ project: result.project }, null, 2))
+    } else {
+      console.log(`* Created project: ${result.project.name}`)
+      console.log(`  ID:   ${result.project.id}`)
+      console.log(`  Slug: ${result.project.slug}`)
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes("409")) {
+      console.error(`Error: A project with slug "${slug}" already exists`)
+    } else if (message.includes("400")) {
+      console.error(`Error: Invalid request - ${message}`)
+    } else {
+      console.error(`Failed to create project: ${message}`)
+    }
+    process.exit(1)
+  }
+}
+
+async function cmdProjectsUpdate(slug: string, flags: Record<string, string | boolean>): Promise<void> {
+  const body: Record<string, unknown> = {}
+  const updatedFields: string[] = []
+
+  if (typeof flags.name === "string") {
+    body.name = flags.name
+    updatedFields.push(`name: "${flags.name}"`)
+  }
+
+  if (typeof flags.description === "string") {
+    body.description = flags.description
+    updatedFields.push(`description: updated`)
+  }
+
+  if (typeof flags["github-repo"] === "string") {
+    body.github_repo = flags["github-repo"]
+    updatedFields.push(`github_repo: ${flags["github-repo"]}`)
+  }
+
+  if (typeof flags["local-path"] === "string") {
+    body.local_path = flags["local-path"]
+    updatedFields.push(`local_path: ${flags["local-path"]}`)
+  }
+
+  if (typeof flags["work-loop"] === "string") {
+    const workLoopValue = flags["work-loop"].toLowerCase()
+    if (workLoopValue === "true") {
+      body.work_loop_enabled = true
+      updatedFields.push(`work_loop_enabled: true`)
+    } else if (workLoopValue === "false") {
+      body.work_loop_enabled = false
+      updatedFields.push(`work_loop_enabled: false`)
+    } else {
+      console.error(`Error: --work-loop must be "true" or "false"`)
+      process.exit(1)
+    }
+  }
+
+  if (Object.keys(body).length === 0) {
+    console.error("Error: No fields to update. Provide at least one of: --name, --description, --github-repo, --local-path, --work-loop")
+    process.exit(1)
+  }
+
+  try {
+    const result = await apiPatch(`/projects/${slug}`, body) as { project: Project }
+
+    console.log(`* Updated project: ${result.project.name}`)
+    for (const field of updatedFields) {
+      console.log(`  - ${field}`)
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes("404")) {
+      console.error(`Project "${slug}" not found`)
+    } else if (message.includes("409")) {
+      console.error(`Error: Slug already in use`)
+    } else if (message.includes("400")) {
+      console.error(`Error: Invalid request - ${message}`)
+    } else {
+      console.error(`Failed to update project: ${message}`)
+    }
+    process.exit(1)
+  }
+}
+
+async function cmdProjectsDelete(slug: string, flags: Record<string, string | boolean>): Promise<void> {
+  const confirmed = flags.confirm === true
+
+  if (!confirmed) {
+    console.error(`Error: Deletion requires --confirm flag`)
+    console.error(`Run: clutch projects delete ${slug} --confirm`)
+    process.exit(1)
+  }
+
+  try {
+    await apiDelete(`/projects/${slug}`)
+    console.log(`* Deleted project: ${slug}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes("404")) {
+      console.error(`Project "${slug}" not found`)
+    } else {
+      console.error(`Failed to delete project: ${message}`)
+    }
+    process.exit(1)
+  }
+}
+
+// ============================================
 // Main Entry Point
 // ============================================
 
@@ -1520,6 +1809,23 @@ async function main(): Promise<void> {
 
   // Route to appropriate command
   switch (true) {
+    // Project commands
+    case command === "projects list":
+      await cmdProjectsList(flags)
+      break
+    case command.startsWith("projects get "):
+      await cmdProjectsGet(positional[2], flags)
+      break
+    case command === "projects create":
+      await cmdProjectsCreate(flags)
+      break
+    case command.startsWith("projects update "):
+      await cmdProjectsUpdate(positional[2], flags)
+      break
+    case command.startsWith("projects delete "):
+      await cmdProjectsDelete(positional[2], flags)
+      break
+
     // Task commands
     case command === "tasks list":
       await cmdTasksList(convex, project!, flags)
