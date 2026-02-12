@@ -10,7 +10,7 @@ import { ChatHeader } from "@/components/chat/chat-header"
 import { ConvexChatSync } from "@/components/chat/convex-sync"
 import { CreateTaskFromMessage } from "@/components/chat/create-task-from-message"
 import { SessionInfoDropdown } from "@/components/chat/session-info-dropdown"
-import { resetSession } from "@/lib/openclaw"
+import { resetSession, compactSession } from "@/lib/openclaw"
 import { Button } from "@/components/ui/button"
 import { sendChatMessage, abortSession } from "@/lib/openclaw"
 import { useSessionStore } from "@/lib/stores/session-store"
@@ -40,6 +40,7 @@ export default function ChatPage({ params }: PageProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [lastSentAt, setLastSentAt] = useState<number | null>(null)
+  const [pendingCompact, setPendingCompact] = useState(false)
 
   // Detect mobile screen size
   useEffect(() => {
@@ -372,12 +373,16 @@ export default function ChatPage({ params }: PageProps) {
       // Create a new chat with the optional title from the /new command
       const newChat = await createChat(projectId, result.title)
       setActiveChat({ ...newChat, lastMessage: null })
+    } else if (result.action === "compact_after_response") {
+      // Set flag to trigger compaction after agent responds
+      setPendingCompact(true)
     }
   }
 
   const currentMessages = activeChat ? messages[activeChat.id] || [] : []
 
   // Clear lastSentAt when agent response arrives (typing indicator clears)
+  // Also triggers pending compaction after agent responds to /compact command
   useEffect(() => {
     if (activeChat && lastSentAt) {
       const isTyping = (typingIndicators[activeChat.id] || []).some(t => t.author === "ada")
@@ -387,10 +392,21 @@ export default function ChatPage({ params }: PageProps) {
         const lastMessage = currentMessages[currentMessages.length - 1]
         if (lastMessage && lastMessage.author !== "dan" && lastMessage.created_at > lastSentAt) {
           setLastSentAt(null)
+
+          // Trigger compaction if pending (from /compact command)
+          if (pendingCompact) {
+            setPendingCompact(false)
+            void compactSession(sessionKey).then(() => {
+              void sendMessageToDb(activeChat.id, "_Session compacted. Context summarized._", "system")
+            }).catch((error) => {
+              console.error("[Chat] Failed to compact session:", error)
+              void sendMessageToDb(activeChat.id, "_Failed to compact session._", "system")
+            })
+          }
         }
       }
     }
-  }, [activeChat, typingIndicators, currentMessages, lastSentAt])
+  }, [activeChat, typingIndicators, currentMessages, lastSentAt, pendingCompact, sessionKey, sendMessageToDb])
 
   // ==========================================================================
   // Render
