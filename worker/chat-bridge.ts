@@ -11,6 +11,7 @@
 import { ConvexHttpClient } from "convex/browser"
 import { api } from "../convex/_generated/api"
 import { initializeOpenClawClient } from "../lib/openclaw/client"
+import { processMessageContent } from "./image-processor"
 
 const convexUrl = process.env.CONVEX_URL ?? "http://127.0.0.1:3210"
 
@@ -49,17 +50,8 @@ async function main() {
       switch (event.type) {
         case "chat.message":
           if (event.message) {
-            // Extract text content
-            const content =
-              typeof event.message.content === "string"
-                ? event.message.content
-                : event.message.content
-                    .filter(
-                      (b: { type: string; text?: string }) =>
-                        b.type === "text" && b.text,
-                    )
-                    .map((b: { text?: string }) => b.text!)
-                    .join("\n")
+            // Process message content (extract text and convert images to markdown)
+            const content = await processMessageContent(event.message.content)
 
             // Check for duplicate via run_id
             if (event.runId) {
