@@ -2,8 +2,22 @@
 
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+const VALID_TAB_SEGMENTS = ["chat", "board", "roadmap", "sessions", "work-loop", "settings"] as const
+type ValidTabSegment = (typeof VALID_TAB_SEGMENTS)[number]
+
+function getTabSegment(pathname: string | null): ValidTabSegment {
+  if (!pathname) return "chat"
+  const match = pathname.match(/^\/projects\/[^\/]+\/([^\/]+)/)
+  const segment = match?.[1]
+  if (segment && VALID_TAB_SEGMENTS.includes(segment as ValidTabSegment)) {
+    return segment as ValidTabSegment
+  }
+  return "chat"
+}
 
 interface Project {
   slug: string
@@ -19,6 +33,8 @@ interface DesktopProjectSwitcherProps {
 export function DesktopProjectSwitcher({ currentProject, projects = [] }: DesktopProjectSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const pathname = usePathname()
+  const currentTab = getTabSegment(pathname)
 
   const toggleOpen = () => setIsOpen(!isOpen)
   const handleClose = () => setIsOpen(false)
@@ -81,7 +97,7 @@ export function DesktopProjectSwitcher({ currentProject, projects = [] }: Deskto
                 {projects.map((project) => (
                   <Link
                     key={project.slug}
-                    href={`/projects/${project.slug}/chat`}
+                    href={`/projects/${project.slug}/${currentTab}`}
                     prefetch={false}
                     onClick={handleClose}
                     className={cn(
