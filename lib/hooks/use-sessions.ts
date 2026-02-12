@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Session, SessionType, SessionStatus } from "@/convex/sessions"
@@ -10,6 +11,21 @@ export interface SessionFilters {
   sessionType?: SessionType
   status?: SessionStatus
   projectSlug?: string
+}
+
+/**
+ * Deduplicate sessions by session_key.
+ * Ensures each session appears only once in the results.
+ */
+function deduplicateSessions(sessions: Session[] | undefined): Session[] {
+  if (!sessions) return []
+  const seen = new Set<string>()
+  return sessions.filter((session) => {
+    const key = session.session_key
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 /**
@@ -46,11 +62,17 @@ export function useSessions(
     !filters.projectSlug ? {} : "skip"
   )
 
-  // Return the appropriate result
-  const result = filters.projectSlug ? projectResult : listResult
+  // Select the appropriate result based on filter
+  const rawResult = filters.projectSlug ? projectResult : listResult
+
+  // Deduplicate sessions to prevent duplicate entries during route transitions
+  // or when both queries briefly have cached data
+  const deduplicatedResult = useMemo(() => {
+    return deduplicateSessions(rawResult)
+  }, [rawResult])
 
   // Apply client-side filters
-  let filtered = result
+  let filtered = deduplicatedResult
   if (filtered && (filters.sessionType || filters.status)) {
     filtered = filtered.filter((s: Session) => {
       if (filters.sessionType && s.session_type !== filters.sessionType) return false
@@ -66,7 +88,7 @@ export function useSessions(
 
   return {
     sessions: filtered ?? null,
-    isLoading: result === undefined,
+    isLoading: rawResult === undefined,
   }
 }
 

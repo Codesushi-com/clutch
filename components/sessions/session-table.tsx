@@ -584,6 +584,19 @@ function transformSession(session: Session): SessionRowData {
   };
 }
 
+/**
+ * Deduplicate sessions by session_key.
+ */
+function deduplicateSessions(sessions: Session[]): Session[] {
+  const seen = new Set<string>();
+  return sessions.filter((session) => {
+    const key = session.session_key;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'updated_at', desc: true },
@@ -594,14 +607,18 @@ export function SessionTable({ onRowClick, filteredSessions }: SessionTableProps
   const error = useSessionStore((state) => state.error);
 
   // Use filtered sessions if provided, otherwise use store sessions
-  const rawSessions = filteredSessions || storeSessions;
+  // Deduplicate to prevent duplicate entries from any source
+  const rawSessions = useMemo(() => {
+    const source = filteredSessions || storeSessions || [];
+    return deduplicateSessions(source);
+  }, [filteredSessions, storeSessions]);
 
   // Shared ticking time for relative time displays - updates every 30s
   const tickingTime = useTickingTime(30000);
 
   // Transform sessions for table
   const data: SessionRowData[] = useMemo(() => {
-    return (rawSessions || []).map(transformSession);
+    return rawSessions.map(transformSession);
   }, [rawSessions]);
 
   const columns = getColumns(tickingTime);
