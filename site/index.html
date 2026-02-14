@@ -3,236 +3,1256 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Clutch.md — AI Agent Orchestration</title>
-  <meta name="description" content="OpenClutch is an autonomous software development platform that orchestrates AI agents to plan, code, review, and deploy changes.">
+  <title>OpenClutch — AI Agent Orchestration</title>
+  <meta name="description" content="OpenClutch is an autonomous software development platform that orchestrates AI agents to plan, code, review, and deploy changes autonomously.">
+  <meta name="theme-color" content="#0a0a0f">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
   <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #111118;
+      --bg-tertiary: #1a1a24;
+      --bg-elevated: #22222e;
+      --border-subtle: #2a2a3a;
+      --border-default: #3a3a4f;
+      --text-primary: #ffffff;
+      --text-secondary: #a0a0b0;
+      --text-muted: #6a6a7a;
+      --accent-primary: #6366f1;
+      --accent-secondary: #8b5cf6;
+      --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      --glow-primary: rgba(99, 102, 241, 0.4);
+      --glow-secondary: rgba(139, 92, 246, 0.3);
+    }
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background: #0a0a0a;
-      color: #e5e5e5;
-      line-height: 1.6;
+
+    html {
+      scroll-behavior: smooth;
     }
-    
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-secondary);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-default);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent-secondary);
+    }
+
+    /* Animations */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    .animate-on-scroll {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    }
+
+    .animate-on-scroll.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Container */
     .container {
       max-width: 1200px;
       margin: 0 auto;
       padding: 0 24px;
     }
-    
-    header {
-      padding: 24px 0;
-      border-bottom: 1px solid #1a1a1a;
+
+    /* Navigation */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      padding: 16px 0;
+      background: rgba(10, 10, 15, 0.8);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-subtle);
+      transition: all 0.3s ease;
     }
-    
+
+    nav.scrolled {
+      padding: 12px 0;
+      background: rgba(10, 10, 15, 0.95);
+    }
+
+    .nav-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
     .logo {
-      font-size: 24px;
-      font-weight: 700;
-      color: #fff;
-      text-decoration: none;
       display: flex;
       align-items: center;
       gap: 12px;
+      text-decoration: none;
+      color: var(--text-primary);
+      font-weight: 700;
+      font-size: 20px;
     }
-    
+
     .logo-icon {
-      width: 32px;
-      height: 32px;
-      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      background: var(--accent-gradient);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 18px;
+      font-size: 20px;
+      box-shadow: 0 4px 20px var(--glow-primary);
     }
-    
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-primary);
+    }
+
+    .github-stars {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .github-stars:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-default);
+      color: var(--text-primary);
+    }
+
+    .github-stars svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Hero */
     .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
       padding: 120px 0 80px;
-      text-align: center;
+      position: relative;
+      overflow: hidden;
     }
-    
+
+    .hero-bg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+    }
+
+    .hero-bg::before {
+      content: '';
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, var(--glow-primary) 0%, transparent 70%);
+      opacity: 0.3;
+    }
+
+    .hero-content {
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      animation: fadeInUp 0.6s ease-out;
+    }
+
+    .hero-badge .dot {
+      width: 8px;
+      height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
     .hero h1 {
-      font-size: clamp(40px, 8vw, 72px);
+      font-size: clamp(40px, 6vw, 72px);
       font-weight: 800;
-      line-height: 1.1;
+      line-height: 1.05;
       margin-bottom: 24px;
-      background: linear-gradient(135deg, #fff 0%, #a5a5a5 100%);
+      letter-spacing: -0.02em;
+      animation: fadeInUp 0.6s ease-out 0.1s both;
+    }
+
+    .hero h1 span {
+      background: var(--accent-gradient);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-    
+
     .hero p {
-      font-size: 20px;
-      color: #888;
-      max-width: 600px;
+      font-size: clamp(18px, 2.5vw, 22px);
+      color: var(--text-secondary);
+      max-width: 640px;
       margin: 0 auto 40px;
+      line-height: 1.6;
+      animation: fadeInUp 0.6s ease-out 0.2s both;
     }
-    
+
     .cta-buttons {
       display: flex;
       gap: 16px;
       justify-content: center;
       flex-wrap: wrap;
+      margin-bottom: 64px;
+      animation: fadeInUp 0.6s ease-out 0.3s both;
     }
-    
+
     .btn {
-      padding: 14px 32px;
-      border-radius: 8px;
-      font-size: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 15px;
       font-weight: 600;
       text-decoration: none;
-      transition: all 0.2s;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      border: none;
     }
-    
+
     .btn-primary {
-      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-      color: #fff;
+      background: var(--accent-gradient);
+      color: white;
+      box-shadow: 0 4px 24px var(--glow-primary);
     }
-    
+
     .btn-primary:hover {
       transform: translateY(-2px);
-      box-shadow: 0 8px 30px rgba(99, 102, 241, 0.3);
+      box-shadow: 0 8px 32px var(--glow-primary);
     }
-    
+
     .btn-secondary {
-      background: #1a1a1a;
-      color: #e5e5e5;
-      border: 1px solid #2a2a2a;
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
     }
-    
+
     .btn-secondary:hover {
-      background: #252525;
-      border-color: #3a3a3a;
+      background: var(--bg-elevated);
+      border-color: var(--border-default);
     }
-    
-    .features {
-      padding: 80px 0;
-      border-top: 1px solid #1a1a1a;
+
+    /* Hero Screenshot */
+    .hero-screenshot {
+      position: relative;
+      max-width: 1100px;
+      margin: 0 auto;
+      animation: fadeInUp 0.8s ease-out 0.4s both;
     }
-    
-    .features h2 {
+
+    .hero-screenshot-frame {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      box-shadow: 
+        0 25px 80px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.05);
+    }
+
+    .hero-screenshot-frame::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 40px;
+      background: linear-gradient(to bottom, var(--bg-tertiary), transparent);
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .hero-screenshot img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .screenshot-glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 120%;
+      height: 120%;
+      background: radial-gradient(ellipse, var(--glow-secondary) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    /* Section Styles */
+    section {
+      padding: 120px 0;
+      position: relative;
+    }
+
+    .section-header {
       text-align: center;
-      font-size: 32px;
-      margin-bottom: 64px;
-      color: #fff;
+      max-width: 640px;
+      margin: 0 auto 80px;
     }
-    
-    .feature-grid {
+
+    .section-header h2 {
+      font-size: clamp(32px, 4vw, 48px);
+      font-weight: 800;
+      margin-bottom: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .section-header p {
+      font-size: 18px;
+      color: var(--text-secondary);
+    }
+
+    .section-badge {
+      display: inline-block;
+      padding: 6px 14px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--accent-primary);
+      margin-bottom: 20px;
+    }
+
+    /* Features Grid */
+    .features-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      padding: 32px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      transition: all 0.3s ease;
+    }
+
+    .feature-card:hover {
+      background: var(--bg-tertiary);
+      border-color: var(--border-default);
+      transform: translateY(-4px);
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--accent-gradient);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+
+    .feature-card h3 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .feature-card p {
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    /* Screenshot Showcases */
+    .showcase {
+      padding: 100px 0;
+    }
+
+    .showcase:nth-child(odd) {
+      background: var(--bg-secondary);
+    }
+
+    .showcase-content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+
+    .showcase:nth-child(even) .showcase-content {
+      direction: rtl;
+    }
+
+    .showcase:nth-child(even) .showcase-text {
+      direction: ltr;
+    }
+
+    .showcase-text h3 {
+      font-size: clamp(28px, 3vw, 36px);
+      font-weight: 800;
+      margin-bottom: 20px;
+      letter-spacing: -0.02em;
+    }
+
+    .showcase-text p {
+      font-size: 17px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    .showcase-features {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .showcase-feature {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 15px;
+      color: var(--text-secondary);
+    }
+
+    .showcase-feature svg {
+      width: 20px;
+      height: 20px;
+      color: var(--accent-primary);
+      flex-shrink: 0;
+    }
+
+    .showcase-image {
+      position: relative;
+    }
+
+    .showcase-image-frame {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      background: var(--bg-tertiary);
+    }
+
+    .showcase-image img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Architecture Section */
+    .architecture {
+      background: var(--bg-secondary);
+    }
+
+    .architecture-diagram {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-top: 60px;
+    }
+
+    .arch-layer {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .arch-component {
+      padding: 20px 28px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      text-align: center;
+      min-width: 160px;
+    }
+
+    .arch-component h4 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .arch-component p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .arch-connector {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 40px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .arch-connector svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    /* Getting Started */
+    .getting-started {
+      text-align: center;
+    }
+
+    .code-block {
+      max-width: 700px;
+      margin: 40px auto 0;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--bg-tertiary);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .code-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .code-dot.red { background: #ff5f56; }
+    .code-dot.yellow { background: #ffbd2e; }
+    .code-dot.green { background: #27c93f; }
+
+    .code-block pre {
+      padding: 24px;
+      overflow-x: auto;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .code-block code {
+      color: var(--text-primary);
+    }
+
+    .code-block .comment { color: var(--text-muted); }
+    .code-block .command { color: var(--accent-primary); }
+    .code-block .string { color: #22c55e; }
+
+    /* Footer */
+    footer {
+      padding: 60px 0 40px;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-primary);
+    }
+
+    .footer-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .footer-brand .logo-icon {
+      width: 32px;
+      height: 32px;
+      font-size: 16px;
+    }
+
+    .footer-brand span {
+      font-weight: 700;
+      font-size: 18px;
+    }
+
+    .footer-links {
+      display: flex;
       gap: 32px;
     }
-    
-    .feature {
-      padding: 32px;
-      background: #111;
-      border-radius: 12px;
-      border: 1px solid #1a1a1a;
-    }
-    
-    .feature-icon {
-      font-size: 32px;
-      margin-bottom: 16px;
-    }
-    
-    .feature h3 {
-      font-size: 20px;
-      margin-bottom: 12px;
-      color: #fff;
-    }
-    
-    .feature p {
-      color: #888;
-      font-size: 15px;
-    }
-    
-    footer {
-      padding: 40px 0;
-      border-top: 1px solid #1a1a1a;
-      text-align: center;
-      color: #666;
-      font-size: 14px;
-    }
-    
-    footer a {
-      color: #888;
+
+    .footer-links a {
+      color: var(--text-secondary);
       text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
     }
-    
-    footer a:hover {
-      color: #fff;
+
+    .footer-links a:hover {
+      color: var(--text-primary);
+    }
+
+    .footer-bottom {
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border-subtle);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    /* Responsive */
+    @media (max-width: 968px) {
+      .showcase-content {
+        grid-template-columns: 1fr;
+        gap: 40px;
+      }
+
+      .showcase:nth-child(even) .showcase-content {
+        direction: ltr;
+      }
+
+      .architecture-diagram {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .arch-layer {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .nav-links {
+        display: none;
+      }
+
+      .hero {
+        padding: 100px 0 60px;
+      }
+
+      .cta-buttons {
+        flex-direction: column;
+        width: 100%;
+        padding: 0 20px;
+      }
+
+      .btn {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .architecture-diagram {
+        grid-template-columns: 1fr;
+      }
+
+      .footer-content {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .footer-links {
+        flex-wrap: wrap;
+        justify-content: center;
+      }
     }
   </style>
 </head>
 <body>
-  <header>
+  <!-- Navigation -->
+  <nav id="navbar">
     <div class="container">
-      <a href="/" class="logo">
-        <div class="logo-icon">🎯</div>
-        Clutch
-      </a>
+      <div class="nav-content">
+        <a href="#" class="logo">
+          <div class="logo-icon">🎯</div>
+          OpenClutch
+        </a>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#showcases">Showcase</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#getting-started">Getting Started</a>
+          <a href="https://github.com/Codesushi-com/clutch" class="github-stars" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            Star on GitHub
+          </a>
+        </div>
+      </div>
     </div>
-  </header>
-  
+  </nav>
+
+  <!-- Hero -->
   <section class="hero">
+    <div class="hero-bg"></div>
     <div class="container">
-      <h1>AI Agent Orchestration</h1>
-      <p>Coordinate specialized sub-agents to build software autonomously. OpenClutch replaces manual project management with an intelligent work loop.</p>
-      <div class="cta-buttons">
-        <a href="https://github.com/Codesushi-com/clutch" class="btn btn-primary">View on GitHub</a>
-        <a href="/docs" class="btn btn-secondary">Documentation</a>
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="dot"></span>
+          Open Source & Self-Hostable
+        </div>
+        <h1>
+          Orchestrate AI Agents<br>to <span>Ship Software</span>
+        </h1>
+        <p>
+          OpenClutch coordinates specialized sub-agents to plan, code, review, and deploy autonomously. 
+          Replace manual project management with an intelligent work loop.
+        </p>
+        <div class="cta-buttons">
+          <a href="https://github.com/Codesushi-com/clutch" class="btn btn-primary" target="_blank" rel="noopener">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            View on GitHub
+          </a>
+          <a href="#getting-started" class="btn btn-secondary">
+            Get Started
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+      </div>
+      <div class="hero-screenshot">
+        <div class="screenshot-glow"></div>
+        <div class="hero-screenshot-frame">
+          <img src="screenshots/observatory-screenshot.png" alt="OpenClutch Observatory Dashboard" loading="eager">
+        </div>
       </div>
     </div>
   </section>
-  
-  <section class="features">
+
+  <!-- Features -->
+  <section id="features">
     <div class="container">
-      <h2>Features</h2>
-      <div class="feature-grid">
-        <div class="feature">
+      <div class="section-header animate-on-scroll">
+        <span class="section-badge">Features</span>
+        <h2>Everything You Need to Ship</h2>
+        <p>A complete platform for autonomous software development with real-time observability and intelligent task orchestration.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card animate-on-scroll">
           <div class="feature-icon">🔄</div>
-          <h3>Work Loop Engine</h3>
-          <p>Continuous task scheduling with automatic triage, work assignment, and review pipelines.</p>
+          <h3>Intelligent Work Loop</h3>
+          <p>Continuous task scheduling with automatic triage, work assignment, and review pipelines. Agents pick up tasks, work on them, and hand off for review.</p>
         </div>
-        <div class="feature">
+        <div class="feature-card animate-on-scroll">
           <div class="feature-icon">📊</div>
           <h3>Observatory Dashboard</h3>
-          <p>Real-time monitoring with Live, Triage, Analytics, Models, and Prompts tabs.</p>
+          <p>Real-time monitoring with Live, Triage, Analytics, Models, and Prompts tabs. Watch your agents work in real-time.</p>
         </div>
-        <div class="feature">
+        <div class="feature-card animate-on-scroll">
           <div class="feature-icon">🤖</div>
           <h3>Agent Orchestration</h3>
-          <p>Coordinate multiple AI agents across projects with configurable roles.</p>
+          <p>Coordinate multiple AI agents across projects with configurable roles. Dev, Reviewer, PM, and Research agents working together.</p>
         </div>
-        <div class="feature">
+        <div class="feature-card animate-on-scroll">
           <div class="feature-icon">💬</div>
           <h3>Bidirectional Chat</h3>
-          <p>WebSocket integration with OpenClaw for seamless agent communication.</p>
+          <p>WebSocket integration with OpenClaw for seamless agent communication. Full chat history with image and media support.</p>
         </div>
-        <div class="feature">
+        <div class="feature-card animate-on-scroll">
           <div class="feature-icon">⚡</div>
-          <h3>Real-time Backend</h3>
-          <p>Convex-powered reactive data layer for instant UI updates.</p>
+          <h3>Reactive Backend</h3>
+          <p>Convex-powered reactive data layer for instant UI updates. No polling required — changes propagate automatically.</p>
         </div>
-        <div class="feature">
+        <div class="feature-card animate-on-scroll">
           <div class="feature-icon">🔀</div>
           <h3>GitHub Integration</h3>
-          <p>Automated PR creation, review, and merge workflows.</p>
+          <p>Automated PR creation, review, and merge workflows. Git worktree support for isolated feature development.</p>
         </div>
       </div>
     </div>
   </section>
-  
+
+  <!-- Screenshot Showcases -->
+  <section id="showcases">
+    <!-- Observatory -->
+    <div class="showcase">
+      <div class="container">
+        <div class="showcase-content">
+          <div class="showcase-text animate-on-scroll">
+            <span class="section-badge">Observatory</span>
+            <h3>Centralized Command Center</h3>
+            <p>The Observatory dashboard gives you a unified view of all agent activity across your projects. Monitor live tasks, manage blocked items, and analyze performance metrics from a single interface.</p>
+            <div class="showcase-features">
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Live agent monitoring with real-time updates
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Triage queue for blocked tasks
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Cost and performance analytics
+              </div>
+            </div>
+          </div>
+          <div class="showcase-image animate-on-scroll">
+            <div class="showcase-image-frame">
+              <img src="screenshots/observatory-screenshot.png" alt="Observatory Dashboard" loading="lazy">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task Board -->
+    <div class="showcase">
+      <div class="container">
+        <div class="showcase-content">
+          <div class="showcase-text animate-on-scroll">
+            <span class="section-badge">Task Board</span>
+            <h3>Visual Task Management</h3>
+            <p>Kanban-style board for tracking tasks through your workflow. Drag and drop to change status, view agent assignments, and see real-time progress updates.</p>
+            <div class="showcase-features">
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Drag-and-drop status changes
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Agent assignment indicators
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Priority and label filtering
+              </div>
+            </div>
+          </div>
+          <div class="showcase-image animate-on-scroll">
+            <div class="showcase-image-frame">
+              <img src="screenshots/board-screenshot.png" alt="Task Board" loading="lazy">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Work Loop -->
+    <div class="showcase">
+      <div class="container">
+        <div class="showcase-content">
+          <div class="showcase-text animate-on-scroll">
+            <span class="section-badge">Work Loop</span>
+            <h3>Autonomous Development Cycle</h3>
+            <p>The heart of OpenClutch — a continuous loop that triages blocked tasks, assigns work to agents, reviews results, and merges approved changes.</p>
+            <div class="showcase-features">
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Automatic task triage and assignment
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Built-in code review pipeline
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Conflict resolution for merge issues
+              </div>
+            </div>
+          </div>
+          <div class="showcase-image animate-on-scroll">
+            <div class="showcase-image-frame">
+              <img src="screenshots/work-loop-screenshot.png" alt="Work Loop" loading="lazy">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div class="showcase">
+      <div class="container">
+        <div class="showcase-content">
+          <div class="showcase-text animate-on-scroll">
+            <span class="section-badge">Chat</span>
+            <h3>Seamless Communication</h3>
+            <p>Built-in chat interface for interacting with your agents. Full WebSocket integration with OpenClaw means messages flow in real-time with support for images and media.</p>
+            <div class="showcase-features">
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Real-time WebSocket messaging
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Image and media support
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Persistent chat history
+              </div>
+            </div>
+          </div>
+          <div class="showcase-image animate-on-scroll">
+            <div class="showcase-image-frame">
+              <img src="screenshots/chat-screenshot.png" alt="Chat Interface" loading="lazy">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sessions -->
+    <div class="showcase">
+      <div class="container">
+        <div class="showcase-content">
+          <div class="showcase-text animate-on-scroll">
+            <span class="section-badge">Sessions</span>
+            <h3>Agent Session Management</h3>
+            <p>Track and manage all active agent sessions. View token usage, monitor costs, and see which agents are currently working on what tasks.</p>
+            <div class="showcase-features">
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Real-time session monitoring
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Token usage tracking
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Cost analysis per session
+              </div>
+            </div>
+          </div>
+          <div class="showcase-image animate-on-scroll">
+            <div class="showcase-image-frame">
+              <img src="screenshots/sessions-screenshot.png" alt="Sessions View" loading="lazy">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Roadmap -->
+    <div class="showcase">
+      <div class="container">
+        <div class="showcase-content">
+          <div class="showcase-text animate-on-scroll">
+            <span class="section-badge">Roadmap</span>
+            <h3>Project Planning</h3>
+            <p>Plan and track your project's evolution with the built-in roadmap view. Organize features, set milestones, and track progress toward your goals.</p>
+            <div class="showcase-features">
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Visual milestone tracking
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Feature categorization
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Progress indicators
+              </div>
+            </div>
+          </div>
+          <div class="showcase-image animate-on-scroll">
+            <div class="showcase-image-frame">
+              <img src="screenshots/roadmap-screenshot.png" alt="Roadmap View" loading="lazy">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Prompt Lab -->
+    <div class="showcase">
+      <div class="container">
+        <div class="showcase-content">
+          <div class="showcase-text animate-on-scroll">
+            <span class="section-badge">Prompt Lab</span>
+            <h3>Prompt Engineering</h3>
+            <p>Optimize your agent prompts with the Prompt Lab. A/B test different versions, track performance metrics, and iterate on your prompts to improve agent output quality.</p>
+            <div class="showcase-features">
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                A/B prompt testing
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Performance metrics tracking
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Version history and rollback
+              </div>
+            </div>
+          </div>
+          <div class="showcase-image animate-on-scroll">
+            <div class="showcase-image-frame">
+              <img src="screenshots/prompt-lab-screenshot.png" alt="Prompt Lab" loading="lazy">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section id="architecture" class="architecture">
+    <div class="container">
+      <div class="section-header animate-on-scroll">
+        <span class="section-badge">Architecture</span>
+        <h2>Built for Scale</h2>
+        <p>OpenClutch combines modern technologies for a reactive, scalable autonomous development platform.</p>
+      </div>
+      <div class="architecture-diagram animate-on-scroll">
+        <div class="arch-layer">
+          <div class="arch-component">
+            <h4>🎯 OpenClutch</h4>
+            <p>Next.js + Convex</p>
+          </div>
+        </div>
+        <div class="arch-connector">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+        </div>
+        <div class="arch-layer">
+          <div class="arch-component">
+            <h4>🤖 OpenClaw</h4>
+            <p>AI Agent Gateway</p>
+          </div>
+          <div class="arch-component">
+            <h4>💾 Convex</h4>
+            <p>Reactive Database</p>
+          </div>
+        </div>
+        <div class="arch-connector">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+        </div>
+        <div class="arch-layer">
+          <div class="arch-component">
+            <h4>🌐 WebSocket</h4>
+            <p>Real-time Events</p>
+          </div>
+          <div class="arch-component">
+            <h4>🔀 GitHub</h4>
+            <p>PR & Merge</p>
+          </div>
+          <div class="arch-component">
+            <h4>🎨 LLM APIs</h4>
+            <p>Multiple Providers</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Getting Started -->
+  <section id="getting-started" class="getting-started">
+    <div class="container">
+      <div class="section-header animate-on-scroll">
+        <span class="section-badge">Getting Started</span>
+        <h2>Deploy in Minutes</h2>
+        <p>Get OpenClutch running locally with a few simple commands.</p>
+      </div>
+      <div class="code-block animate-on-scroll">
+        <div class="code-header">
+          <span class="code-dot red"></span>
+          <span class="code-dot yellow"></span>
+          <span class="code-dot green"></span>
+          <span style="margin-left: 8px; color: var(--text-muted); font-size: 12px;">terminal</span>
+        </div>
+        <pre><code><span class="comment"># Clone the repository</span>
+<span class="command">git</span> clone https://github.com/Codesushi-com/clutch.git
+<span class="command">cd</span> clutch
+
+<span class="comment"># Install dependencies</span>
+<span class="command">pnpm</span> install
+
+<span class="comment"># Configure environment</span>
+<span class="command">cp</span> .env.example .env.local
+<span class="comment"># Edit .env.local with your credentials</span>
+
+<span class="comment"># Run database and services</span>
+<span class="command">./run.sh</span> dev</code></pre>
+      </div>
+      <div style="margin-top: 40px;" class="animate-on-scroll">
+        <a href="https://github.com/Codesushi-com/clutch#readme" class="btn btn-primary" target="_blank" rel="noopener">
+          Read the Docs
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
   <footer>
     <div class="container">
-      <p>Open source under MIT License · <a href="https://github.com/Codesushi-com/clutch">GitHub</a></p>
+      <div class="footer-content">
+        <div class="footer-brand">
+          <div class="logo-icon">🎯</div>
+          <span>OpenClutch</span>
+        </div>
+        <div class="footer-links">
+          <a href="https://github.com/Codesushi-com/clutch" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/Codesushi-com/clutch/issues" target="_blank" rel="noopener">Issues</a>
+          <a href="https://github.com/Codesushi-com/clutch/discussions" target="_blank" rel="noopener">Discussions</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>Open source under MIT License · Built with ❤️ by the OpenClutch team</p>
+      </div>
     </div>
   </footer>
+
+  <script>
+    // IntersectionObserver for scroll animations
+    const observerOptions = {
+      root: null,
+      rootMargin: '0px',
+      threshold: 0.1
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, observerOptions);
+
+    document.querySelectorAll('.animate-on-scroll').forEach(el => {
+      observer.observe(el);
+    });
+
+    // Navbar scroll effect
+    const navbar = document.getElementById('navbar');
+    let lastScroll = 0;
+
+    window.addEventListener('scroll', () => {
+      const currentScroll = window.pageYOffset;
+      
+      if (currentScroll > 50) {
+        navbar.classList.add('scrolled');
+      } else {
+        navbar.classList.remove('scrolled');
+      }
+      
+      lastScroll = currentScroll;
+    }, { passive: true });
+
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }
+      });
+    });
+  </script>
 </body>
 </html>
