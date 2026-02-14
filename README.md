@@ -22,12 +22,9 @@ OpenClutch is an autonomous software development platform that orchestrates AI a
 
 ## Screenshots
 
-<details>
-<summary><b>🏠 Observatory Dashboard</b> — Real-time work-loop monitoring with live stats, active agents, and activity logs</summary>
+<b>🏠 Observatory Dashboard</b> — Real-time work-loop monitoring with live stats, active agents, and activity logs
 
 ![Observatory](./docs/observatory-screenshot.png)
-
-</details>
 
 <details>
 <summary><b>📋 Kanban Board</b> — Drag-and-drop task management across all statuses</summary>
