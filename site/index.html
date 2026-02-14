@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenClutch — AI Agent Orchestration</title>
-  <meta name="description" content="OpenClutch is an autonomous software development platform that orchestrates AI agents to plan, code, review, and deploy changes autonomously.">
+  <title>OpenClutch — AI Agent Orchestration for OpenClaw</title>
+  <meta name="description" content="OpenClutch is the premier orchestration platform for OpenClaw. Coordinate AI agents to plan, code, review, and deploy changes autonomously.">
   <meta name="theme-color" content="#0a0a0f">
   
   <!-- Google Fonts -->
@@ -28,6 +28,8 @@
       --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
       --glow-primary: rgba(99, 102, 241, 0.4);
       --glow-secondary: rgba(139, 92, 246, 0.3);
+      --openclaw-orange: #f97316;
+      --openclaw-glow: rgba(249, 115, 22, 0.4);
     }
 
     * {
@@ -160,6 +162,26 @@
       box-shadow: 0 4px 20px var(--glow-primary);
     }
 
+    .openclaw-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: rgba(249, 115, 22, 0.15);
+      border: 1px solid rgba(249, 115, 22, 0.3);
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--openclaw-orange);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .openclaw-badge::before {
+      content: '🐾';
+      font-size: 12px;
+    }
+
     .nav-links {
       display: flex;
       align-items: center;
@@ -210,7 +232,7 @@
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 120px 0 80px;
+      padding: 140px 0 80px;
       position: relative;
       overflow: hidden;
     }
@@ -253,7 +275,7 @@
       font-size: 13px;
       font-weight: 500;
       color: var(--text-secondary);
-      margin-bottom: 32px;
+      margin-bottom: 24px;
       animation: fadeInUp 0.6s ease-out;
     }
 
@@ -266,10 +288,10 @@
     }
 
     .hero h1 {
-      font-size: clamp(40px, 6vw, 72px);
+      font-size: clamp(36px, 5vw, 64px);
       font-weight: 800;
-      line-height: 1.05;
-      margin-bottom: 24px;
+      line-height: 1.1;
+      margin-bottom: 16px;
       letter-spacing: -0.02em;
       animation: fadeInUp 0.6s ease-out 0.1s both;
     }
@@ -281,8 +303,20 @@
       background-clip: text;
     }
 
+    .hero-subtitle {
+      font-size: clamp(16px, 2vw, 20px);
+      color: var(--openclaw-orange);
+      font-weight: 600;
+      margin-bottom: 20px;
+      animation: fadeInUp 0.6s ease-out 0.15s both;
+    }
+
+    .hero-subtitle::before {
+      content: '🐾 ';
+    }
+
     .hero p {
-      font-size: clamp(18px, 2.5vw, 22px);
+      font-size: clamp(16px, 2vw, 20px);
       color: var(--text-secondary);
       max-width: 640px;
       margin: 0 auto 40px;
@@ -295,7 +329,7 @@
       gap: 16px;
       justify-content: center;
       flex-wrap: wrap;
-      margin-bottom: 64px;
+      margin-bottom: 48px;
       animation: fadeInUp 0.6s ease-out 0.3s both;
     }
 
@@ -335,12 +369,90 @@
       border-color: var(--border-default);
     }
 
-    /* Hero Screenshot */
+    .btn-openclaw {
+      background: rgba(249, 115, 22, 0.15);
+      color: var(--openclaw-orange);
+      border: 1px solid rgba(249, 115, 22, 0.3);
+    }
+
+    .btn-openclaw:hover {
+      background: rgba(249, 115, 22, 0.25);
+      border-color: rgba(249, 115, 22, 0.5);
+    }
+
+    /* Tech Stack Tags */
+    .tech-stack {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 64px;
+      animation: fadeInUp 0.6s ease-out 0.35s both;
+    }
+
+    .tech-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+
+    .tech-tag:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-default);
+      color: var(--text-primary);
+    }
+
+    .tech-tag.openclaw {
+      background: rgba(249, 115, 22, 0.1);
+      border-color: rgba(249, 115, 22, 0.25);
+      color: var(--openclaw-orange);
+    }
+
+    /* Hero Screenshot Tabs */
+    .hero-screenshot-tabs {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 20px;
+      animation: fadeInUp 0.6s ease-out 0.4s both;
+    }
+
+    .screenshot-tab {
+      padding: 10px 20px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .screenshot-tab:hover {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+
+    .screenshot-tab.active {
+      background: var(--accent-gradient);
+      border-color: transparent;
+      color: white;
+    }
+
     .hero-screenshot {
       position: relative;
       max-width: 1100px;
       margin: 0 auto;
-      animation: fadeInUp 0.8s ease-out 0.4s both;
+      animation: fadeInUp 0.8s ease-out 0.45s both;
     }
 
     .hero-screenshot-frame {
@@ -369,6 +481,10 @@
     .hero-screenshot img {
       width: 100%;
       height: auto;
+      display: none;
+    }
+
+    .hero-screenshot img.active {
       display: block;
     }
 
@@ -422,6 +538,12 @@
       margin-bottom: 20px;
     }
 
+    .section-badge.openclaw {
+      color: var(--openclaw-orange);
+      background: rgba(249, 115, 22, 0.1);
+      border-color: rgba(249, 115, 22, 0.25);
+    }
+
     /* Features Grid */
     .features-grid {
       display: grid;
@@ -455,6 +577,11 @@
       margin-bottom: 20px;
     }
 
+    .feature-icon.openclaw {
+      background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+      box-shadow: 0 4px 20px var(--openclaw-glow);
+    }
+
     .feature-card h3 {
       font-size: 20px;
       font-weight: 700;
@@ -465,6 +592,139 @@
       color: var(--text-secondary);
       font-size: 15px;
       line-height: 1.6;
+    }
+
+    /* Built for OpenClaw Section */
+    .built-for-openclaw {
+      background: linear-gradient(180deg, var(--bg-primary) 0%, rgba(249, 115, 22, 0.05) 50%, var(--bg-primary) 100%);
+    }
+
+    .openclaw-features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 32px;
+      margin-top: 60px;
+    }
+
+    .openclaw-feature {
+      padding: 32px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .openclaw-feature::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #f97316, #ea580c);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .openclaw-feature:hover {
+      background: var(--bg-tertiary);
+      border-color: rgba(249, 115, 22, 0.3);
+      transform: translateY(-4px);
+    }
+
+    .openclaw-feature:hover::before {
+      opacity: 1;
+    }
+
+    .openclaw-feature-icon {
+      width: 56px;
+      height: 56px;
+      background: rgba(249, 115, 22, 0.15);
+      border: 1px solid rgba(249, 115, 22, 0.3);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin-bottom: 20px;
+    }
+
+    .openclaw-feature h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+    }
+
+    .openclaw-feature p {
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* How It Works - Pipeline */
+    .how-it-works {
+      background: var(--bg-secondary);
+    }
+
+    .pipeline {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 60px;
+    }
+
+    .pipeline-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 24px 32px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      min-width: 140px;
+      transition: all 0.3s ease;
+    }
+
+    .pipeline-step:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-default);
+      transform: translateY(-4px);
+    }
+
+    .pipeline-step-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--accent-gradient);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    .pipeline-step h4 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .pipeline-step p {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .pipeline-arrow {
+      color: var(--text-muted);
+      font-size: 24px;
+      display: flex;
+      align-items: center;
     }
 
     /* Screenshot Showcases */
@@ -571,6 +831,16 @@
       border-radius: 12px;
       text-align: center;
       min-width: 160px;
+    }
+
+    .arch-component.highlight {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: rgba(99, 102, 241, 0.4);
+    }
+
+    .arch-component.openclaw {
+      background: rgba(249, 115, 22, 0.15);
+      border-color: rgba(249, 115, 22, 0.4);
     }
 
     .arch-component h4 {
@@ -706,6 +976,13 @@
       font-size: 13px;
     }
 
+    .footer-openclaw {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
     /* Responsive */
     @media (max-width: 968px) {
       .showcase-content {
@@ -725,6 +1002,18 @@
         flex-direction: column;
         align-items: center;
       }
+
+      .pipeline {
+        flex-direction: column;
+      }
+
+      .pipeline-arrow {
+        transform: rotate(90deg);
+      }
+
+      .openclaw-features {
+        grid-template-columns: 1fr;
+      }
     }
 
     @media (max-width: 640px) {
@@ -734,6 +1023,16 @@
 
       .hero {
         padding: 100px 0 60px;
+      }
+
+      .hero-screenshot-tabs {
+        flex-wrap: wrap;
+        padding: 0 16px;
+      }
+
+      .screenshot-tab {
+        padding: 8px 14px;
+        font-size: 12px;
       }
 
       .cta-buttons {
@@ -747,12 +1046,26 @@
         justify-content: center;
       }
 
+      .tech-stack {
+        padding: 0 20px;
+      }
+
+      .tech-tag {
+        font-size: 11px;
+        padding: 5px 10px;
+      }
+
       .features-grid {
         grid-template-columns: 1fr;
       }
 
       .architecture-diagram {
         grid-template-columns: 1fr;
+      }
+
+      .pipeline-step {
+        width: 100%;
+        max-width: 280px;
       }
 
       .footer-content {
@@ -765,6 +1078,46 @@
         justify-content: center;
       }
     }
+
+    @media (max-width: 390px) {
+      .hero h1 {
+        font-size: 28px;
+      }
+
+      .hero-subtitle {
+        font-size: 14px;
+      }
+
+      .hero p {
+        font-size: 15px;
+      }
+
+      .section-header h2 {
+        font-size: 24px;
+      }
+
+      .showcase-text h3 {
+        font-size: 22px;
+      }
+
+      .feature-card {
+        padding: 24px;
+      }
+
+      .openclaw-feature {
+        padding: 24px;
+      }
+
+      .pipeline-step {
+        padding: 20px 24px;
+      }
+
+      .pipeline-step-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -775,12 +1128,14 @@
         <a href="#" class="logo">
           <div class="logo-icon">🎯</div>
           OpenClutch
+          <span class="openclaw-badge">For OpenClaw</span>
         </a>
         <div class="nav-links">
           <a href="#features">Features</a>
+          <a href="#openclaw">OpenClaw</a>
+          <a href="#how-it-works">How It Works</a>
           <a href="#showcases">Showcase</a>
-          <a href="#architecture">Architecture</a>
-          <a href="#getting-started">Getting Started</a>
+          <a href="#getting-started">Get Started</a>
           <a href="https://github.com/Codesushi-com/clutch" class="github-stars" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
             Star on GitHub
@@ -802,25 +1157,49 @@
         <h1>
           Orchestrate AI Agents<br>to <span>Ship Software</span>
         </h1>
+        <div class="hero-subtitle">Built for OpenClaw</div>
         <p>
           OpenClutch coordinates specialized sub-agents to plan, code, review, and deploy autonomously. 
-          Replace manual project management with an intelligent work loop.
+          The premier orchestration platform for OpenClaw-powered development teams.
         </p>
         <div class="cta-buttons">
           <a href="https://github.com/Codesushi-com/clutch" class="btn btn-primary" target="_blank" rel="noopener">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
             View on GitHub
           </a>
+          <a href="https://github.com/openclaw/openclaw" class="btn btn-openclaw" target="_blank" rel="noopener">
+            <span>🐾</span> Get OpenClaw
+          </a>
           <a href="#getting-started" class="btn btn-secondary">
             Get Started
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </a>
         </div>
+
+        <!-- Tech Stack Tags -->
+        <div class="tech-stack">
+          <span class="tech-tag">⚡ Next.js</span>
+          <span class="tech-tag">💾 Convex</span>
+          <span class="tech-tag">🔷 TypeScript</span>
+          <span class="tech-tag openclaw">🐾 OpenClaw RPC</span>
+          <span class="tech-tag">🔀 GitHub API</span>
+          <span class="tech-tag">🌐 WebSocket</span>
+        </div>
       </div>
+
+      <!-- Hero Screenshot Tabs -->
+      <div class="hero-screenshot-tabs">
+        <button class="screenshot-tab active" data-tab="observatory">Dashboard</button>
+        <button class="screenshot-tab" data-tab="board">Task Board</button>
+        <button class="screenshot-tab" data-tab="workloop">Work Loop</button>
+      </div>
+
       <div class="hero-screenshot">
         <div class="screenshot-glow"></div>
         <div class="hero-screenshot-frame">
-          <img src="screenshots/observatory-screenshot.png" alt="OpenClutch Observatory Dashboard" loading="eager">
+          <img src="images/observatory-screenshot.png" alt="Observatory Dashboard" class="active" id="screenshot-observatory" loading="eager">
+          <img src="images/board-screenshot.png" alt="Task Board" id="screenshot-board" loading="lazy">
+          <img src="images/work-loop-screenshot.png" alt="Work Loop" id="screenshot-workloop" loading="lazy">
         </div>
       </div>
     </div>
@@ -832,7 +1211,7 @@
       <div class="section-header animate-on-scroll">
         <span class="section-badge">Features</span>
         <h2>Everything You Need to Ship</h2>
-        <p>A complete platform for autonomous software development with real-time observability and intelligent task orchestration.</p>
+        <p>A complete platform for autonomous software development with real-time observability and intelligent task orchestration powered by OpenClaw.</p>
       </div>
       <div class="features-grid">
         <div class="feature-card animate-on-scroll">
@@ -843,27 +1222,120 @@
         <div class="feature-card animate-on-scroll">
           <div class="feature-icon">📊</div>
           <h3>Observatory Dashboard</h3>
-          <p>Real-time monitoring with Live, Triage, Analytics, Models, and Prompts tabs. Watch your agents work in real-time.</p>
+          <p>Real-time monitoring with Live, Triage, Analytics, Models, and Prompts tabs. Watch your OpenClaw agents work in real-time.</p>
         </div>
         <div class="feature-card animate-on-scroll">
           <div class="feature-icon">🤖</div>
-          <h3>Agent Orchestration</h3>
-          <p>Coordinate multiple AI agents across projects with configurable roles. Dev, Reviewer, PM, and Research agents working together.</p>
+          <h3>OpenClaw Integration</h3>
+          <p>Native WebSocket integration with OpenClaw for seamless agent communication. Spawn sub-agents, track sessions, and manage costs.</p>
         </div>
         <div class="feature-card animate-on-scroll">
           <div class="feature-icon">💬</div>
           <h3>Bidirectional Chat</h3>
-          <p>WebSocket integration with OpenClaw for seamless agent communication. Full chat history with image and media support.</p>
+          <p>Full chat interface with OpenClaw agents. Real-time messaging with image and media support through WebSocket.</p>
         </div>
         <div class="feature-card animate-on-scroll">
           <div class="feature-icon">⚡</div>
           <h3>Reactive Backend</h3>
-          <p>Convex-powered reactive data layer for instant UI updates. No polling required — changes propagate automatically.</p>
+          <p>Convex-powered reactive data layer for instant UI updates. No polling required — changes from OpenClaw propagate automatically.</p>
         </div>
         <div class="feature-card animate-on-scroll">
           <div class="feature-icon">🔀</div>
           <h3>GitHub Integration</h3>
-          <p>Automated PR creation, review, and merge workflows. Git worktree support for isolated feature development.</p>
+          <p>Automated PR creation, review, and merge workflows. Git worktree support for isolated feature development by OpenClaw agents.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Built for OpenClaw -->
+  <section id="openclaw" class="built-for-openclaw">
+    <div class="container">
+      <div class="section-header animate-on-scroll">
+        <span class="section-badge openclaw">🐾 OpenClaw</span>
+        <h2>Built for OpenClaw</h2>
+        <p>OpenClutch is designed from the ground up to be the premier orchestration layer for OpenClaw AI agents. Seamless integration, maximum performance.</p>
+      </div>
+      <div class="openclaw-features">
+        <div class="openclaw-feature animate-on-scroll">
+          <div class="openclaw-feature-icon">🌐</div>
+          <h3>Native WebSocket</h3>
+          <p>Real-time bidirectional communication with OpenClaw agents. Messages flow instantly between your team and AI agents.</p>
+        </div>
+        <div class="openclaw-feature animate-on-scroll">
+          <div class="openclaw-feature-icon">🚀</div>
+          <h3>Session Spawning</h3>
+          <p>Easily spawn new OpenClaw agent sessions for parallel task execution. Scale your AI workforce on demand.</p>
+        </div>
+        <div class="openclaw-feature animate-on-scroll">
+          <div class="openclaw-feature-icon">📈</div>
+          <h3>Cost Tracking</h3>
+          <p>Monitor OpenClaw token usage and costs in real-time. Optimize your AI spending with detailed analytics.</p>
+        </div>
+        <div class="openclaw-feature animate-on-scroll">
+          <div class="openclaw-feature-icon">🔒</div>
+          <h3>Secure RPC</h3>
+          <p>Direct OpenClaw RPC integration for secure, authenticated agent communication. Your agents, your control.</p>
+        </div>
+        <div class="openclaw-feature animate-on-scroll">
+          <div class="openclaw-feature-icon">⚡</div>
+          <h3>Reactive Updates</h3>
+          <p>OpenClaw events propagate instantly through Convex. See agent progress in real-time without refreshing.</p>
+        </div>
+        <div class="openclaw-feature animate-on-scroll">
+          <div class="openclaw-feature-icon">🎯</div>
+          <h3>Agent Orchestration</h3>
+          <p>Coordinate multiple OpenClaw agents across projects with specialized roles. Dev, Reviewer, PM, and Research agents working together.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section id="how-it-works" class="how-it-works">
+    <div class="container">
+      <div class="section-header animate-on-scroll">
+        <span class="section-badge">Pipeline</span>
+        <h2>How It Works</h2>
+        <p>A continuous automated pipeline that takes tasks from idea to production with minimal human intervention.</p>
+      </div>
+      <div class="pipeline animate-on-scroll">
+        <div class="pipeline-step">
+          <div class="pipeline-step-icon">🔍</div>
+          <h4>Triage</h4>
+          <p>Identify blocked tasks<br>& assign priorities</p>
+        </div>
+        <div class="pipeline-arrow">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-icon">⚒️</div>
+          <h4>Work</h4>
+          <p>OpenClaw agents<br>execute tasks</p>
+        </div>
+        <div class="pipeline-arrow">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-icon">👁️</div>
+          <h4>Review</h4>
+          <p>Code review &<br>quality checks</p>
+        </div>
+        <div class="pipeline-arrow">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-icon">🔀</div>
+          <h4>Merge</h4>
+          <p>Auto-merge<br>approved changes</p>
+        </div>
+        <div class="pipeline-arrow">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-icon">🧹</div>
+          <h4>Cleanup</h4>
+          <p>Branch cleanup &<br>task completion</p>
         </div>
       </div>
     </div>
@@ -878,11 +1350,11 @@
           <div class="showcase-text animate-on-scroll">
             <span class="section-badge">Observatory</span>
             <h3>Centralized Command Center</h3>
-            <p>The Observatory dashboard gives you a unified view of all agent activity across your projects. Monitor live tasks, manage blocked items, and analyze performance metrics from a single interface.</p>
+            <p>The Observatory dashboard gives you a unified view of all OpenClaw agent activity across your projects. Monitor live tasks, manage blocked items, and analyze performance metrics from a single interface.</p>
             <div class="showcase-features">
               <div class="showcase-feature">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Live agent monitoring with real-time updates
+                Live OpenClaw agent monitoring with real-time updates
               </div>
               <div class="showcase-feature">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
@@ -896,7 +1368,7 @@
           </div>
           <div class="showcase-image animate-on-scroll">
             <div class="showcase-image-frame">
-              <img src="screenshots/observatory-screenshot.png" alt="Observatory Dashboard" loading="lazy">
+              <img src="images/observatory-screenshot.png" alt="Observatory Dashboard" loading="lazy">
             </div>
           </div>
         </div>
@@ -910,7 +1382,7 @@
           <div class="showcase-text animate-on-scroll">
             <span class="section-badge">Task Board</span>
             <h3>Visual Task Management</h3>
-            <p>Kanban-style board for tracking tasks through your workflow. Drag and drop to change status, view agent assignments, and see real-time progress updates.</p>
+            <p>Kanban-style board for tracking tasks through your workflow. See which OpenClaw agents are assigned, monitor progress, and drag-and-drop to change status.</p>
             <div class="showcase-features">
               <div class="showcase-feature">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
@@ -918,7 +1390,7 @@
               </div>
               <div class="showcase-feature">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Agent assignment indicators
+                OpenClaw agent assignment indicators
               </div>
               <div class="showcase-feature">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
@@ -928,7 +1400,7 @@
           </div>
           <div class="showcase-image animate-on-scroll">
             <div class="showcase-image-frame">
-              <img src="screenshots/board-screenshot.png" alt="Task Board" loading="lazy">
+              <img src="images/board-screenshot.png" alt="Task Board" loading="lazy">
             </div>
           </div>
         </div>
@@ -942,7 +1414,7 @@
           <div class="showcase-text animate-on-scroll">
             <span class="section-badge">Work Loop</span>
             <h3>Autonomous Development Cycle</h3>
-            <p>The heart of OpenClutch — a continuous loop that triages blocked tasks, assigns work to agents, reviews results, and merges approved changes.</p>
+            <p>The heart of OpenClutch — a continuous loop that triages blocked tasks, assigns work to OpenClaw agents, reviews results, and merges approved changes.</p>
             <div class="showcase-features">
               <div class="showcase-feature">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
@@ -960,135 +1432,7 @@
           </div>
           <div class="showcase-image animate-on-scroll">
             <div class="showcase-image-frame">
-              <img src="screenshots/work-loop-screenshot.png" alt="Work Loop" loading="lazy">
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Chat -->
-    <div class="showcase">
-      <div class="container">
-        <div class="showcase-content">
-          <div class="showcase-text animate-on-scroll">
-            <span class="section-badge">Chat</span>
-            <h3>Seamless Communication</h3>
-            <p>Built-in chat interface for interacting with your agents. Full WebSocket integration with OpenClaw means messages flow in real-time with support for images and media.</p>
-            <div class="showcase-features">
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Real-time WebSocket messaging
-              </div>
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Image and media support
-              </div>
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Persistent chat history
-              </div>
-            </div>
-          </div>
-          <div class="showcase-image animate-on-scroll">
-            <div class="showcase-image-frame">
-              <img src="screenshots/chat-screenshot.png" alt="Chat Interface" loading="lazy">
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sessions -->
-    <div class="showcase">
-      <div class="container">
-        <div class="showcase-content">
-          <div class="showcase-text animate-on-scroll">
-            <span class="section-badge">Sessions</span>
-            <h3>Agent Session Management</h3>
-            <p>Track and manage all active agent sessions. View token usage, monitor costs, and see which agents are currently working on what tasks.</p>
-            <div class="showcase-features">
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Real-time session monitoring
-              </div>
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Token usage tracking
-              </div>
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Cost analysis per session
-              </div>
-            </div>
-          </div>
-          <div class="showcase-image animate-on-scroll">
-            <div class="showcase-image-frame">
-              <img src="screenshots/sessions-screenshot.png" alt="Sessions View" loading="lazy">
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Roadmap -->
-    <div class="showcase">
-      <div class="container">
-        <div class="showcase-content">
-          <div class="showcase-text animate-on-scroll">
-            <span class="section-badge">Roadmap</span>
-            <h3>Project Planning</h3>
-            <p>Plan and track your project's evolution with the built-in roadmap view. Organize features, set milestones, and track progress toward your goals.</p>
-            <div class="showcase-features">
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Visual milestone tracking
-              </div>
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Feature categorization
-              </div>
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Progress indicators
-              </div>
-            </div>
-          </div>
-          <div class="showcase-image animate-on-scroll">
-            <div class="showcase-image-frame">
-              <img src="screenshots/roadmap-screenshot.png" alt="Roadmap View" loading="lazy">
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Prompt Lab -->
-    <div class="showcase">
-      <div class="container">
-        <div class="showcase-content">
-          <div class="showcase-text animate-on-scroll">
-            <span class="section-badge">Prompt Lab</span>
-            <h3>Prompt Engineering</h3>
-            <p>Optimize your agent prompts with the Prompt Lab. A/B test different versions, track performance metrics, and iterate on your prompts to improve agent output quality.</p>
-            <div class="showcase-features">
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                A/B prompt testing
-              </div>
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Performance metrics tracking
-              </div>
-              <div class="showcase-feature">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Version history and rollback
-              </div>
-            </div>
-          </div>
-          <div class="showcase-image animate-on-scroll">
-            <div class="showcase-image-frame">
-              <img src="screenshots/prompt-lab-screenshot.png" alt="Prompt Lab" loading="lazy">
+              <img src="images/work-loop-screenshot.png" alt="Work Loop" loading="lazy">
             </div>
           </div>
         </div>
@@ -1102,11 +1446,11 @@
       <div class="section-header animate-on-scroll">
         <span class="section-badge">Architecture</span>
         <h2>Built for Scale</h2>
-        <p>OpenClutch combines modern technologies for a reactive, scalable autonomous development platform.</p>
+        <p>OpenClutch combines modern technologies for a reactive, scalable autonomous development platform powered by OpenClaw.</p>
       </div>
       <div class="architecture-diagram animate-on-scroll">
         <div class="arch-layer">
-          <div class="arch-component">
+          <div class="arch-component highlight">
             <h4>🎯 OpenClutch</h4>
             <p>Next.js + Convex</p>
           </div>
@@ -1115,8 +1459,8 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
         </div>
         <div class="arch-layer">
-          <div class="arch-component">
-            <h4>🤖 OpenClaw</h4>
+          <div class="arch-component openclaw">
+            <h4>🐾 OpenClaw</h4>
             <p>AI Agent Gateway</p>
           </div>
           <div class="arch-component">
@@ -1151,7 +1495,7 @@
       <div class="section-header animate-on-scroll">
         <span class="section-badge">Getting Started</span>
         <h2>Deploy in Minutes</h2>
-        <p>Get OpenClutch running locally with a few simple commands.</p>
+        <p>Get OpenClutch running locally with a few simple commands. Requires OpenClaw to be installed.</p>
       </div>
       <div class="code-block animate-on-scroll">
         <div class="code-header">
@@ -1169,7 +1513,7 @@
 
 <span class="comment"># Configure environment</span>
 <span class="command">cp</span> .env.example .env.local
-<span class="comment"># Edit .env.local with your credentials</span>
+<span class="comment"># Edit .env.local with your OpenClaw credentials</span>
 
 <span class="comment"># Run database and services</span>
 <span class="command">./run.sh</span> dev</code></pre>
@@ -1195,10 +1539,15 @@
           <a href="https://github.com/Codesushi-com/clutch" target="_blank" rel="noopener">GitHub</a>
           <a href="https://github.com/Codesushi-com/clutch/issues" target="_blank" rel="noopener">Issues</a>
           <a href="https://github.com/Codesushi-com/clutch/discussions" target="_blank" rel="noopener">Discussions</a>
+          <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener">OpenClaw</a>
         </div>
       </div>
       <div class="footer-bottom">
         <p>Open source under MIT License · Built with ❤️ by the OpenClutch team</p>
+        <div class="footer-openclaw">
+          <span>🐾 Powered by</span>
+          <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener" style="color: var(--openclaw-orange); text-decoration: none; font-weight: 600;">OpenClaw</a>
+        </div>
       </div>
     </div>
   </footer>
@@ -1250,6 +1599,29 @@
             behavior: 'smooth',
             block: 'start'
           });
+        }
+      });
+    });
+
+    // Screenshot tab switching
+    const tabs = document.querySelectorAll('.screenshot-tab');
+    const screenshots = {
+      observatory: document.getElementById('screenshot-observatory'),
+      board: document.getElementById('screenshot-board'),
+      workloop: document.getElementById('screenshot-workloop')
+    };
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        // Update active tab
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        // Update active screenshot
+        const target = tab.dataset.tab;
+        Object.values(screenshots).forEach(img => img.classList.remove('active'));
+        if (screenshots[target]) {
+          screenshots[target].classList.add('active');
         }
       });
     });
