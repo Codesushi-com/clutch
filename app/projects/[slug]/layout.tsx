@@ -131,15 +131,17 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
                 </nav>
               </div>
 
-              {/* Work loop status (mobile) */}
-              <div className="flex items-center justify-between gap-2">
-                {project.work_loop_enabled === 1 && (
-                  <WorkLoopHeaderStatus
-                    projectId={project.id}
-                    workLoopEnabled={true}
-                  />
-                )}
-              </div>
+              {/* Work loop status (mobile) - hidden on chat tab */}
+              {activeTab !== "chat" && (
+                <div className="flex items-center justify-between gap-2">
+                  {project.work_loop_enabled === 1 && (
+                    <WorkLoopHeaderStatus
+                      projectId={project.id}
+                      workLoopEnabled={true}
+                    />
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             /* Desktop: Original layout */
@@ -196,10 +198,12 @@ export default function ProjectLayout({ children, params }: LayoutProps) {
       </header>
       
       {/* Content */}
-      <main className={`flex-1 flex flex-col min-h-0 px-4 py-6 overflow-hidden ${
+      <main className={`flex-1 flex flex-col min-h-0 overflow-hidden ${
         activeTab === "board"
-          ? "w-full lg:px-6" // Full width on desktop with larger padding
-          : "container mx-auto max-w-7xl overflow-y-auto" // Keep constraint for other pages
+          ? "w-full px-4 lg:px-6 py-6" // Full width on desktop with larger padding
+          : activeTab === "chat"
+            ? "px-2 py-1 md:px-4 md:py-6" // Reduced padding on mobile chat
+            : "container mx-auto max-w-7xl px-4 py-6 overflow-y-auto" // Keep constraint for other pages
       }`}>
         {children}
       </main>

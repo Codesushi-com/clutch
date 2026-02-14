@@ -10,6 +10,7 @@ import { ChatHeader } from "@/components/chat/chat-header"
 import { ConvexChatSync } from "@/components/chat/convex-sync"
 import { CreateTaskFromMessage } from "@/components/chat/create-task-from-message"
 import { SessionInfoDropdown } from "@/components/chat/session-info-dropdown"
+import { CompactContextBar } from "@/components/chat/compact-context-bar"
 import { resetSession, compactSession } from "@/lib/openclaw"
 import { Button } from "@/components/ui/button"
 import { sendChatMessage, abortSession } from "@/lib/openclaw"
@@ -417,7 +418,7 @@ export default function ChatPage({ params }: PageProps) {
       {/* Convex reactive sync — bridges real-time data into zustand store */}
       <ConvexChatSync key={slug} chatId={activeChat?.id ?? null} projectId={projectId} />
 
-      <div className="flex h-[calc(100vh-140px)] bg-[var(--bg-primary)] rounded-lg border border-[var(--border)] overflow-hidden min-w-0 max-w-full">
+      <div className="flex h-[calc(100vh-100px)] md:h-[calc(100vh-140px)] bg-[var(--bg-primary)] rounded-lg border border-[var(--border)] overflow-hidden min-w-0 max-w-full">
         <ChatSidebar
           projectId={projectId}
           projectSlug={slug}
@@ -446,7 +447,8 @@ export default function ChatPage({ params }: PageProps) {
                   </div>
                 </div>
 
-                <div className="px-2 md:px-4 py-1.5 md:py-2 border-t border-[var(--border)]/50 bg-[var(--bg-secondary)]/30">
+                {/* Desktop: Full session info dropdown */}
+                <div className="hidden md:block px-2 md:px-4 py-1.5 md:py-2 border-t border-[var(--border)]/50 bg-[var(--bg-secondary)]/30">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0" />
                     <div className="flex items-center gap-2 md:gap-3">
@@ -465,6 +467,11 @@ export default function ChatPage({ params }: PageProps) {
                       />
                     </div>
                   </div>
+                </div>
+
+                {/* Mobile: Compact context bar */}
+                <div className="md:hidden border-t border-[var(--border)]/50 bg-[var(--bg-secondary)]/30">
+                  <CompactContextBar sessionKey={sessionKey} />
                 </div>
               </div>
 
@@ -489,6 +496,7 @@ export default function ChatPage({ params }: PageProps) {
                 sessionKey={sessionKey}
                 projectId={projectId ?? undefined}
                 lastSentAt={lastSentAt}
+                isMobile={isMobile}
               />
             </>
           ) : (

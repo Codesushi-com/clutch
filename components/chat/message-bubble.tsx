@@ -273,7 +273,7 @@ export function MessageBubble({
           )}
           
           {/* Collapsible work-loop bubble */}
-          <div className={`inline-block px-3 md:px-4 py-2 md:py-3 rounded-2xl text-base leading-relaxed font-medium border-l-4 border-blue-500 overflow-hidden max-w-full ${
+          <div className={`inline-block px-3 md:px-4 py-2 md:py-3 rounded-2xl text-sm md:text-base leading-normal font-normal border-l-4 border-blue-500 overflow-hidden max-w-full ${
             isOwnMessage
               ? "bg-[var(--accent-blue)] text-white rounded-br-md"
               : "bg-gradient-to-r from-blue-50/20 to-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-bl-md"
@@ -376,7 +376,7 @@ export function MessageBubble({
 
         {/* Bubble */}
         <div
-          className={`block w-full px-3 md:px-4 py-2 md:py-3 rounded-2xl text-base leading-relaxed font-medium chat-text overflow-hidden min-w-0 ${
+          className={`block w-full px-3 md:px-4 py-2 md:py-3 rounded-2xl text-sm md:text-base leading-normal font-normal chat-text overflow-hidden min-w-0 ${
             isOwnMessage
               ? "bg-[var(--accent-blue)] text-white rounded-br-md"
               : "bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-bl-md"

@@ -84,7 +84,7 @@ export function ChatHeader({ chat }: ChatHeaderProps) {
   }
 
   return (
-    <div className="p-2 md:p-4 flex items-center gap-2 md:gap-3">
+    <div className="py-1.5 px-2 md:p-4 flex items-center gap-2 md:gap-3">
       {isEditing ? (
         <>
           <input

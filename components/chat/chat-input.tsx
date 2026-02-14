@@ -41,6 +41,7 @@ interface ChatInputProps {
   sessionKey?: string
   projectId?: string
   lastSentAt?: number | null
+  isMobile?: boolean
 }
 
 export function ChatInput({
@@ -54,6 +55,7 @@ export function ChatInput({
   sessionKey = "main",
   projectId,
   lastSentAt = null,
+  isMobile = false,
 }: ChatInputProps) {
   const [content, setContent] = useState("")
   const [sending, setSending] = useState(false)
@@ -433,13 +435,15 @@ export function ChatInput({
         )}
       </div>
 
-      {/* Context indicator */}
-      <div className="mt-1.5 md:mt-2">
-        <ContextIndicator
-          sessionKey={sessionKey}
-          projectId={projectId}
-        />
-      </div>
+      {/* Context indicator - hidden on mobile (shown in compact bar above) */}
+      {!isMobile && (
+        <div className="mt-1.5 md:mt-2">
+          <ContextIndicator
+            sessionKey={sessionKey}
+            projectId={projectId}
+          />
+        </div>
+      )}
 
       <p className="text-sm text-[var(--text-muted)] hidden md:block mt-1 leading-tight">
         Press Enter to send, Shift+Enter for newline • Paste images with Cmd+V • Use /help for commands

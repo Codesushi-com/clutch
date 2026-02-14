@@ -83,7 +83,7 @@ export function MarkdownContent({ content, className = "", variant = "chat" }: M
 
           // Paragraphs
           p: ({ children }) => (
-            <p className={`leading-relaxed font-normal ${isDocument ? "text-base mb-4 last:mb-0" : "text-base mb-2 last:mb-0"}`}>
+            <p className={`leading-relaxed font-normal ${isDocument ? "text-base mb-4 last:mb-0" : "text-sm md:text-base mb-2 last:mb-0"}`}>
               {children}
             </p>
           ),
@@ -148,7 +148,7 @@ export function MarkdownContent({ content, className = "", variant = "chat" }: M
             </ol>
           ),
           li: ({ children }) => (
-            <li className="leading-relaxed font-normal text-base pl-1">
+            <li className="leading-relaxed font-normal text-sm md:text-base pl-1">
               {children}
             </li>
           ),
