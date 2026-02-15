@@ -68,7 +68,7 @@ export default defineSchema({
     dispatch_requested_by: v.optional(v.string()),
     // Agent tracking (written by work loop each cycle)
     agent_session_key: v.optional(v.union(v.string(), v.null())),
-    agent_spawned_at: v.optional(v.float64()), // Timestamp when agent was spawned
+    agent_spawned_at: v.optional(v.union(v.float64(), v.null())), // Timestamp when agent was spawned
     agent_retry_count: v.optional(v.number()), // Track retry attempts for orphaned tasks
     // Reviewer rejection tracking (for retry loop before human triage)
     reviewer_rejection_count: v.optional(v.number()), // Track reviewer rejections (negative sentiment)
