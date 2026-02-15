@@ -33,7 +33,7 @@ const DEFAULT_CONFIG: WorkLoopConfig = {
   enabled: false,
   cycleIntervalMs: 30000,
   maxAgentsPerProject: 3,
-  maxAgentsGlobal: 6,
+  maxAgentsGlobal: 10,
   maxDevAgents: 2,
   maxReviewerAgents: 1,
   maxConflictResolverAgents: 1,
