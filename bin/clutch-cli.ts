@@ -173,14 +173,18 @@ Task Commands:
   tasks get <id> [--json]             Get task details (id can be short prefix)
   tasks info <id> [--json]            Alias for 'tasks get'
   tasks create --project <slug> --title "..." [options]
-                                      Create a new task
-  tasks update <id> [options]         Update task fields
-  tasks comment <id> "message" [options]
-                                      Add comment to a task
-  tasks move <id> <status>            Move task to a new status
+                                      Create a new task (REQUIRES --project)
+  tasks update <id> --project <slug> [options]
+                                      Update task fields (REQUIRES --project)
+  tasks comment <id> --project <slug> "message" [options]
+                                      Add comment to a task (REQUIRES --project)
+  tasks move <id> --project <slug> <status>
+                                      Move task to a new status (REQUIRES --project)
   tasks deps <id> [--json]            List dependencies for a task
-  tasks dep-add <id> --on <taskId>    Add a dependency (task depends on taskId)
-  tasks dep-rm <id> --on <taskId>     Remove a dependency
+  tasks dep-add <id> --project <slug> --on <taskId>
+                                      Add a dependency (REQUIRES --project)
+  tasks dep-rm <id> --project <slug> --on <taskId>
+                                      Remove a dependency (REQUIRES --project)
 
 Agent Commands:
   agents list                         List active agents and their tasks
@@ -245,15 +249,22 @@ Examples:
   clutch tasks list                           List tasks for current project
   clutch tasks list --status ready --json     List ready tasks as JSON
   clutch tasks get abc123                     Get task details
-  clutch tasks create --title "Fix bug"       Create a task
+  clutch tasks create --project clutch --title "Fix bug"
+                                              Create a task
   echo 'Use the \`pr_number\` field' | \
-    clutch tasks create --title "foo" --desc -  Create task with stdin description
-  clutch tasks update abc123 --branch fix/xyz Update task branch
-  clutch tasks update abc123 --pr-number 42   Update task PR number
-  clutch tasks comment abc123 "Progress"      Add comment to task
+    clutch tasks create --project clutch --title "foo" --desc -
+                                                Create task with stdin description
+  clutch tasks update abc123 --project clutch --branch fix/xyz
+                                              Update task branch
+  clutch tasks update abc123 --project clutch --pr-number 42
+                                              Update task PR number
+  clutch tasks comment abc123 --project clutch "Progress"
+                                              Add comment to task
   echo 'Use the \`pr_number\` field' | \
-    clutch tasks comment abc123 -               Add comment from stdin
-  clutch tasks move abc123 done               Move task to done
+    clutch tasks comment abc123 --project clutch -
+                                                Add comment from stdin
+  clutch tasks move abc123 --project clutch done
+                                              Move task to done
   clutch agents list                          Show all active agents
   clutch agents get agent:main:clutch:dev:abc Get agent details
   clutch sessions list --active               Show only active sessions
@@ -1806,6 +1817,27 @@ async function main(): Promise<void> {
 
   // Determine if project was explicitly specified (affects task lookup behavior)
   const explicitProject = typeof flags.project === "string"
+
+  // Commands that require explicit --project to prevent cross-project misposts
+  const projectRequiredCommands = [
+    "tasks create",
+    "tasks update",
+    "tasks comment",
+    "tasks move",
+    "tasks dep-add",
+    "tasks dep-rm",
+  ]
+  const requiresExplicitProject = projectRequiredCommands.some(cmd => command.startsWith(cmd))
+
+  if (requiresExplicitProject && !explicitProject) {
+    console.error("Error: --project <slug> is required for this command")
+    console.error("")
+    console.error("This prevents accidentally posting to the wrong project.")
+    console.error("Examples:")
+    console.error(`  clutch ${command} --project clutch`)
+    console.error(`  clutch ${command} --project my-project`)
+    process.exit(1)
+  }
 
   // Route to appropriate command
   switch (true) {
