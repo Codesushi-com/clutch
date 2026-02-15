@@ -216,39 +216,24 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
   // --- 1. Check capacity ---
   // Query active agents from Convex (source of truth, survives restarts)
   const allActiveTasks = await convex.query(api.tasks.getAllActiveAgentTasks, {})
-  const globalCount = allActiveTasks.length
-  const projectCount = allActiveTasks.filter((t) => t.project_id === project.id).length
-  const devCount = allActiveTasks.filter((t) => t.role === "dev").length
+  let globalCount = allActiveTasks.length
+  let projectCount = allActiveTasks.filter((t) => t.project_id === project.id).length
+  let devCount = allActiveTasks.filter((t) => t.role === "dev").length
 
-  if (globalCount >= config.maxAgentsGlobal) {
+  const maxPerProject = project.work_loop_max_agents ?? config.maxAgentsPerProject
+  const availableSlots = Math.min(
+    config.maxAgentsGlobal - globalCount,
+    maxPerProject - projectCount,
+  )
+
+  if (availableSlots <= 0) {
+    const reason = globalCount >= config.maxAgentsGlobal ? "global_limit" : "project_limit"
     await log({
       projectId: project.id,
       cycle,
       phase: "work",
       action: "capacity_check",
-      details: { globalCount, maxGlobal: config.maxAgentsGlobal, reason: "global_limit" },
-    })
-    return { claimed: false }
-  }
-
-  if (projectCount >= config.maxAgentsPerProject) {
-    await log({
-      projectId: project.id,
-      cycle,
-      phase: "work",
-      action: "capacity_check",
-      details: { projectCount, maxPerProject: config.maxAgentsPerProject, reason: "project_limit" },
-    })
-    return { claimed: false }
-  }
-
-  if (devCount >= config.maxDevAgents) {
-    await log({
-      projectId: project.id,
-      cycle,
-      phase: "work",
-      action: "capacity_check",
-      details: { devCount, maxDev: config.maxDevAgents, reason: "dev_limit" },
+      details: { globalCount, projectCount, maxGlobal: config.maxAgentsGlobal, maxPerProject, reason },
     })
     return { claimed: false }
   }
@@ -290,11 +275,19 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     cycle,
     phase: "work",
     action: "ready_tasks_found",
-    details: { count: sortedTasks.length },
+    details: { count: sortedTasks.length, availableSlots },
   })
 
-  // --- 3. Try to claim a task ---
+  // --- 3. Claim and spawn up to available slots ---
+  let spawned = 0
+  let lastClaimedId: string | undefined
+  let lastClaimedRole: string | undefined
+
   for (const task of sortedTasks) {
+    // Re-check limits (they change as we spawn)
+    if (spawned >= availableSlots) break
+    if (devCount >= config.maxDevAgents && (task.role ?? "dev") === "dev") continue
+
     const role = task.role ?? "dev"
 
     // Check dependencies (before attempting claim)
@@ -319,7 +312,6 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
     // Try to claim the task
     const claimed = await claimTask(convex, task.id)
     if (!claimed) {
-      // Another process claimed it or deps changed
       await log({
         projectId: project.id,
         cycle,
@@ -486,8 +478,13 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
         console.error(`[WorkPhase] Failed to update task agent info:`, updateError)
       }
 
-      // --- 6. Return success (only one task per cycle) ---
-      return { claimed: true, taskId: task.id, role }
+      // Track spawn and update counters
+      spawned++
+      globalCount++
+      projectCount++
+      if (role === "dev") devCount++
+      lastClaimedId = task.id
+      lastClaimedRole = role
     } catch (spawnError) {
       const message = spawnError instanceof Error ? spawnError.message : String(spawnError)
       await log({
@@ -509,8 +506,13 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
         console.error(`[WorkPhase] Failed to revert task status:`, moveError)
       }
 
-      return { claimed: false }
+      // Continue trying other tasks — one spawn failure shouldn't stop the batch
+      continue
     }
+  }
+
+  if (spawned > 0) {
+    return { claimed: true, taskId: lastClaimedId, role: lastClaimedRole }
   }
 
   // No claimable tasks found

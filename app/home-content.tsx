@@ -69,13 +69,13 @@ export default function HomeContent() {
             <div className="border border-[var(--border)] rounded-lg overflow-hidden">
               {/* Column headers */}
               <div className="flex items-center gap-4 px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border)] text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
-                <div className="flex-1">Project</div>
-                <div className="hidden md:block" style={{ minWidth: "180px" }}>Tickets</div>
+                <div className="flex-1" style={{ minWidth: "120px" }}>Project</div>
+                <div className="hidden md:block" style={{ width: "150px", flexShrink: 0 }}>Tickets</div>
                 <div className="flex md:hidden">Tasks</div>
-                <div className="hidden sm:block" style={{ minWidth: "90px" }}>Agents</div>
-                <div className="hidden lg:block" style={{ minWidth: "90px" }}>Loop</div>
-                <div className="hidden lg:block" style={{ minWidth: "70px" }}>Activity</div>
-                <div style={{ width: "56px" }} />
+                <div className="hidden sm:block" style={{ width: "80px", flexShrink: 0 }}>Agents</div>
+                <div className="hidden lg:block" style={{ width: "70px", flexShrink: 0 }}>Loop</div>
+                <div className="hidden lg:block" style={{ width: "60px", flexShrink: 0 }}>Activity</div>
+                <div style={{ width: "48px", flexShrink: 0 }} />
               </div>
 
               {projects.map((project) => (

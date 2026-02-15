@@ -122,7 +122,7 @@ export const getAllWithStats = query({
           .withIndex('by_project', (q) => q.eq('project_id', project.id))
           .collect()
 
-        const statusCounts = { backlog: 0, ready: 0, in_progress: 0, in_review: 0, done: 0 }
+        const statusCounts = { backlog: 0, ready: 0, in_progress: 0, in_review: 0, done: 0, blocked: 0 }
         let lastActivity = project.updated_at
         for (const task of tasks) {
           statusCounts[task.status as keyof typeof statusCounts] += 1
@@ -138,7 +138,7 @@ export const getAllWithStats = query({
 
         // Count active agents from tasks (single source of truth)
         // Note: Active agent count now comes from sessions table
-        const activeAgentCount = tasks.filter((task) => task.status === 'in_progress' && !!task.agent_session_key).length
+        const activeAgentCount = tasks.filter((task) => (task.status === 'in_progress' || task.status === 'in_review') && !!task.agent_session_key).length
 
         return {
           ...toProject(project as Parameters<typeof toProject>[0]),

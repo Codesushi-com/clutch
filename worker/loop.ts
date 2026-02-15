@@ -379,9 +379,9 @@ async function runProjectCycle(
 
   const cycleStart = Date.now()
 
-  // Use the existing status if available, otherwise default to "running"
-  // This preserves "paused" state if user paused mid-cycle (though we checked above)
-  const status = currentState?.status ?? 'running'
+  // Set status to "running" for active cycles.
+  // "paused" is already handled above (early return), so anything else means we're running.
+  const status = 'running'
 
   // Reap finished agents before doing anything else.
   // Queries Convex for active tasks and checks their JSONL files for completion.

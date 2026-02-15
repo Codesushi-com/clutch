@@ -33,6 +33,7 @@ interface PendingRequest {
 class OpenClawClient {
   private ws: WebSocket | null = null
   private status: ConnectionStatus = 'disconnected'
+  private serverInfo: { version?: string; host?: string; uptimeMs?: number } = {}
   private reconnectTimeout: NodeJS.Timeout | null = null
   private reconnectAttempts = 0
   private maxReconnectAttempts = 10
@@ -86,16 +87,23 @@ class OpenClawClient {
               platform: 'nodejs',
               mode: 'backend',
             },
-            auth: this.authToken ? { token: this.authToken } : undefined
+            auth: this.authToken ? { token: this.authToken } : undefined,
+            scopes: ['operator.read', 'operator.write', 'chat']
           }
         }))
         
         // Wait for connect response before marking connected
         this.pendingRequests.set(connectId, {
-          resolve: () => {
+          resolve: (payload: unknown) => {
             this.status = 'connected'
             this.reconnectAttempts = 0
-            console.log('[OpenClaw] Connected successfully (handshake complete)')
+            const p = payload as { server?: { version?: string; host?: string }; snapshot?: { uptimeMs?: number } } | undefined
+            this.serverInfo = {
+              version: p?.server?.version,
+              host: p?.server?.host,
+              uptimeMs: p?.snapshot?.uptimeMs,
+            }
+            console.log(`[OpenClaw] Connected successfully (v${this.serverInfo.version ?? '?'}, host=${this.serverInfo.host ?? '?'})`)
             this.startHeartbeat()
           },
           reject: (error) => {
@@ -159,6 +167,10 @@ class OpenClawClient {
    */
   getStatus(): ConnectionStatus {
     return this.status
+  }
+
+  getServerInfo(): { version?: string; host?: string; uptimeMs?: number } {
+    return this.serverInfo
   }
 
   /**

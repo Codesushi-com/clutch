@@ -102,16 +102,15 @@ async function fetchHealth(
   try {
     const result = await client.rpc<{
       ok: boolean
-      version?: string
-      timestamp?: number
-      defaultModel?: string
+      ts?: number
     }>("health")
 
+    const serverInfo = client.getServerInfo()
     return {
       ok: result.ok ?? false,
-      version: result.version ?? "unknown",
-      uptime: result.timestamp ? Date.now() - result.timestamp : 0,
-      defaultModel: result.defaultModel ?? "unknown",
+      version: serverInfo.version ?? "unknown",
+      uptime: serverInfo.uptimeMs ?? 0,
+      defaultModel: "unknown",
     }
   } catch {
     return null
@@ -197,22 +196,30 @@ async function fetchChannels(
 > {
   try {
     const result = await client.rpc<{
-      channels?: Array<{
-        id: string
-        label?: string
-        connected?: boolean
-        accountId?: string
+      channels?: Record<string, {
+        configured?: boolean
+        running?: boolean
+        lastError?: string | null
       }>
+      channelLabels?: Record<string, string>
     }>("channels.status")
 
-    return (
-      result.channels?.map((ch) => ({
-        id: ch.id,
-        label: ch.label ?? ch.id,
-        connected: ch.connected ?? false,
-        accountId: ch.accountId,
-      })) ?? []
-    )
+    const channels = result.channels ?? {}
+    const labels = result.channelLabels ?? {}
+    const channelList = Object.entries(channels).map(([id, ch]) => ({
+      id,
+      label: labels[id] ?? id,
+      connected: ch.running ?? ch.configured ?? false,
+      accountId: undefined,
+    }))
+    // Override clutch channel status — it's a hook-based plugin without
+    // gateway.startAccount, so channels.status never reports it as running.
+    // Use the WS client connection status instead.
+    const clutchEntry = channelList.find(c => c.id === "clutch")
+    if (clutchEntry) {
+      clutchEntry.connected = client.getStatus() === "connected"
+    }
+    return channelList
   } catch {
     return null
   }

@@ -118,16 +118,26 @@ export function useActiveAgentTasks(
  * active agent information in the UI.
  */
 export function useActiveAgentSessions(
-  projectId: string | null
+  projectId?: string | null
 ): {
   data: TaskWithAgentSession[] | null
   isLoading: boolean
   error: Error | null
 } {
-  const result = useQuery(
+  // Per-project query when projectId is provided
+  const projectResult = useQuery(
     api.tasks.getWithActiveAgentSessions,
     projectId ? { projectId } : "skip"
   )
+  // Global query when no projectId
+  const globalResult = useQuery(
+    api.tasks.getAllActiveAgentTasks,
+    projectId ? "skip" : {}
+  )
+  // Merge: use project-specific data if available, otherwise map global tasks
+  const result = projectId
+    ? projectResult
+    : globalResult?.map(task => ({ task, session: null })) as TaskWithAgentSession[] | undefined
 
   return {
     data: result ?? null,

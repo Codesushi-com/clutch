@@ -2,6 +2,8 @@
 
 import { useMemo } from "react"
 import { Bot, Monitor } from "lucide-react"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
 import { useSessions } from "@/lib/hooks/use-sessions"
 import { useActiveAgentSessions } from "@/lib/hooks/use-work-loop"
 import type { TaskWithAgentSession } from "@/convex/tasks"
@@ -64,21 +66,29 @@ function AgentSlotBar({ current, max }: { current: number; max: number }) {
 }
 
 // Agent list item component
-function AgentListItem({ item }: { item: TaskWithAgentSession }) {
+function AgentListItem({ item, projectName }: { item: TaskWithAgentSession; projectName?: string }) {
   const { task, session } = item
   const roleColor = getRoleColor(task.role)
-  const shortId = formatShortSessionId(session?.session_key || task.agent_session_key || "unknown")
-  const age = formatSessionAge(session?.created_at)
+  const age = formatSessionAge(session?.created_at ?? task.agent_spawned_at)
+  // Truncate title to ~30 chars
+  const shortTitle = task.title.length > 35 ? task.title.slice(0, 32) + "…" : task.title
 
   return (
-    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-[var(--bg-secondary)]/50">
+    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-[var(--bg-secondary)]/50 gap-2">
       <div className="flex items-center gap-2 min-w-0">
         <span className={`text-[10px] px-1.5 py-0.5 rounded border ${roleColor.bg} ${roleColor.text} ${roleColor.border} shrink-0`}>
           {task.role || "dev"}
         </span>
-        <span className="text-xs text-[var(--text-primary)] font-mono truncate">
-          {shortId}
-        </span>
+        <div className="min-w-0">
+          {projectName && (
+            <span className="text-[10px] text-[var(--text-muted)] block">
+              {projectName}
+            </span>
+          )}
+          <span className="text-xs text-[var(--text-primary)] truncate block">
+            {shortTitle}
+          </span>
+        </div>
       </div>
       <span className="text-xs text-[var(--text-muted)] shrink-0">
         {age}
@@ -91,8 +101,16 @@ export function SessionsAgentsCard({ projectId }: SessionsAgentsCardProps) {
   // Get all sessions for counts
   const { sessions: allSessions, isLoading: sessionsLoading } = useSessions({}, 1000)
 
-  // Get active agent sessions
+  // Get active agent sessions — only query when we have a specific project
   const { data: agentSessions, isLoading: agentsLoading } = useActiveAgentSessions(projectId || null)
+
+  // Project name lookup for global view
+  const projects = useQuery(api.projects.getAllWithStats, {})
+  const projectNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    projects?.forEach(p => { map[p.id] = p.name })
+    return map
+  }, [projects])
 
   // Calculate metrics
   const metrics = useMemo(() => {
@@ -205,6 +223,7 @@ export function SessionsAgentsCard({ projectId }: SessionsAgentsCardProps) {
                   <AgentListItem
                     key={task.id}
                     item={{ task, session }}
+                    projectName={!projectId ? projectNames[task.project_id] : undefined}
                   />
                 ))}
               </div>

@@ -16,6 +16,7 @@ interface ProjectStats {
     in_progress: number
     in_review: number
     done: number
+    blocked: number
   }
   active_agents: number
   work_loop_status: string
@@ -108,12 +109,12 @@ export function ProjectListRow({ project }: ProjectListRowProps) {
   return (
     <div className="group flex items-center gap-4 px-4 py-3 border-b border-[var(--border)] hover:bg-[var(--bg-secondary)] transition-colors">
       {/* Color indicator + Name */}
-      <div className="flex items-center gap-3 min-w-0 flex-1">
+      <div className="flex items-center gap-3 flex-1" style={{ minWidth: "120px" }}>
         <div
           className="w-2.5 h-2.5 rounded-full flex-shrink-0"
           style={{ backgroundColor: project.color }}
         />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <Link
             href={`/projects/${project.slug}`}
             prefetch={false}
@@ -130,7 +131,7 @@ export function ProjectListRow({ project }: ProjectListRowProps) {
       </div>
 
       {/* Ticket counts — desktop */}
-      <div className="hidden md:flex items-center gap-3 text-xs flex-shrink-0" style={{ minWidth: "180px" }}>
+      <div className="hidden md:flex items-center gap-3 text-xs flex-shrink-0" style={{ width: "150px" }}>
         <span className="flex items-center gap-1" title="Ready">
           <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: "var(--accent-blue)" }} />
           <StatusCount count={sc.ready} label="Ready" color="var(--accent-blue)" />
@@ -143,9 +144,9 @@ export function ProjectListRow({ project }: ProjectListRowProps) {
           <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: "#a78bfa" }} />
           <StatusCount count={sc.in_review} label="In Review" color="#a78bfa" />
         </span>
-        <span className="flex items-center gap-1" title="Done">
-          <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: "var(--accent-green)" }} />
-          <StatusCount count={sc.done} label="Done" color="var(--accent-green)" />
+        <span className="flex items-center gap-1" title="Blocked">
+          <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: "var(--accent-red, #ef4444)" }} />
+          <StatusCount count={sc.blocked} label="Blocked" color="var(--accent-red, #ef4444)" />
         </span>
       </div>
 
@@ -156,17 +157,17 @@ export function ProjectListRow({ project }: ProjectListRowProps) {
       </div>
 
       {/* Active agents */}
-      <div className="hidden sm:flex items-center flex-shrink-0" style={{ minWidth: "90px" }}>
+      <div className="hidden sm:flex items-center flex-shrink-0" style={{ width: "80px" }}>
         <ActiveAgentsBadge count={project.active_agents} />
       </div>
 
       {/* Work loop status */}
-      <div className="hidden lg:flex items-center flex-shrink-0" style={{ minWidth: "90px" }}>
+      <div className="hidden lg:flex items-center flex-shrink-0" style={{ width: "70px" }}>
         <WorkLoopBadge status={project.work_loop_status} />
       </div>
 
       {/* Last activity */}
-      <div className="hidden lg:block text-xs text-[var(--text-muted)] flex-shrink-0 tabular-nums" style={{ minWidth: "70px" }}>
+      <div className="hidden lg:block text-xs text-[var(--text-muted)] flex-shrink-0 tabular-nums" style={{ width: "60px" }}>
         {timeAgo(project.last_activity)}
       </div>
 
