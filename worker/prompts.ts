@@ -363,27 +363,36 @@ cd ${params.worktreeDir}
 git add -A
 git commit -m "feat: <description>"
 
-# Step 2: Push
+# Step 2: Validate merge-base (prevent stale-branch conflicts)
+# Fetches latest main and checks if origin/main is an ancestor of HEAD
+# If not, the branch is stale and needs rebasing before PR creation
+git fetch origin main
+if ! git merge-base --is-ancestor origin/main HEAD; then
+  echo "Branch is stale, rebasing onto origin/main..."
+  git rebase origin/main || { echo "Rebase failed, aborting."; git rebase --abort; exit 1; }
+fi
+
+# Step 3: Push
 git push -u origin ${branchName}
 
-# Step 3: Create PR and capture the number
+# Step 4: Create PR and capture the number
 PR_URL=$(gh pr create --title "<title>" --body "Ticket: ${params.taskId}")
 PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
 
-# Step 4: Verify PR_NUMBER is set (MUST be a number, not empty)
+# Step 5: Verify PR_NUMBER is set (MUST be a number, not empty)
 if [ -z "$PR_NUMBER" ]; then echo "ERROR: PR creation failed"; exit 1; fi
 
-# Step 5: Record PR number on the task
+# Step 6: Record PR number on the task
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d "{\"pr_number\": $PR_NUMBER}"
 
-# Step 6: Post comment
+# Step 7: Post comment
 curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d "{\"content\": \"Implementation complete. PR #$PR_NUMBER opened.\", \"author\": \"agent\", \"author_type\": \"agent\"}"
 
-# Step 7: LAST — move to in_review (only after PR number is recorded)
+# Step 8: LAST — move to in_review (only after PR number is recorded)
 curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "in_review"}'
 \`\`\`
 
-**CRITICAL: Do NOT set status to \`in_review\` unless steps 1-6 succeeded. If any step fails, leave the task in its current status — the loop will retry.**`
+**CRITICAL: Do NOT set status to \`in_review\` unless steps 1-7 succeeded. If any step fails, leave the task in its current status — the loop will retry.**`
 }
 
 /**
