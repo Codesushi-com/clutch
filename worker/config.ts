@@ -32,10 +32,10 @@ export interface WorkLoopConfig {
 const DEFAULT_CONFIG: WorkLoopConfig = {
   enabled: false,
   cycleIntervalMs: 30000,
-  maxAgentsPerProject: 4,
+  maxAgentsPerProject: 3,
   maxAgentsGlobal: 6,
-  maxDevAgents: 4,
-  maxReviewerAgents: 3,
+  maxDevAgents: 2,
+  maxReviewerAgents: 1,
   maxConflictResolverAgents: 1,
   staleTaskMinutes: 15,
   staleReviewMinutes: 30,

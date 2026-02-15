@@ -127,6 +127,16 @@ export async function runReview(ctx: ReviewContext): Promise<ReviewResult> {
       break
     }
 
+    // Check per-project reviewer limit
+    const projectReviewers = allActiveTasks.filter(
+      (t) => t.project_id === project.id && t.role === "reviewer"
+    ).length
+    if (projectReviewers >= config.maxReviewerAgents) {
+      const remaining = tasks.length - tasks.indexOf(task)
+      console.log(`[ReviewPhase] Reviewer limit reached for ${project.slug} (${projectReviewers}/${config.maxReviewerAgents}) — deferring ${remaining} remaining tasks`)
+      break
+    }
+
     const result = await processTask(ctx, task, allActiveTasks)
 
     if (result.spawned) {

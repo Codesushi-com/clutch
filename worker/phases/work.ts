@@ -218,7 +218,7 @@ export async function runWork(ctx: WorkContext): Promise<WorkPhaseResult> {
   const allActiveTasks = await convex.query(api.tasks.getAllActiveAgentTasks, {})
   let globalCount = allActiveTasks.length
   let projectCount = allActiveTasks.filter((t) => t.project_id === project.id).length
-  let devCount = allActiveTasks.filter((t) => t.role === "dev").length
+  let devCount = allActiveTasks.filter((t) => t.project_id === project.id && (t.role === "dev" || !t.role)).length
 
   const maxPerProject = project.work_loop_max_agents ?? config.maxAgentsPerProject
   const availableSlots = Math.min(
