@@ -6,6 +6,40 @@ import { generateId } from './_helpers'
 // Queries
 // ============================================
 
+// List all chats with session keys (for bridge subscription)
+export const list = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      id: v.string(),
+      project_id: v.string(),
+      title: v.string(),
+      participants: v.optional(v.string()),
+      session_key: v.optional(v.string()),
+      created_at: v.number(),
+      updated_at: v.number(),
+    })
+  ),
+  handler: async (ctx) => {
+    const chats = await ctx.db
+      .query('chats')
+      .order('desc')
+      .take(1000)
+
+    return chats
+      .filter((chat) => chat.session_key)
+      .map((chat) => ({
+        id: chat.id,
+        project_id: chat.project_id,
+        title: chat.title,
+        participants: chat.participants ?? undefined,
+        session_key: chat.session_key,
+        created_at: chat.created_at,
+        updated_at: chat.updated_at,
+      }))
+  },
+})
+
 // Get all chats for a project with last message info
 export const getByProject = query({
   args: {

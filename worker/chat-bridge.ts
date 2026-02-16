@@ -10,10 +10,43 @@
 
 import { ConvexHttpClient } from "convex/browser"
 import { api } from "../convex/_generated/api"
-import { initializeOpenClawClient } from "../lib/openclaw/client"
+import { initializeOpenClawClient, getOpenClawClient } from "../lib/openclaw/client"
 import { processMessageContent } from "./image-processor"
 
 const convexUrl = process.env.CONVEX_URL ?? "http://127.0.0.1:3210"
+const SUBSCRIPTION_POLL_INTERVAL_MS = 5000 // Check for new chats every 5 seconds
+
+// Track subscribed sessions to avoid duplicate subscriptions
+const subscribedSessions = new Set<string>()
+
+async function subscribeToAllActiveChats(convex: ConvexHttpClient) {
+  try {
+    const client = getOpenClawClient()
+    const chats = await convex.query(api.chats.list, {})
+
+    // Subscribe to any new sessions we haven't seen
+    let newSubscriptions = 0
+    for (const chat of chats) {
+      if (chat.session_key && !subscribedSessions.has(chat.session_key)) {
+        try {
+          await client.subscribeToSession(chat.session_key)
+          subscribedSessions.add(chat.session_key)
+          newSubscriptions++
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          console.error(`[ChatBridge] Failed to subscribe to ${chat.session_key}: ${message}`)
+        }
+      }
+    }
+
+    if (newSubscriptions > 0) {
+      console.log(`[ChatBridge] Subscribed to ${newSubscriptions} new session(s), total: ${subscribedSessions.size}`)
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[ChatBridge] Error polling for chats: ${message}`)
+  }
+}
 
 async function main() {
   console.log("[ChatBridge] Starting...")
@@ -33,6 +66,7 @@ async function main() {
   // Initialize OpenClaw WebSocket client
   const client = initializeOpenClawClient()
 
+  // Set up chat event handler
   client.onChatEvent(async (event) => {
     try {
       // Find the chat ID for this session
@@ -97,6 +131,38 @@ async function main() {
       console.error(`[ChatBridge] Error handling event: ${message}`)
     }
   })
+
+  // Wait for connection, then subscribe to all active chats
+  console.log("[ChatBridge] Waiting for OpenClaw connection...")
+
+  // Poll for connection and then subscribe
+  const waitForConnectionAndSubscribe = async () => {
+    const maxAttempts = 30 // 30 seconds timeout
+    let attempts = 0
+
+    while (attempts < maxAttempts) {
+      const status = client.getStatus()
+      if (status === 'connected') {
+        console.log("[ChatBridge] Connected to OpenClaw, subscribing to active chats...")
+        await subscribeToAllActiveChats(convex)
+
+        // Start polling for new chats
+        setInterval(() => {
+          subscribeToAllActiveChats(convex)
+        }, SUBSCRIPTION_POLL_INTERVAL_MS)
+
+        return
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      attempts++
+    }
+
+    console.error("[ChatBridge] Timed out waiting for OpenClaw connection")
+    process.exit(1)
+  }
+
+  // Start subscription process
+  waitForConnectionAndSubscribe()
 
   console.log("[ChatBridge] Listening for chat events...")
 
