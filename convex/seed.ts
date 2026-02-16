@@ -101,6 +101,13 @@ export const insertChatMessage = mutation({
     run_id: v.optional(v.string()),
     session_key: v.optional(v.string()),
     is_automated: v.optional(v.boolean()),
+    delivery_status: v.optional(v.union(
+      v.literal("sent"),
+      v.literal("delivered"),
+      v.literal("processing"),
+      v.literal("responded"),
+      v.literal("failed")
+    )),
     created_at: v.number(),
   },
   handler: async (ctx, args) => {

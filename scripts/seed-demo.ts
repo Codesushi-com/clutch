@@ -759,57 +759,159 @@ async function main() {
   }
   console.log(`      ✓ Created ${totalComments} comments`)
 
-  // 5. Create Chats - Guarantee at least 2 chats per project with realistic conversations
+  // 5. Create Chats - Specific conversations for 'acme-api', generic for others
   console.log("   Creating chats...")
+
+  // Specific chat conversations for 'acme-api' (project index 0)
+  const ACME_API_CHATS: Array<{ title: string; messages: Array<{ author: "dan" | "ada"; content: string }> }> = [
+    {
+      title: "Implement rate limiting",
+      messages: [
+        { author: "dan", content: "Hey, can you help me implement rate limiting for the API? Getting some abuse reports." },
+        { author: "ada", content: "I can help with that. A few questions to scope this properly:\n\n1. What's your current traffic volume (req/min)?\n2. Do you want per-IP limits, per-user limits, or both?\n3. Any specific endpoints that need stricter limits?\n4. Should we use Redis or in-memory storage?" },
+        { author: "dan", content: "Good questions. About 5k req/min peak, mostly legit. Per-user limits for auth endpoints, per-IP for public ones. /api/search gets hammered the most. Redis is already set up." },
+        { author: "ada", content: "Got it. I'll implement a token bucket approach with Redis. Here's my plan:\n\n**Implementation Plan:**\n\n```typescript\n// Token bucket rate limiter\nconst limiter = new TokenBucket({\n  capacity: 100,      // burst capacity\n  refillRate: 10,     // tokens per second\n  keyPrefix: 'ratelimit',\n});\n\n// Middleware usage\napp.use('/api/search', limiter.middleware({\n  keyGenerator: (req) => req.ip,\n  windowMs: 60 * 1000,\n  maxRequests: 100\n}));\n```\n\n**Headers I'll add:**\n- `X-RateLimit-Limit`: Max requests\n- `X-RateLimit-Remaining`: Remaining in window\n- `X-RateLimit-Reset`: Unix timestamp of reset\n- `Retry-After`: Seconds to wait (on 429)\n\nSound good?" },
+        { author: "dan", content: "Looks solid. Can you also add a circuit breaker pattern so we fail open if Redis goes down?" },
+        { author: "ada", content: "Smart thinking. I'll add a circuit breaker that:\n1. Tracks Redis connection failures\n2. Opens after 5 consecutive failures\n3. Fails open (allows requests) when circuit is open\n4. Half-open after 30s to test recovery\n5. Closes on successful Redis ping\n\n```typescript\nconst circuitBreaker = new CircuitBreaker({\n  failureThreshold: 5,\n  resetTimeoutMs: 30000,\n  fallback: () => true // allow when Redis down\n});\n```\n\nStarting implementation now." },
+        { author: "ada", content: "✅ **Implementation complete**\n\n**Changes made:**\n- Added `rateLimiter.ts` with token bucket implementation\n- Created `circuitBreaker.ts` for Redis failure handling\n- Added middleware to `/api/search` and `/api/auth/*` endpoints\n- Response headers now include rate limit info\n- 429 responses include `Retry-After` header\n\n**Tests added:**\n- Unit tests for token bucket math\n- Integration tests with Redis\n- Circuit breaker state transitions\n- Load test: 10k concurrent requests, 0 errors\n\n**PR:** #247\n\nWant me to deploy to staging for load testing?" },
+        { author: "dan", content: "Nice work! Yes please deploy to staging and run some load tests." },
+        { author: "ada", content: "🚀 **Staging deploy complete**\n\nLoad test results (wrk -t12 -c400 -d30s):\n- Throughput: 4,847 req/sec\n- P50 latency: 12ms\n- P99 latency: 45ms\n- 429 errors: 23 (correctly rate limited)\n- Redis CPU: 12% peak\n\nThe circuit breaker never triggered - Redis handled the load fine. Ready for production when you are." },
+      ],
+    },
+    {
+      title: "Debug flaky payment tests",
+      messages: [
+        { author: "dan", content: "Our payment tests are super flaky in CI. About 30% failure rate. Can you take a look?" },
+        { author: "ada", content: "I'll investigate. Looking at the last 20 CI runs now...\n\n**Findings:**\n- Failures cluster in `payment.test.ts` and `checkout.test.ts`\n- Error patterns:\n  - `TimeoutError: Promise timed out after 5000ms` (60%)\n  - `StripeInvalidRequestError: No such payment_intent` (30%)\n  - `AssertionError: expected 200, got 402` (10%)\n\nThe 402 errors look like legit test failures. The timeouts and missing payment intents suggest a race condition or mock state leaking between tests.\n\nChecking test setup..." },
+        { author: "ada", content: "💡 **Root cause found**\n\nThe Stripe mock isn't resetting between tests, and async operations are leaking:\n\n```typescript\n// Problem: mock persists state + async leaks\ndescribe('Payment', () => {\n  it('test 1', async () => {\n    stripeMock.paymentIntents.create({...})  // Creates PI_123\n  })\n  \n  it('test 2', async () => {\n    // PI_123 still exists, or was cleaned up mid-test!\n  })\n})\n```\n\nAlso found: `beforeAll` is creating test data but `afterAll` isn't waiting for cleanup to finish." },
+        { author: "dan", content: "Good catch. How do we fix it?" },
+        { author: "ada", content: "**Fixes implemented:**\n\n```typescript\n// 1. Proper cleanup between tests\nbeforeEach(async () => {\n  await stripeMock.reset();\n  await db.truncate('test_payments');\n  jest.clearAllMocks();\n});\n\nafterEach(async () => {\n  await stripeMock.cleanup();\n  // Wait for all async operations\n  await new Promise(r => setImmediate(r));\n});\n\n// 2. Increased timeout for Stripe integration\njest.setTimeout(10000);\n\n// 3. Added deterministic IDs for stable tests\nstripeMock.mockPaymentIntent({\n  id: `pi_test_${testId}`,  // predictable\n});\n```\n\n**Also fixed:** The 402 errors were from an expired test card in fixtures. Updated to use Stripe's test card tokens." },
+        { author: "ada", content: "✅ **PR Created: #252**\n\n**Changes:**\n- Fixed mock reset in `payment.test.ts` and `checkout.test.ts`\n- Added proper async cleanup with `setImmediate` wait\n- Updated expired test card fixtures\n- Added `jest.retryTimes(2)` for network-dependent tests\n- CI timeout increased from 5min to 10min for integration suite\n\n**Results:**\n- 20/20 test runs passed\n- Avg test duration: 45s (was 2m30s due to retries)\n\nReady for review!" },
+        { author: "dan", content: "Merged! Thanks for the detailed investigation." },
+      ],
+    },
+    {
+      title: "Plan Q2 roadmap",
+      messages: [
+        { author: "dan", content: "Need to plan Q2 roadmap. Key priorities are performance improvements, auth overhaul, and the new analytics dashboard. Thoughts on sequencing?" },
+        { author: "ada", content: "Let me analyze the dependencies and impact:\n\n**Priority Analysis:**\n\n| Project | Effort | Impact | Dependencies | Risk |\n|---------|--------|--------|--------------|------|\n| Auth overhaul | 3 weeks | High | None | Medium |\n| Performance | 2 weeks | High | Auth (sessions) | Low |\n| Analytics | 4 weeks | Medium | Performance (data) | Low |\n\n**Recommendation:**\n\n**Phase 1 (Weeks 1-3): Auth Overhaul**\n- Blocks performance work (session handling)\n- High user impact (security)\n- Should be done before any marketing pushes\n\n**Phase 2 (Weeks 4-5): Performance**\n- Builds on new auth sessions\n- Quick wins for user retention\n- Enables better analytics data collection\n\n**Phase 3 (Weeks 6-9): Analytics Dashboard**\n- Uses optimized data pipeline from perf work\n- Nice-to-have but not blocking\n\nWant me to break these into tasks?" },
+        { author: "dan", content: "That sequencing makes sense. Can you also include the API v2 work? We promised that to enterprise customers for Q2." },
+        { author: "ada", content: "Ah, API v2 changes the calculus. Let me revise:\n\n**Updated Plan:**\n\n**Phase 1 (Weeks 1-3): Auth + API v2 Foundation**\n- Auth overhaul (3 weeks)\n- API v2 scaffolding and versioning middleware\n- Backwards compatibility layer\n\n**Phase 2 (Weeks 4-6): API v2 + Performance**\n- Core API v2 endpoints (parallelizable)\n- Performance optimizations\n- Enterprise customer beta access\n\n**Phase 3 (Weeks 7-9): Analytics + API v2 Completion**\n- Analytics dashboard\n- Remaining API v2 endpoints\n- Deprecation notices for v1\n\n**Risk:** API v2 + Auth together is a heavy 3-week load. Should we:\n- A) Extend Phase 1 to 4 weeks?\n- B) Move some API v2 to Phase 2?\n- C) Add a dedicated backend engineer?" },
+        { author: "dan", content: "Let's go with B - move the non-auth API v2 endpoints to Phase 2. Auth is critical path." },
+        { author: "ada", content: "📝 **Q2 Roadmap Finalized**\n\n**Phase 1: Foundation (Weeks 1-3)**\n- ✅ Auth overhaul\n- ✅ API v2 versioning/auth only\n\n**Phase 2: Core Features (Weeks 4-6)**\n- ✅ API v2 endpoints\n- ✅ Performance optimization\n- 🎯 Enterprise beta launch\n\n**Phase 3: Polish (Weeks 7-9)**\n- ✅ Analytics dashboard\n- ✅ API v1 deprecation warnings\n\n**Phase 4: Wrap-up (Week 10)**\n- Bug fixes, docs, marketing prep\n\nCreated tickets for all Phase 1 work. Want me to start on the auth overhaul?" },
+      ],
+    },
+    {
+      title: "Quick question: Redis config",
+      messages: [
+        { author: "dan", content: "Quick question - what's our Redis maxmemory policy? Getting some evictions in production." },
+        { author: "ada", content: "Checking now... Current config:\n\n```\nmaxmemory 2gb\nmaxmemory-policy allkeys-lru\n```\n\nYou're seeing evictions because we're at 1.8GB used. For your use case (sessions + cache), I'd recommend:\n\n```\nmaxmemory-policy volatile-lru\n```\n\nThis only evicts keys with TTL set, keeping your session data safe." },
+        { author: "dan", content: "Makes sense. Can you update that and bump maxmemory to 4GB?" },
+        { author: "ada", content: "Done. Updated via ElastiCache console:\n\n- `maxmemory`: 4gb\n- `maxmemory-policy`: volatile-lru\n- Applied immediately (no restart needed)\n\nMonitoring shows evictions stopped. Session hit rate improved from 94% to 99.2%." },
+      ],
+    },
+  ]
 
   // Ensure each project gets at least 2 chats
   let chatIndex = 0
+  let acmeApiChatIndex = 0
+
   for (const projectId of projectIds) {
-    // Create exactly 2 chats per project
-    for (let projectChatIndex = 0; projectChatIndex < 2; projectChatIndex++) {
-      const chatId = generateUUID(SEED_RANGES.chats.start + chatIndex, `chat[${chatIndex}]`)
-      chatIds.push(chatId)
+    const projectSlug = PROJECTS[projectIds.indexOf(projectId)].slug
 
-      // Pick a conversation template (cycle through available ones)
-      const conversationTemplate = CHAT_CONVERSATIONS[chatIndex % CHAT_CONVERSATIONS.length]
-      const chatTitle = CHAT_TITLES[chatIndex % CHAT_TITLES.length]
+    // For 'acme-api', use the specific chat conversations
+    if (projectSlug === "acme-api") {
+      for (const chatData of ACME_API_CHATS) {
+        const chatId = generateUUID(SEED_RANGES.chats.start + chatIndex, `chat[${chatIndex}]`)
+        chatIds.push(chatId)
 
-      // Get unique participants from the conversation
-      const participants = [...new Set(conversationTemplate.map(m => m.author))]
+        const participants = ["dan", "ada"]
+        const now = Date.now()
+        const chatCreatedAt = rng.dateInRange(7, 3)
 
-      await client.mutation(api.seed.insertChat, {
-        id: chatId,
-        project_id: projectId,
-        title: chatTitle,
-        participants: JSON.stringify(participants),
-        session_key: `chat:${projectId}:${chatIndex}`,
-        created_at: rng.dateInRange(7, 3),
-        updated_at: Date.now() - rng.range(0, 86400000),
-      })
-
-      // Create messages from the conversation template (guarantees 10+ messages)
-      const baseTime = Date.now() - conversationTemplate.length * rng.range(300000, 600000)
-      for (let j = 0; j < conversationTemplate.length; j++) {
-        const msg = conversationTemplate[j]
-        const messageId = generateUUID(SEED_RANGES.chatMessages.start + chatIndex * 100 + j, `chatMessage[chat=${chatIndex},msg=${j}]`)
-
-        await client.mutation(api.seed.insertChatMessage, {
-          id: messageId,
-          chat_id: chatId,
-          author: msg.author,
-          content: msg.content,
-          run_id: msg.author.startsWith("agent") ? `run-${chatId.slice(0, 8)}-${j}` : undefined,
-          session_key: msg.author.startsWith("agent") ? `session:${chatId}:${j}` : undefined,
-          is_automated: msg.author.startsWith("agent"),
-          created_at: baseTime + j * rng.range(180000, 300000), // 3-5 min between messages
+        await client.mutation(api.seed.insertChat, {
+          id: chatId,
+          project_id: projectId,
+          title: chatData.title,
+          participants: JSON.stringify(participants),
+          session_key: `chat:${projectId}:${chatIndex}`,
+          created_at: chatCreatedAt,
+          updated_at: now - rng.range(0, 86400000),
         })
-      }
 
-      chatIndex++
+        // Create messages with realistic timestamps spread over time
+        const totalDuration = chatData.messages.length * rng.range(180000, 600000) // 3-10 min between messages
+        const baseTime = now - rng.range(86400000, 7 * 86400000) // 1-7 days ago
+
+        for (let j = 0; j < chatData.messages.length; j++) {
+          const msg = chatData.messages[j]
+          const messageId = generateUUID(SEED_RANGES.chatMessages.start + chatIndex * 100 + j, `chatMessage[chat=${chatIndex},msg=${j}]`)
+          const isAgent = msg.author === "ada"
+
+          await client.mutation(api.seed.insertChatMessage, {
+            id: messageId,
+            chat_id: chatId,
+            author: msg.author,
+            content: msg.content,
+            run_id: isAgent ? `run-${chatId.slice(0, 8)}-${j}` : undefined,
+            session_key: isAgent ? `session:${chatId}:${j}` : undefined,
+            is_automated: isAgent,
+            delivery_status: isAgent ? undefined : "responded", // Human messages get 'responded' status
+            created_at: baseTime + (j / chatData.messages.length) * totalDuration,
+          })
+        }
+
+        chatIndex++
+        acmeApiChatIndex++
+      }
+    } else {
+      // For other projects, use the generic conversation templates
+      for (let projectChatIndex = 0; projectChatIndex < 2; projectChatIndex++) {
+        const chatId = generateUUID(SEED_RANGES.chats.start + chatIndex, `chat[${chatIndex}]`)
+        chatIds.push(chatId)
+
+        // Pick a conversation template (cycle through available ones)
+        const conversationTemplate = CHAT_CONVERSATIONS[chatIndex % CHAT_CONVERSATIONS.length]
+        const chatTitle = CHAT_TITLES[chatIndex % CHAT_TITLES.length]
+
+        // Get unique participants from the conversation
+        const participants = [...new Set(conversationTemplate.map(m => m.author))]
+
+        await client.mutation(api.seed.insertChat, {
+          id: chatId,
+          project_id: projectId,
+          title: chatTitle,
+          participants: JSON.stringify(participants),
+          session_key: `chat:${projectId}:${chatIndex}`,
+          created_at: rng.dateInRange(7, 3),
+          updated_at: Date.now() - rng.range(0, 86400000),
+        })
+
+        // Create messages from the conversation template
+        const baseTime = Date.now() - conversationTemplate.length * rng.range(300000, 600000)
+        for (let j = 0; j < conversationTemplate.length; j++) {
+          const msg = conversationTemplate[j]
+          const messageId = generateUUID(SEED_RANGES.chatMessages.start + chatIndex * 100 + j, `chatMessage[chat=${chatIndex},msg=${j}]`)
+          const isAgent = msg.author.startsWith("agent")
+
+          await client.mutation(api.seed.insertChatMessage, {
+            id: messageId,
+            chat_id: chatId,
+            author: msg.author,
+            content: msg.content,
+            run_id: isAgent ? `run-${chatId.slice(0, 8)}-${j}` : undefined,
+            session_key: isAgent ? `session:${chatId}:${j}` : undefined,
+            is_automated: isAgent,
+            created_at: baseTime + j * rng.range(180000, 300000),
+          })
+        }
+
+        chatIndex++
+      }
     }
   }
   const totalChats = chatIds.length
-  console.log(`      ✓ Created ${totalChats} chats with realistic agent conversations`)
+  console.log(`      ✓ Created ${totalChats} chats (${acmeApiChatIndex} for acme-api with realistic conversations)`)
 
   // 6. Create Work Loop Runs (~100 entries)
   console.log("   Creating work loop runs...")
