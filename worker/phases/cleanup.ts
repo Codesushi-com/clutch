@@ -375,6 +375,7 @@ export async function runCleanup(ctx: CleanupContext): Promise<CleanupResult> {
     projectId: project.id,
     cycle,
     log,
+    convex,
   })
   actions += branchResult.actions
 
@@ -643,6 +644,7 @@ interface BranchCleanupContext {
   projectId: string
   cycle: number
   log: (params: LogRunParams) => Promise<void>
+  convex: ConvexHttpClient
 }
 
 interface BranchCleanupResult {
@@ -657,6 +659,7 @@ async function cleanMergedRemoteBranches(ctx: BranchCleanupContext): Promise<Bra
     projectId,
     cycle,
     log,
+    convex,
   } = ctx
 
   let actions = 0
@@ -749,15 +752,59 @@ async function cleanMergedRemoteBranches(ctx: BranchCleanupContext): Promise<Bra
       }
     } catch (prCheckErr) {
       const prMsg = prCheckErr instanceof Error ? prCheckErr.message : String(prCheckErr)
-      console.warn(`[cleanup] Failed to check PR #${prNumber} status: ${prMsg}`)
-      await log({
-        projectId,
-        cycle,
-        phase: "cleanup",
-        action: "pr_check_failed",
-        taskId: task.id,
-        details: { prNumber, error: prMsg },
-      })
+
+      // Check if PR doesn't exist (GraphQL error from gh CLI)
+      if (prMsg.includes("Could not resolve to a PullRequest")) {
+        console.warn(`[cleanup] PR #${prNumber} does not exist, clearing invalid pr_number from task ${task.id.slice(0, 8)}`)
+
+        try {
+          // Clear the invalid pr_number from the task
+          await convex.mutation(api.tasks.update, {
+            id: task.id,
+            pr_number: undefined,
+          })
+
+          // Add a comment explaining the action
+          await convex.mutation(api.comments.create, {
+            taskId: task.id,
+            author: "work-loop",
+            authorType: "coordinator",
+            content: `PR #${prNumber} does not exist (may have been deleted or was recorded incorrectly). Cleared invalid PR number from task.`,
+            type: "status_change",
+          })
+
+          await log({
+            projectId,
+            cycle,
+            phase: "cleanup",
+            action: "pr_number_cleared_invalid",
+            taskId: task.id,
+            details: { prNumber, error: prMsg },
+          })
+          actions++
+        } catch (clearErr) {
+          const clearMsg = clearErr instanceof Error ? clearErr.message : String(clearErr)
+          console.error(`[cleanup] Failed to clear invalid pr_number for task ${task.id.slice(0, 8)}: ${clearMsg}`)
+          await log({
+            projectId,
+            cycle,
+            phase: "cleanup",
+            action: "pr_number_clear_failed",
+            taskId: task.id,
+            details: { prNumber, error: clearMsg },
+          })
+        }
+      } else {
+        console.warn(`[cleanup] Failed to check PR #${prNumber} status: ${prMsg}`)
+        await log({
+          projectId,
+          cycle,
+          phase: "cleanup",
+          action: "pr_check_failed",
+          taskId: task.id,
+          details: { prNumber, error: prMsg },
+        })
+      }
     }
   }
 
