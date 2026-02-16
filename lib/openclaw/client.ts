@@ -14,7 +14,7 @@ type ChatMessage = {
 }
 
 type ChatEvent = {
-  type: 'chat.typing.start' | 'chat.typing.end' | 'chat.delta' | 'chat.message' | 'chat.error'
+  type: 'chat.typing.start' | 'chat.typing.end' | 'chat.delta' | 'chat.message' | 'chat.final' | 'chat.error'
   sessionKey: string
   runId?: string
   delta?: string
