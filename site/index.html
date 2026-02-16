@@ -1191,6 +1191,7 @@
       <div class="hero-screenshot-tabs">
         <button class="screenshot-tab active" data-tab="observatory">Dashboard</button>
         <button class="screenshot-tab" data-tab="board">Task Board</button>
+        <button class="screenshot-tab" data-tab="chat">Chat</button>
         <button class="screenshot-tab" data-tab="workloop">Work Loop</button>
       </div>
 
@@ -1199,6 +1200,7 @@
         <div class="hero-screenshot-frame">
           <img src="images/observatory-screenshot.png" alt="Observatory Dashboard" class="active" id="screenshot-observatory" loading="eager">
           <img src="images/board-screenshot.png" alt="Task Board" id="screenshot-board" loading="lazy">
+          <img src="images/chat-screenshot.png" alt="Chat Interface" id="screenshot-chat" loading="lazy">
           <img src="images/work-loop-screenshot.png" alt="Work Loop" id="screenshot-workloop" loading="lazy">
         </div>
       </div>
@@ -1232,7 +1234,7 @@
         <div class="feature-card animate-on-scroll">
           <div class="feature-icon">💬</div>
           <h3>Bidirectional Chat</h3>
-          <p>Full chat interface with OpenClaw agents. Real-time messaging with image and media support through WebSocket.</p>
+          <p>Real-time streaming chat with OpenClaw agents. Features markdown rendering, syntax-highlighted code blocks, slash commands, and multi-session support. Communicate naturally with your AI workforce.</p>
         </div>
         <div class="feature-card animate-on-scroll">
           <div class="feature-icon">⚡</div>
@@ -1438,6 +1440,38 @@
         </div>
       </div>
     </div>
+
+    <!-- Chat -->
+    <div class="showcase">
+      <div class="container">
+        <div class="showcase-content">
+          <div class="showcase-text animate-on-scroll">
+            <span class="section-badge">Chat</span>
+            <h3>Talk to Your Agents</h3>
+            <p>Real-time bidirectional chat interface for seamless communication with OpenClaw agents. Multiple concurrent sessions, rich message formatting, and full context awareness.</p>
+            <div class="showcase-features">
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Real-time streaming responses
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Markdown rendering with syntax highlighting
+              </div>
+              <div class="showcase-feature">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Slash commands and multi-session support
+              </div>
+            </div>
+          </div>
+          <div class="showcase-image animate-on-scroll">
+            <div class="showcase-image-frame">
+              <img src="images/chat-screenshot.png" alt="Chat Interface" loading="lazy">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- Architecture -->
@@ -1608,6 +1642,7 @@
     const screenshots = {
       observatory: document.getElementById('screenshot-observatory'),
       board: document.getElementById('screenshot-board'),
+      chat: document.getElementById('screenshot-chat'),
       workloop: document.getElementById('screenshot-workloop')
     };
 
