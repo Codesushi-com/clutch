@@ -223,12 +223,34 @@ export function ChatInput({
           setContent("")
         } else {
           // Command wants to send a (possibly augmented) message to the agent
-          await onSend(result.response || messageText, undefined)
+          // Upload images if any were attached
+          let uploadedUrls: string[] = []
+          if (imagesToUpload.length > 0) {
+            setImages(prev => prev.map(img => ({ ...img, uploading: true })))
+            uploadedUrls = await Promise.all(
+              imagesToUpload.map(async (img) => {
+                try {
+                  const url = await uploadImage(img.file)
+                  return url
+                } catch (error) {
+                  console.error("Failed to upload image:", error)
+                  throw error
+                }
+              })
+            )
+            // Clean up object URLs after upload
+            imagesToUpload.forEach(img => URL.revokeObjectURL(img.url))
+          }
+          await onSend(result.response || messageText, uploadedUrls.length > 0 ? uploadedUrls : undefined)
           setContent("")
+          setImages([])
         }
       } catch (error) {
         console.error("Slash command failed:", error)
-        // Keep content on error so user can retry
+        // Keep content and images on error so user can retry
+        if (imagesToUpload.length > 0) {
+          setImages(imagesToUpload.map(img => ({ ...img, uploading: false })))
+        }
       } finally {
         setSending(false)
       }
