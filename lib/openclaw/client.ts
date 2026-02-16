@@ -88,7 +88,7 @@ class OpenClawClient {
               mode: 'backend',
             },
             auth: this.authToken ? { token: this.authToken } : undefined,
-            scopes: ['operator.read', 'operator.write', 'chat']
+            scopes: ['operator.read', 'operator.write', 'chat', 'operator.admin']
           }
         }))
         

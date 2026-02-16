@@ -88,9 +88,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ type: "res", id, ok: true, payload })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    // RPC-level errors (permission denied, invalid params, etc.) return 422
+    // Connection failures are caught earlier by waitForConnection (returns 503)
     return NextResponse.json(
       { type: "res", id, ok: false, error: { message } },
-      { status: 502 },
+      { status: 422 },
     )
   }
 }
