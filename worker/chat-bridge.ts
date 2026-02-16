@@ -131,6 +131,13 @@ async function main() {
         session_key: event.sessionKey,
         is_automated: false,
       })
+
+      // Clear typing indicator when message is finalized
+      await convex.mutation(api.chats.clearTyping, {
+        chat_id: chat.id,
+        author: "ada",
+      })
+
       console.log(
         `[ChatBridge] Saved message: chatId=${chat.id} id=${saved.id} (${content.slice(0, 60)}...)`,
       )
