@@ -3,11 +3,12 @@
  *
  * Builds role-specific prompts for sub-agents working on tasks.
  * Fetches the SOUL template from Convex promptVersions (single source of truth)
- * and injects task-specific context.
+ * and injects task-specific context using Handlebars template rendering.
  */
 
 import type { ConvexHttpClient } from "convex/browser"
 import { fetchActivePrompt, PromptNotFoundError } from "./prompt-fetcher"
+import { renderTemplate, validateTemplate, type ValidationResult } from "./template-engine"
 
 // ============================================
 // Types
@@ -63,7 +64,123 @@ export interface BuildPromptOptions {
 }
 
 // ============================================
-// Comment Formatting Helper
+// Variable Builders
+// ============================================
+
+/**
+ * Build template variables for a PM role task
+ */
+function buildPmTemplateVariables(params: PromptParams): Record<string, unknown> {
+  return {
+    taskId: params.taskId,
+    taskTitle: params.taskTitle,
+    taskDescription: params.taskDescription,
+    projectSlug: params.projectSlug ?? "clutch",
+    repoDir: params.repoDir,
+    comments: params.comments ?? [],
+    imageUrls: params.imageUrls ?? [],
+    signalResponses: params.signalResponses ?? [],
+    hasSignalResponses: (params.signalResponses?.length ?? 0) > 0,
+    hasComments: (params.comments?.length ?? 0) > 0,
+    hasImages: (params.imageUrls?.length ?? 0) > 0,
+  }
+}
+
+/**
+ * Build template variables for a Research role task
+ */
+function buildResearchTemplateVariables(params: PromptParams): Record<string, unknown> {
+  return {
+    taskId: params.taskId,
+    taskTitle: params.taskTitle,
+    taskDescription: params.taskDescription,
+    projectSlug: params.projectSlug ?? "clutch",
+    repoDir: params.repoDir,
+    comments: params.comments ?? [],
+    hasComments: (params.comments?.length ?? 0) > 0,
+  }
+}
+
+/**
+ * Build template variables for a Reviewer role task
+ */
+function buildReviewerTemplateVariables(params: PromptParams): Record<string, unknown> {
+  const branchName = params.branch ?? `fix/${params.taskId.slice(0, 8)}`
+  return {
+    taskId: params.taskId,
+    taskTitle: params.taskTitle,
+    taskDescription: params.taskDescription,
+    projectSlug: params.projectSlug ?? "clutch",
+    repoDir: params.repoDir,
+    comments: params.comments ?? [],
+    prNumber: params.prNumber,
+    branchName,
+    worktreeDir: params.worktreeDir,
+    hasPrNumber: params.prNumber != null,
+    hasComments: (params.comments?.length ?? 0) > 0,
+  }
+}
+
+/**
+ * Build template variables for a ConflictResolver role task
+ */
+function buildConflictResolverTemplateVariables(params: PromptParams): Record<string, unknown> {
+  const branchName = params.branch ?? `fix/${params.taskId.slice(0, 8)}`
+  return {
+    taskId: params.taskId,
+    taskTitle: params.taskTitle,
+    taskDescription: params.taskDescription,
+    projectSlug: params.projectSlug ?? "clutch",
+    repoDir: params.repoDir,
+    comments: params.comments ?? [],
+    prNumber: params.prNumber,
+    branchName,
+    worktreeDir: params.worktreeDir,
+    hasPrNumber: params.prNumber != null,
+    hasComments: (params.comments?.length ?? 0) > 0,
+  }
+}
+
+/**
+ * Build template variables for a Dev role task
+ */
+function buildDevTemplateVariables(params: PromptParams): Record<string, unknown> {
+  const branchName = `fix/${params.taskId.slice(0, 8)}`
+  return {
+    taskId: params.taskId,
+    taskTitle: params.taskTitle,
+    taskDescription: params.taskDescription,
+    projectSlug: params.projectSlug ?? "clutch",
+    repoDir: params.repoDir,
+    comments: params.comments ?? [],
+    branchName,
+    worktreeDir: params.worktreeDir,
+    hasComments: (params.comments?.length ?? 0) > 0,
+  }
+}
+
+/**
+ * Build template variables based on role
+ */
+function buildTemplateVariables(params: PromptParams): Record<string, unknown> {
+  switch (params.role) {
+    case "pm":
+      return buildPmTemplateVariables(params)
+    case "research":
+    case "researcher": // Backwards compatibility
+      return buildResearchTemplateVariables(params)
+    case "reviewer":
+      return buildReviewerTemplateVariables(params)
+    case "conflict_resolver":
+      return buildConflictResolverTemplateVariables(params)
+    case "dev":
+    default:
+      return buildDevTemplateVariables(params)
+  }
+}
+
+// ============================================
+// Legacy Task Context Builders (for backwards compatibility)
 // ============================================
 
 /**
@@ -86,21 +203,17 @@ ${formattedComments}
 `
 }
 
-// ============================================
-// Task Context Builders
-// ============================================
-
 /**
  * Build task context section for PM role
  */
 function buildPmTaskContext(params: PromptParams): string {
   const imageSection = params.imageUrls && params.imageUrls.length > 0
-    ? `\n## Attached Images\n\nThe following images are attached to this task:\n${params.imageUrls.map((url, i) => `- Image ${i + 1}: ${url}`).join('\n')}\n\n**Important:** Analyze these images carefully. They may contain screenshots, diagrams, or visual context crucial for understanding the issue.`
-    : ''
+    ? `\n## Attached Images\n\nThe following images are attached to this task:\n${params.imageUrls.map((url, i) => `- Image ${i + 1}: ${url}`).join("\n")}\n\n**Important:** Analyze these images carefully. They may contain screenshots, diagrams, or visual context crucial for understanding the issue.`
+    : ""
 
   const signalContext = params.signalResponses && params.signalResponses.length > 0
-    ? `\n## Previous Clarifying Questions & Answers\n\nThe following questions were asked and answered during triage:\n\n${params.signalResponses.map((s, i) => `**Q${i + 1}:** ${s.question}\n**A${i + 1}:** ${s.response}`).join('\n\n')}\n`
-    : ''
+    ? `\n## Previous Clarifying Questions & Answers\n\nThe following questions were asked and answered during triage:\n\n${params.signalResponses.map((s, i) => `**Q${i + 1}:** ${s.question}\n**A${i + 1}:** ${s.response}`).join("\n\n")}\n`
+    : ""
 
   const commentsSection = formatCommentsSection(params.comments)
 
@@ -403,7 +516,7 @@ function buildTaskContext(params: PromptParams): string {
     case "pm":
       return buildPmTaskContext(params)
     case "research":
-    case "researcher":  // Backwards compatibility
+    case "researcher": // Backwards compatibility
       return buildResearchTaskContext(params)
     case "reviewer":
       return buildReviewerTaskContext(params)
@@ -413,6 +526,18 @@ function buildTaskContext(params: PromptParams): string {
     default:
       return buildDevTaskContext(params)
   }
+}
+
+// ============================================
+// Template Detection
+// ============================================
+
+/**
+ * Check if a template uses Handlebars syntax
+ */
+function isTemplate(template: string): boolean {
+  // Look for {{variable}} or {{#helper}} patterns
+  return /\{\{\{?[#/]?[\w.]/.test(template)
 }
 
 // ============================================
@@ -427,6 +552,11 @@ function buildTaskContext(params: PromptParams): string {
  * - The SOUL template comes from Convex promptVersions (single source of truth)
  * - Task-specific instructions are injected as context
  * - Errors loudly if no active prompt version exists for the role
+ *
+ * Templates can use Handlebars syntax for variable substitution:
+ * - {{variable}} for simple substitution
+ * - {{#if condition}}...{{/if}} for conditionals
+ * - {{#each items}}...{{/each}} for loops
  *
  * @param params - Task and role parameters
  * @param options - Convex client and options
@@ -461,11 +591,35 @@ export async function buildPromptAsync(
     }
   }
 
-  // Build task-specific context
-  const taskContext = buildTaskContext(params)
+  // Check if the SOUL template uses Handlebars syntax
+  if (isTemplate(soulTemplate)) {
+    // Build template variables for the role
+    const variables = buildTemplateVariables(params)
 
-  // Combine SOUL template with task context
+    // Render the SOUL template with variables
+    try {
+      const renderedSoul = renderTemplate(soulTemplate, variables)
+      return `${renderedSoul}\n\n---\n\nTask context rendered via template engine`
+    } catch (error) {
+      logError?.(`[PromptBuilder] Template rendering failed: ${error instanceof Error ? error.message : String(error)}`)
+      // Fall through to legacy method on error
+    }
+  }
+
+  // Legacy: Use static task context
+  const taskContext = buildTaskContext(params)
   return `${soulTemplate}\n\n---\n\n${taskContext}`
+}
+
+/**
+ * Validate a prompt template for syntax errors and undefined variables
+ *
+ * @param template - The template string to validate
+ * @param role - The role to validate against
+ * @returns Validation result
+ */
+export function validatePromptTemplate(template: string, role: string): ValidationResult {
+  return validateTemplate(template, role)
 }
 
 /**
@@ -492,3 +646,30 @@ export function buildPrompt(params: PromptParams): string {
 
 // Re-export for convenience
 export { PromptNotFoundError } from "./prompt-fetcher"
+
+// Re-export template engine types and functions
+export {
+  renderTemplate,
+  renderTemplateSafe,
+  validateTemplate,
+  getVariableNamesForRole,
+  generateVariableSchema,
+  registerPromptHelpers,
+  ROLE_VARIABLE_SCHEMAS,
+  COMMON_VARIABLES,
+  DEV_VARIABLES,
+  REVIEWER_VARIABLES,
+  PM_VARIABLES,
+  RESEARCH_VARIABLES,
+  CONFLICT_RESOLVER_VARIABLES,
+} from "./template-engine"
+
+export type {
+  CommonTemplateVariables,
+  DevTemplateVariables,
+  ReviewerTemplateVariables,
+  PmTemplateVariables,
+  AllTemplateVariables,
+  VariableSchema,
+  ValidationResult,
+} from "./template-engine"
