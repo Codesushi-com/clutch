@@ -116,8 +116,6 @@ function buildReviewerTemplateVariables(params: PromptParams): Record<string, un
     prNumber: params.prNumber,
     branchName,
     worktreeDir: params.worktreeDir,
-    hasPrNumber: params.prNumber != null,
-    hasComments: (params.comments?.length ?? 0) > 0,
   }
 }
 
@@ -136,8 +134,6 @@ function buildConflictResolverTemplateVariables(params: PromptParams): Record<st
     prNumber: params.prNumber,
     branchName,
     worktreeDir: params.worktreeDir,
-    hasPrNumber: params.prNumber != null,
-    hasComments: (params.comments?.length ?? 0) > 0,
   }
 }
 
