@@ -32,6 +32,7 @@ interface LogCycleCompleteParams {
   phases: {
     cleanup: boolean
     review: boolean
+    verify: boolean
     work: boolean
   }
 }

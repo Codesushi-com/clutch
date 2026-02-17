@@ -74,6 +74,7 @@ const ROLE_MODEL_MAP: Record<string, string> = {
   reviewer: "kimi-coding/k2p5",
   conflict_resolver: "kimi-coding/k2p5",
   dev: "kimi-coding/k2p5",
+  verify: "kimi-coding/k2p5",
 }
 
 /**

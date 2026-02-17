@@ -17,6 +17,7 @@ import { runReview } from "./phases/review"
 import type { Project, WorkLoopPhase } from "../lib/types"
 import { runWork } from "./phases/work"
 import { runTriage } from "./phases/triage"
+import { runVerify } from "./phases/verify"
 import { handleSelfDeploy } from "./phases/self-deploy"
 import { sessionFileReader } from "./session-file-reader"
 import { verifyPromptsExist, V2_ROLES } from "./prompt-fetcher"
@@ -221,6 +222,52 @@ const NEGATIVE_REVIEW_SIGNALS = [
   /needs refactor/i,
   /should refactor/i,
 ]
+
+/**
+ * Analyze verify agent output to determine if verification succeeded.
+ * Looks for explicit success/failure indicators in the output.
+ * Returns: true if verification succeeded, false otherwise
+ */
+function analyzeVerifyOutput(output: string): boolean {
+  const lowerOutput = output.toLowerCase()
+
+  // Check for explicit success indicators
+  const successPatterns = [
+    /verification_status:\s*success/i,
+    /verificationsuccess/i,
+    /all steps completed successfully/i,
+    /verification complete.*success/i,
+    /post.merge verification.*succeeded/i,
+  ]
+
+  for (const pattern of successPatterns) {
+    if (pattern.test(output)) {
+      return true
+    }
+  }
+
+  // Check for explicit failure indicators
+  const failurePatterns = [
+    /verification_status:\s*failed/i,
+    /verificationfailed/i,
+    /verification.*failed/i,
+    /error.*verification/i,
+    /steps?.*failed/i,
+  ]
+
+  for (const pattern of failurePatterns) {
+    if (pattern.test(output)) {
+      return false
+    }
+  }
+
+  // Default: if output contains substantial content and no failure indicators, assume success
+  // This handles cases where the agent provides good output but doesn't use exact keywords
+  const hasSubstantialOutput = output.length > 200
+  const hasErrorKeywords = /\b(error|fail|exception|crash)\b/i.test(lowerOutput)
+
+  return hasSubstantialOutput && !hasErrorKeywords
+}
 
 /**
  * Analyze reviewer output to determine sentiment.
@@ -794,7 +841,82 @@ async function runProjectCycle(
             }
           }
         }
-        // Case 3: Non-reviewer, non-dev agent (e.g., conflict_resolver) finished while task is in_review
+        // Case 3: Verify agent finished - parse result and update verification status
+        else if (currentStatus === "in_review" && outcome.role === "verify") {
+          const verifyOutput = outcome.reply ?? ""
+          const verifySuccess = analyzeVerifyOutput(verifyOutput)
+
+          if (verifySuccess) {
+            // Verification succeeded - move to done
+            try {
+              await convex.mutation(api.tasks.update, {
+                id: outcome.taskId,
+                verification_status: "success",
+                verification_output: verifyOutput.slice(0, 5000), // Limit storage
+                agent_session_key: undefined,
+                agent_spawned_at: undefined,
+              })
+              await convex.mutation(api.tasks.move, {
+                id: outcome.taskId,
+                status: "done",
+                reason: "post_merge_verification_succeeded",
+              })
+              await convex.mutation(api.comments.create, {
+                taskId: outcome.taskId,
+                author: "work-loop",
+                authorType: "coordinator",
+                content: `Post-merge verification succeeded. Task marked as done.`,
+                type: "status_change",
+              })
+              console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} verification succeeded — moved to done`)
+              await logRun(convex, {
+                projectId: project.id,
+                cycle,
+                phase: "cleanup",
+                action: "verification_succeeded",
+                taskId: outcome.taskId,
+                details: { role: outcome.role },
+              })
+            } catch (err) {
+              console.error(`[WorkLoop] Failed to handle verification success for ${outcome.taskId}:`, err)
+            }
+          } else {
+            // Verification failed - move to blocked
+            try {
+              await convex.mutation(api.tasks.update, {
+                id: outcome.taskId,
+                verification_status: "failed",
+                verification_output: verifyOutput.slice(0, 5000), // Limit storage
+                agent_session_key: undefined,
+                agent_spawned_at: undefined,
+              })
+              await convex.mutation(api.tasks.move, {
+                id: outcome.taskId,
+                status: "blocked",
+                reason: "post_merge_verification_failed",
+              })
+              await convex.mutation(api.comments.create, {
+                taskId: outcome.taskId,
+                author: "work-loop",
+                authorType: "coordinator",
+                content: `Post-merge verification failed. Check verification output for details.`,
+                type: "status_change",
+              })
+              console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} verification failed — moved to blocked`)
+              await logRun(convex, {
+                projectId: project.id,
+                cycle,
+                phase: "cleanup",
+                action: "verification_failed",
+                taskId: outcome.taskId,
+                details: { role: outcome.role },
+              })
+            } catch (err) {
+              console.error(`[WorkLoop] Failed to handle verification failure for ${outcome.taskId}:`, err)
+            }
+          }
+        }
+        // Case 4: Non-reviewer, non-dev, non-verify agent (e.g., conflict_resolver) finished while task is in_review
         // Clear the agent fields so the review phase can spawn a proper reviewer. Leave task in in_review.
         else if (currentStatus === "in_review" && outcome.role !== "dev") {
           console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} agent (role=${outcome.role}) finished in in_review — clearing agent fields for reviewer spawn`)
@@ -917,6 +1039,36 @@ async function runProjectCycle(
     }
   )
 
+  // Update state to verify phase
+  await convex.mutation(api.workLoop.upsertState, {
+    project_id: project.id,
+    status,
+    current_phase: "verify",
+    current_cycle: cycle,
+    active_agents: activeAgentCount,
+    max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
+  })
+
+  // Phase 4: Verify (post-merge verification)
+  const verifyResult = await runPhase(
+    convex,
+    project.id,
+    "verify",
+    async () => {
+      const result = await runVerify({
+        convex,
+        config,
+        cycle,
+        project,
+        log: (params) => logRun(convex, params),
+      })
+      return {
+        success: true,
+        actions: result.spawnedCount + result.verifiedCount,
+      }
+    }
+  )
+
   // Update state to work phase
   await convex.mutation(api.workLoop.upsertState, {
     project_id: project.id,
@@ -927,7 +1079,7 @@ async function runProjectCycle(
     max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
   })
 
-  // Phase 4: Work
+  // Phase 5: Work
   const workResult = await runPhase(
     convex,
     project.id,
@@ -984,7 +1136,7 @@ async function runProjectCycle(
 
   // Calculate cycle duration and log completion
   const cycleDurationMs = Date.now() - cycleStart
-  const totalActions = cleanupResult.actions + reviewResult.actions + workResult.actions + triageResult.sentCount + triageResult.escalatedCount
+  const totalActions = cleanupResult.actions + reviewResult.actions + verifyResult.actions + workResult.actions + triageResult.sentCount + triageResult.escalatedCount
 
   await logCycleComplete(convex, {
     projectId: project.id,
@@ -994,6 +1146,7 @@ async function runProjectCycle(
     phases: {
       cleanup: cleanupResult.success,
       review: reviewResult.success,
+      verify: verifyResult.success,
       work: workResult.success,
     },
   })

@@ -21,7 +21,7 @@ export interface TaskComment {
 }
 
 export interface PromptParams {
-  /** The role of the agent (dev, pm, research, reviewer, conflict_resolver) */
+  /** The role of the agent (dev, pm, research, reviewer, conflict_resolver, verify) */
   role: string
   /** The task ID */
   taskId: string
@@ -41,12 +41,14 @@ export interface PromptParams {
   signalResponses?: Array<{ question: string; response: string }>
   /** Optional image URLs for the PM to analyze */
   imageUrls?: string[]
-  /** Optional PR number (for reviewer and conflict_resolver roles) */
+  /** Optional PR number (for reviewer, conflict_resolver, and verify roles) */
   prNumber?: number | null
-  /** Optional branch name (for conflict_resolver role) */
+  /** Optional branch name (for conflict_resolver and verify roles) */
   branch?: string | null
   /** Optional task comments for context (from previous work / triage) */
   comments?: TaskComment[]
+  /** Optional post-merge steps (for verify role) */
+  postMergeSteps?: string
 }
 
 export interface BuildPromptOptions {
@@ -155,6 +157,27 @@ function buildDevTemplateVariables(params: PromptParams): Record<string, unknown
 }
 
 /**
+ * Build template variables for a Verify role task
+ */
+function buildVerifyTemplateVariables(params: PromptParams): Record<string, unknown> {
+  const branchName = params.branch ?? `fix/${params.taskId.slice(0, 8)}`
+  return {
+    taskId: params.taskId,
+    taskTitle: params.taskTitle,
+    taskDescription: params.taskDescription,
+    projectSlug: params.projectSlug ?? "clutch",
+    repoDir: params.repoDir,
+    comments: params.comments ?? [],
+    prNumber: params.prNumber,
+    branchName,
+    worktreeDir: params.worktreeDir,
+    postMergeSteps: params.postMergeSteps,
+    hasPostMergeSteps: params.postMergeSteps != null && params.postMergeSteps.length > 0,
+    hasComments: (params.comments?.length ?? 0) > 0,
+  }
+}
+
+/**
  * Build template variables based on role
  */
 function buildTemplateVariables(params: PromptParams): Record<string, unknown> {
@@ -168,6 +191,8 @@ function buildTemplateVariables(params: PromptParams): Record<string, unknown> {
       return buildReviewerTemplateVariables(params)
     case "conflict_resolver":
       return buildConflictResolverTemplateVariables(params)
+    case "verify":
+      return buildVerifyTemplateVariables(params)
     case "dev":
     default:
       return buildDevTemplateVariables(params)

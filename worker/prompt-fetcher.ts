@@ -181,6 +181,7 @@ export const V2_ROLES = [
   "research",
   "reviewer",
   "conflict_resolver",
+  "verify",
 ] as const
 
 export type V2Role = (typeof V2_ROLES)[number]
