@@ -200,57 +200,6 @@ ${formattedComments}
 }
 
 /**
- * Build task context section for PM role
- */
-function buildPmTaskContext(params: PromptParams): string {
-  const imageSection = params.imageUrls && params.imageUrls.length > 0
-    ? `\n## Attached Images\n\nThe following images are attached to this task:\n${params.imageUrls.map((url, i) => `- Image ${i + 1}: ${url}`).join("\n")}\n\n**Important:** Analyze these images carefully. They may contain screenshots, diagrams, or visual context crucial for understanding the issue.`
-    : ""
-
-  const signalContext = params.signalResponses && params.signalResponses.length > 0
-    ? `\n## Previous Clarifying Questions & Answers\n\nThe following questions were asked and answered during triage:\n\n${params.signalResponses.map((s, i) => `**Q${i + 1}:** ${s.question}\n**A${i + 1}:** ${s.response}`).join("\n\n")}\n`
-    : ""
-
-  const commentsSection = formatCommentsSection(params.comments)
-
-  return `## Task: ${params.taskTitle}
-
-**Read ${params.repoDir}/AGENTS.md first.**
-
-Ticket ID: \`${params.taskId}\`
-Role: \`pm\`
-
-${params.taskDescription}${imageSection}${signalContext}${commentsSection}
-
----
-
-**Your job:** ${params.signalResponses && params.signalResponses.length > 0
-    ? "Analyze this ticket and break it down into actionable sub-tickets using the answers to your clarifying questions."
-    : "Triage this issue and either flesh it out and change role to `dev`, or create clarifying questions as blocking signals."
-  }`
-}
-
-/**
- * Build task context section for Research role
- */
-function buildResearchTaskContext(params: PromptParams): string {
-  const commentsSection = formatCommentsSection(params.comments)
-
-  return `## Task: ${params.taskTitle}
-
-**Read ${params.repoDir}/AGENTS.md first.**
-
-Ticket ID: \`${params.taskId}\`
-Role: \`research\`
-
-${params.taskDescription}${commentsSection}
-
----
-
-**Your job:** Research this topic and post findings as a comment on the ticket.`
-}
-
-/**
  * Build task context section for Reviewer role
  */
 function buildReviewerTaskContext(params: PromptParams): string {
@@ -505,15 +454,27 @@ clutch tasks move ${params.taskId} --project ${params.projectSlug ?? "clutch"} i
 }
 
 /**
- * Build the task context section based on role
+ * Build the task context section based on role (legacy fallback)
+ *
+ * Note: PM and Research roles have been migrated to DB templates (Phase 4a).
+ * These roles should never reach this fallback path. If they do, it indicates
+ * a problem with the template engine or missing DB templates.
  */
 function buildTaskContext(params: PromptParams): string {
   switch (params.role) {
     case "pm":
-      return buildPmTaskContext(params)
+      throw new Error(
+        "PM role has been migrated to DB templates (Phase 4a). " +
+          "Legacy hardcoded context is no longer available. " +
+          "Ensure PROMPT_TEMPLATE_ENGINE is enabled and a v2+ PM template exists in the database."
+      )
     case "research":
     case "researcher": // Backwards compatibility
-      return buildResearchTaskContext(params)
+      throw new Error(
+        "Research role has been migrated to DB templates (Phase 4a). " +
+          "Legacy hardcoded context is no longer available. " +
+          "Ensure PROMPT_TEMPLATE_ENGINE is enabled and a v2+ Research template exists in the database."
+      )
     case "reviewer":
       return buildReviewerTaskContext(params)
     case "conflict_resolver":
