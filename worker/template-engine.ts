@@ -132,6 +132,17 @@ export const RESEARCH_VARIABLES: VariableSchema[] = [
 ]
 
 /**
+ * Verify role variable schema
+ */
+export const VERIFY_VARIABLES: VariableSchema[] = [
+  ...COMMON_VARIABLES,
+  { name: "prNumber", type: "number", required: true, description: "Pull request number" },
+  { name: "branchName", type: "string", required: true, description: "Git branch name" },
+  { name: "worktreeDir", type: "string", required: true, description: "Worktree directory path" },
+  { name: "postMergeSteps", type: "string", required: false, description: "Post-merge steps to execute" },
+]
+
+/**
  * Map of role to variable schema
  */
 export const ROLE_VARIABLE_SCHEMAS: Record<string, VariableSchema[]> = {
@@ -141,6 +152,7 @@ export const ROLE_VARIABLE_SCHEMAS: Record<string, VariableSchema[]> = {
   pm: PM_VARIABLES,
   research: RESEARCH_VARIABLES,
   researcher: RESEARCH_VARIABLES, // Backwards compatibility
+  verify: VERIFY_VARIABLES,
 }
 
 /**

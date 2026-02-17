@@ -43,6 +43,9 @@ function toTask(doc: {
   pr_number?: number
   review_comments?: string
   review_count?: number
+  post_merge_steps?: string
+  verification_status?: 'pending' | 'running' | 'success' | 'failed'
+  verification_output?: string
   resolution?: 'completed' | 'discarded' | 'merged'
   position: number
   created_at: number
@@ -80,6 +83,9 @@ function toTask(doc: {
     pr_number: doc.pr_number ?? null,
     review_comments: doc.review_comments ?? null,
     review_count: doc.review_count ?? null,
+    post_merge_steps: doc.post_merge_steps ?? null,
+    verification_status: doc.verification_status ?? null,
+    verification_output: doc.verification_output ?? null,
     resolution: doc.resolution ?? null,
     position: doc.position,
     created_at: doc.created_at,
@@ -951,6 +957,14 @@ export const update = mutation({
     pr_number: v.optional(v.number()),
     review_comments: v.optional(v.string()),
     review_count: v.optional(v.number()),
+    post_merge_steps: v.optional(v.string()),
+    verification_status: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('running'),
+      v.literal('success'),
+      v.literal('failed')
+    )),
+    verification_output: v.optional(v.string()),
     resolution: v.optional(v.union(
       v.literal('completed'),
       v.literal('discarded'),
@@ -1003,6 +1017,9 @@ export const update = mutation({
     if (args.pr_number !== undefined) updates.pr_number = args.pr_number
     if (args.review_comments !== undefined) updates.review_comments = args.review_comments
     if (args.review_count !== undefined) updates.review_count = args.review_count
+    if (args.post_merge_steps !== undefined) updates.post_merge_steps = args.post_merge_steps
+    if (args.verification_status !== undefined) updates.verification_status = args.verification_status
+    if (args.verification_output !== undefined) updates.verification_output = args.verification_output
     if (args.resolution !== undefined) updates.resolution = args.resolution
     if (args.agent_retry_count !== undefined) updates.agent_retry_count = args.agent_retry_count
     if (args.reviewer_rejection_count !== undefined) updates.reviewer_rejection_count = args.reviewer_rejection_count

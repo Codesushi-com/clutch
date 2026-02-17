@@ -85,6 +85,9 @@ function toTask(doc: {
   pr_number?: number
   review_comments?: string
   review_count?: number
+  post_merge_steps?: string
+  verification_status?: 'pending' | 'running' | 'success' | 'failed'
+  verification_output?: string
   resolution?: 'completed' | 'discarded' | 'merged'
   position: number
   created_at: number
@@ -121,6 +124,9 @@ function toTask(doc: {
     pr_number: doc.pr_number ?? null,
     review_comments: doc.review_comments ?? null,
     review_count: doc.review_count ?? null,
+    post_merge_steps: doc.post_merge_steps ?? null,
+    verification_status: doc.verification_status ?? null,
+    verification_output: doc.verification_output ?? null,
     resolution: doc.resolution ?? null,
     position: doc.position,
     created_at: doc.created_at,

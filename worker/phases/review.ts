@@ -191,7 +191,24 @@ async function processTask(
   // Before checking agent status, see if the PR was already merged.
   // This prevents stale agent_session_key from blocking task completion
   // when a reviewer merged the PR but the task wasn't moved to done.
-  if (task.pr_number) {
+  // NOTE: If task has post_merge_steps and PR is merged, skip reviewer - verify phase will handle it.
+  if (task.pr_number && task.post_merge_steps) {
+    const alreadyMerged = isPRMerged(task.pr_number, project)
+    if (alreadyMerged) {
+      console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} has post_merge_steps and PR #${task.pr_number} is merged — skipping reviewer, verify phase will handle`)
+      return {
+        spawned: false,
+        details: {
+          reason: "pr_merged_needs_verification",
+          taskId: task.id,
+          prNumber: task.pr_number,
+        },
+      }
+    }
+  }
+
+  // Standard early merge check for tasks without post_merge_steps
+  if (task.pr_number && !task.post_merge_steps) {
     const alreadyMerged = isPRMerged(task.pr_number, project)
     if (alreadyMerged) {
       try {
@@ -299,7 +316,8 @@ async function processTask(
   if (!pr) {
     // If the task has a recorded PR number, check if it was already merged.
     // Reviewers sometimes merge the PR but fail to update the task status.
-    if (task.pr_number) {
+    // NOTE: If task has post_merge_steps, leave it for the verify phase.
+    if (task.pr_number && !task.post_merge_steps) {
       const merged = isPRMerged(task.pr_number, project)
       if (merged) {
         try {

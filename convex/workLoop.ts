@@ -284,6 +284,7 @@ export const logRun = mutation({
       v.literal('cleanup'),
       v.literal('triage'),
       v.literal('review'),
+      v.literal('verify'),
       v.literal('work'),
       v.literal('idle'),
       v.literal('error')

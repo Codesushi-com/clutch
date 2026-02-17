@@ -85,6 +85,15 @@ export default defineSchema({
     // Review cycle tracking
     review_comments: v.optional(v.string()), // Reviewer feedback for fixer
     review_count: v.optional(v.number()), // Number of review cycles completed
+    // Post-merge verification tracking
+    post_merge_steps: v.optional(v.string()), // Markdown with commands to run after merge
+    verification_status: v.optional(v.union(
+      v.literal('pending'),
+      v.literal('running'),
+      v.literal('success'),
+      v.literal('failed')
+    )), // Status of post-merge verification
+    verification_output: v.optional(v.string()), // Output from verification run
     // Resolution tracking (for done tasks)
     resolution: v.optional(v.union(
       v.literal('completed'),
@@ -282,6 +291,7 @@ export default defineSchema({
       v.literal("triage"),
       v.literal("notify"),
       v.literal("review"),
+      v.literal("verify"),
       v.literal("work"),
       v.literal("analyze"),
       v.literal("idle"),
