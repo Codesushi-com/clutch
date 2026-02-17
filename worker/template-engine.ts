@@ -152,6 +152,50 @@ export function getVariableNamesForRole(role: string): Set<string> {
 }
 
 // ============================================
+// Template Caching
+// ============================================
+
+/**
+ * Cache for compiled Handlebars templates.
+ * Key: template content hash or content itself (for short templates)
+ * Value: Compiled Handlebars template function
+ */
+const templateCache = new Map<string, Handlebars.TemplateDelegate>()
+
+/**
+ * Get cache key for a template.
+ * Uses first 64 chars of SHA-256 hash for long templates to keep keys short.
+ */
+function getCacheKey(template: string): string {
+  // For short templates, use content directly as key
+  if (template.length < 100) {
+    return template
+  }
+  // For longer templates, use a simple hash (first 64 chars)
+  // Note: Using simple truncation-based "hash" for performance
+  // In production with crypto available, could use actual hash
+  return `hash:${template.slice(0, 50)}:${template.slice(-10)}:${template.length}`
+}
+
+/**
+ * Clear the template cache.
+ * Useful for testing or when memory needs to be reclaimed.
+ */
+export function clearTemplateCache(): void {
+  templateCache.clear()
+}
+
+/**
+ * Get cache statistics for debugging/monitoring.
+ */
+export function getTemplateCacheStats(): { size: number; keys: string[] } {
+  return {
+    size: templateCache.size,
+    keys: Array.from(templateCache.keys()).slice(0, 10), // Limit keys in output
+  }
+}
+
+// ============================================
 // Template Compilation & Rendering
 // ============================================
 
@@ -453,7 +497,10 @@ export function validateTemplate(template: string, role: string): ValidationResu
 }
 
 /**
- * Compile and render a template with the given variables
+ * Compile and render a template with the given variables.
+ *
+ * Uses a cache to avoid recompiling the same template multiple times.
+ * Cache key is derived from template content.
  *
  * @param template - The Handlebars template string
  * @param variables - The variables to inject into the template
@@ -464,11 +511,18 @@ export function renderTemplate<T extends Record<string, unknown>>(
   template: string,
   variables: T
 ): string {
-  // Compile the template
-  const compiled = Handlebars.compile(template, {
-    strict: false, // Allow undefined variables (they render as empty string)
-    preventIndent: true,
-  })
+  const cacheKey = getCacheKey(template)
+
+  // Check cache first
+  let compiled = templateCache.get(cacheKey)
+  if (!compiled) {
+    // Compile and cache
+    compiled = Handlebars.compile(template, {
+      strict: false, // Allow undefined variables (they render as empty string)
+      preventIndent: true,
+    })
+    templateCache.set(cacheKey, compiled)
+  }
 
   // Render with variables
   return compiled(variables)

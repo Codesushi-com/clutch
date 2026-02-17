@@ -10,6 +10,8 @@ import {
   getVariableNamesForRole,
   generateVariableSchema,
   registerPromptHelpers,
+  clearTemplateCache,
+  getTemplateCacheStats,
   ROLE_VARIABLE_SCHEMAS,
   COMMON_VARIABLES,
   DEV_VARIABLES,
@@ -517,6 +519,89 @@ Worktree: {{worktreeDir}}`
       const template = "Line 1\nLine 2\n\nLine 3"
       const result = renderTemplate(template, {})
       expect(result).toBe(template)
+    })
+  })
+
+  // ============================================
+  // Template Caching
+  // ============================================
+
+  describe("template caching", () => {
+    beforeEach(() => {
+      clearTemplateCache()
+    })
+
+    it("should cache compiled templates", () => {
+      const template = "Hello {{name}}!"
+
+      // First render should compile and cache
+      renderTemplate(template, { name: "World" })
+      const stats1 = getTemplateCacheStats()
+      expect(stats1.size).toBe(1)
+
+      // Second render should use cache
+      renderTemplate(template, { name: "Alice" })
+      const stats2 = getTemplateCacheStats()
+      expect(stats2.size).toBe(1) // Still 1, not 2
+    })
+
+    it("should cache different templates separately", () => {
+      const template1 = "Hello {{name}}!"
+      const template2 = "Goodbye {{name}}!"
+
+      renderTemplate(template1, { name: "World" })
+      renderTemplate(template2, { name: "World" })
+
+      const stats = getTemplateCacheStats()
+      expect(stats.size).toBe(2)
+    })
+
+    it("should produce correct results from cache", () => {
+      const template = "Hello {{name}}!"
+
+      // First render
+      const result1 = renderTemplate(template, { name: "World" })
+      expect(result1).toBe("Hello World!")
+
+      // Second render (from cache)
+      const result2 = renderTemplate(template, { name: "Alice" })
+      expect(result2).toBe("Hello Alice!")
+    })
+
+    it("should clear cache when requested", () => {
+      const template = "Hello {{name}}!"
+      renderTemplate(template, { name: "World" })
+
+      const stats1 = getTemplateCacheStats()
+      expect(stats1.size).toBe(1)
+
+      clearTemplateCache()
+
+      const stats2 = getTemplateCacheStats()
+      expect(stats2.size).toBe(0)
+    })
+
+    it("should handle long templates with hash-based keys", () => {
+      // Create a template longer than 100 chars
+      const template = "Hello {{name}}! " + "x".repeat(200)
+
+      renderTemplate(template, { name: "World" })
+
+      const stats = getTemplateCacheStats()
+      expect(stats.size).toBe(1)
+      // Long templates use hash-based keys
+      expect(stats.keys[0]).toMatch(/^hash:/)
+    })
+
+    it("should handle short templates with content keys", () => {
+      const template = "Hi {{name}}"
+
+      renderTemplate(template, { name: "World" })
+
+      const stats = getTemplateCacheStats()
+      expect(stats.size).toBe(1)
+      // Short templates use content as key
+      expect(stats.keys[0]).toBe(template)
     })
   })
 })
