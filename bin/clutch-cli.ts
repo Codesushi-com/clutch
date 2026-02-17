@@ -22,9 +22,11 @@
  */
 
 import { execFileSync } from "node:child_process"
+import { readFileSync, writeFileSync } from "node:fs"
 import { ConvexHttpClient } from "convex/browser"
 import { api } from "../convex/_generated/api"
 import { runConvexDeploy } from "../worker/phases/convex-deploy"
+import { createTwoFilesPatch } from "diff"
 
 // ============================================
 // Types
@@ -123,6 +125,24 @@ interface TaskSummary {
   status: "backlog" | "ready" | "in_progress" | "in_review" | "blocked" | "done"
 }
 
+interface PromptVersion {
+  id: string
+  role: string
+  model?: string
+  version: number
+  content: string
+  change_summary?: string
+  parent_version_id?: string
+  created_by: string
+  active: boolean
+  created_at: number
+  template_variables?: string
+  ab_status?: "control" | "challenger" | "none"
+  ab_split_percent?: number
+  ab_started_at?: number
+  ab_min_tasks?: number
+}
+
 // ============================================
 // CLI Parser
 // ============================================
@@ -208,6 +228,16 @@ Deploy Commands:
   deploy convex [--project <slug>]    Deploy Convex schema/functions for a project
   deploy check [--project <slug>]     Check if convex/ is dirty vs deployed
 
+Prompt Commands:
+  prompts list [--role <role>]        List prompt versions (all roles or specific role)
+  prompts get --role <role> [--version N]  Show active (or specific version) template
+  prompts edit --role <role>          Open in $EDITOR, validate on save, create new version
+  prompts create --role <role> --from-file <file> --summary "..."  Create from file
+  prompts activate --role <role> --version N  Set active version
+  prompts diff --role <role> --v1 N --v2 N   Diff two versions
+  prompts validate --role <role> --file <file>  Dry-run validation without saving
+  prompts rollback --role <role>      Revert to previous active version
+
 Options:
   --project <slug>    Target project slug (defaults to "clutch" or auto-detected)
   --help, -h          Show this help message
@@ -272,6 +302,20 @@ Examples:
   clutch signals list --pending               Show pending signals
   clutch signals respond abc-123 "LGTM"       Respond to a signal
   clutch metrics --project clutch             Show metrics for clutch project
+  clutch prompts list                         List all prompt versions
+  clutch prompts list --role dev              List versions for dev role
+  clutch prompts get --role dev               Show active dev prompt
+  clutch prompts get --role dev --version 3   Show version 3 of dev prompt
+  clutch prompts edit --role dev              Edit dev prompt in $EDITOR
+  clutch prompts create --role dev --from-file template.md --summary "Added examples"
+                                              Create new version from file
+  clutch prompts activate --role dev --version 5
+                                              Activate version 5
+  clutch prompts diff --role dev --v1 3 --v2 5
+                                              Diff versions 3 and 5
+  clutch prompts validate --role dev --file template.md
+                                              Validate template without saving
+  clutch prompts rollback --role dev          Rollback to previous version
 `)
 }
 
@@ -1775,6 +1819,544 @@ async function cmdProjectsDelete(slug: string, flags: Record<string, string | bo
 }
 
 // ============================================
+// Prompt Commands
+// ============================================
+
+async function cmdPromptsList(flags: Record<string, string | boolean>): Promise<void> {
+  const role = typeof flags.role === "string" ? flags.role : undefined
+  const jsonOutput = flags.json === true
+
+  try {
+    const convex = getConvexClient()
+
+    if (role) {
+      // List versions for specific role
+      const versions = await convex.query(api.promptVersions.listByRole, {
+        role,
+        model: undefined,
+      }) as PromptVersion[]
+
+      if (jsonOutput) {
+        console.log(JSON.stringify({ versions }, null, 2))
+        return
+      }
+
+      if (versions.length === 0) {
+        console.log(`\nNo prompt versions found for role: ${role}`)
+        return
+      }
+
+      console.log(`\nPrompt versions for role: ${role}\n`)
+      console.log("Version  Status      Model       Created              Change Summary")
+      console.log("-".repeat(80))
+
+      for (const v of versions) {
+        const status = v.active ? "* active" : v.ab_status === "control" ? "* control" : v.ab_status === "challenger" ? "* challenger" : ""
+        const version = v.version.toString().padEnd(8)
+        const statusCol = status.padEnd(12)
+        const model = (v.model || "-").padEnd(11)
+        const created = new Date(v.created_at).toISOString().slice(0, 19).padEnd(20)
+        const summary = (v.change_summary || "-").slice(0, 30)
+        console.log(`${version} ${statusCol} ${model} ${created} ${summary}`)
+      }
+
+      console.log(`\n${versions.length} version(s) total`)
+    } else {
+      // List all roles
+      const roles = await convex.query(api.promptVersions.listRoles, {}) as string[]
+
+      if (jsonOutput) {
+        console.log(JSON.stringify({ roles }, null, 2))
+        return
+      }
+
+      if (roles.length === 0) {
+        console.log("\nNo prompt versions found.")
+        return
+      }
+
+      console.log(`\nAvailable prompt roles:\n`)
+      for (const r of roles) {
+        console.log(`  - ${r}`)
+      }
+      console.log(`\n${roles.length} role(s) total`)
+      console.log("\nUse 'clutch prompts list --role <role>' to see versions for a specific role.")
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Failed to list prompts: ${message}`)
+    process.exit(1)
+  }
+}
+
+async function cmdPromptsGet(flags: Record<string, string | boolean>): Promise<void> {
+  const role = typeof flags.role === "string" ? flags.role : undefined
+  const version = typeof flags.version === "string" ? parseInt(flags.version, 10) : undefined
+
+  if (!role) {
+    console.error("Error: --role is required")
+    process.exit(1)
+  }
+
+  try {
+    const convex = getConvexClient()
+    let promptVersion: PromptVersion | null
+
+    if (version !== undefined && !isNaN(version)) {
+      // Get specific version
+      promptVersion = await convex.query(api.promptVersions.getByVersion, {
+        role,
+        model: undefined,
+        version,
+      }) as PromptVersion | null
+    } else {
+      // Get active version
+      promptVersion = await convex.query(api.promptVersions.getActive, {
+        role,
+        model: undefined,
+      }) as PromptVersion | null
+    }
+
+    if (!promptVersion) {
+      console.error(`No prompt version found for role: ${role}${version !== undefined ? `, version: ${version}` : " (no active version)"}`)
+      process.exit(1)
+    }
+
+    console.log(`\nPrompt Version Details\n`)
+    console.log(`ID:           ${promptVersion.id}`)
+    console.log(`Role:         ${promptVersion.role}`)
+    console.log(`Version:      ${promptVersion.version}`)
+    console.log(`Model:        ${promptVersion.model || "-"}`)
+    console.log(`Active:       ${promptVersion.active ? "Yes" : "No"}`)
+    console.log(`Created By:   ${promptVersion.created_by}`)
+    console.log(`Created At:   ${new Date(promptVersion.created_at).toISOString()}`)
+    if (promptVersion.change_summary) {
+      console.log(`Change Summary: ${promptVersion.change_summary}`)
+    }
+    if (promptVersion.parent_version_id) {
+      console.log(`Parent ID:    ${promptVersion.parent_version_id}`)
+    }
+    if (promptVersion.ab_status && promptVersion.ab_status !== "none") {
+      console.log(`A/B Status:   ${promptVersion.ab_status}`)
+    }
+
+    console.log(`\nContent:`)
+    console.log("-".repeat(80))
+    console.log(promptVersion.content)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Failed to get prompt: ${message}`)
+    process.exit(1)
+  }
+}
+
+async function cmdPromptsEdit(flags: Record<string, string | boolean>): Promise<void> {
+  const role = typeof flags.role === "string" ? flags.role : undefined
+
+  if (!role) {
+    console.error("Error: --role is required")
+    process.exit(1)
+  }
+
+  const editor = process.env.EDITOR || "vim"
+  const tmpFile = `/tmp/clutch-prompt-edit-${Date.now()}.md`
+
+  try {
+    const convex = getConvexClient()
+
+    // Get current active version as starting point
+    const current = await convex.query(api.promptVersions.getActive, {
+      role,
+      model: undefined,
+    }) as PromptVersion | null
+
+    // Write current content or template to temp file
+    const { execFileSync: execSync } = await import("node:child_process")
+    if (current) {
+      writeFileSync(tmpFile, current.content, "utf-8")
+      console.log(`Editing active version ${current.version} for role: ${role}`)
+    } else {
+      writeFileSync(tmpFile, `<!-- Enter your prompt template for role: ${role} -->\n`, "utf-8")
+      console.log(`Creating new prompt for role: ${role}`)
+    }
+
+    // Open editor
+    console.log(`Opening ${editor}...`)
+    try {
+      execSync(editor, [tmpFile], { stdio: "inherit" })
+    } catch {
+      console.error(`Editor exited with error. Aborting.`)
+      process.exit(1)
+    }
+
+    // Read edited content
+    const newContent = readFileSync(tmpFile, "utf-8")
+
+    // Check if content changed
+    if (current && newContent === current.content) {
+      console.log("No changes made. Aborting.")
+      process.exit(0)
+    }
+
+    // Validate
+    console.log("\nValidating template...")
+    const validation = await apiPost("/prompts/validate", { role, content: newContent }) as {
+      valid: boolean
+      syntaxErrors: string[]
+      undefinedVariables: string[]
+      unusedVariables: string[]
+    }
+
+    if (!validation.valid) {
+      console.error("\nValidation failed:")
+      for (const err of validation.syntaxErrors) {
+        console.error(`  - Syntax: ${err}`)
+      }
+      for (const err of validation.undefinedVariables) {
+        console.error(`  - Undefined variable: ${err}`)
+      }
+      console.error("\nTemplate NOT saved. Fix errors and try again.")
+      process.exit(1)
+    }
+
+    // Show warnings
+    if (validation.unusedVariables.length > 0) {
+      console.log(`\nWarnings (unused variables): ${validation.unusedVariables.join(", ")}`)
+    }
+
+    // Show preview
+    console.log("\n--- Template Preview (first 20 lines) ---")
+    const lines = newContent.split("\n")
+    console.log(lines.slice(0, 20).join("\n"))
+    if (lines.length > 20) {
+      console.log(`... (${lines.length - 20} more lines)`)
+    }
+    console.log("--- End Preview ---\n")
+
+    // Confirm save
+    console.log("Press Ctrl+C to cancel, or wait 3 seconds to confirm...")
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+
+    // Create new version
+    const result = await apiPost("/prompts", {
+      role,
+      content: newContent,
+      change_summary: `Edited via CLI (from version ${current?.version || "new"})`,
+      parent_version_id: current?.id,
+      created_by: "human",
+    }) as { version: PromptVersion }
+
+    console.log(`* Created new version ${result.version.version} for role: ${role}`)
+    console.log(`  ID: ${result.version.id}`)
+    console.log(`  Active: Yes`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Failed to edit prompt: ${message}`)
+    process.exit(1)
+  } finally {
+    // Cleanup temp file
+    try {
+      await import("node:fs").then((fs) => fs.unlinkSync(tmpFile))
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+}
+
+async function cmdPromptsCreate(flags: Record<string, string | boolean>): Promise<void> {
+  const role = typeof flags.role === "string" ? flags.role : undefined
+  const fromFile = typeof flags["from-file"] === "string" ? flags["from-file"] : undefined
+  const summary = typeof flags.summary === "string" ? flags.summary : undefined
+
+  if (!role) {
+    console.error("Error: --role is required")
+    process.exit(1)
+  }
+
+  if (!fromFile) {
+    console.error("Error: --from-file <path> is required")
+    process.exit(1)
+  }
+
+  if (!summary) {
+    console.error("Error: --summary \"description\" is required")
+    process.exit(1)
+  }
+
+  try {
+    // Read file
+    const content = readFileSync(fromFile, "utf-8")
+
+    // Validate first
+    console.log("Validating template...")
+    const validation = await apiPost("/prompts/validate", { role, content }) as {
+      valid: boolean
+      syntaxErrors: string[]
+      undefinedVariables: string[]
+      unusedVariables: string[]
+    }
+
+    if (!validation.valid) {
+      console.error("\nValidation failed:")
+      for (const err of validation.syntaxErrors) {
+        console.error(`  - Syntax: ${err}`)
+      }
+      for (const err of validation.undefinedVariables) {
+        console.error(`  - Undefined variable: ${err}`)
+      }
+      console.error("\nTemplate NOT saved. Fix errors or use --skip-validation flag.")
+      process.exit(1)
+    }
+
+    if (validation.unusedVariables.length > 0) {
+      console.log(`Warnings (unused variables): ${validation.unusedVariables.join(", ")}`)
+    }
+
+    // Create version
+    const result = await apiPost("/prompts", {
+      role,
+      content,
+      change_summary: summary,
+      created_by: "human",
+    }) as { version: PromptVersion }
+
+    console.log(`* Created new version ${result.version.version} for role: ${role}`)
+    console.log(`  ID: ${result.version.id}`)
+    console.log(`  Summary: ${summary}`)
+    console.log(`  Active: Yes`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes("ENOENT")) {
+      console.error(`File not found: ${fromFile}`)
+    } else {
+      console.error(`Failed to create prompt: ${message}`)
+    }
+    process.exit(1)
+  }
+}
+
+async function cmdPromptsActivate(flags: Record<string, string | boolean>): Promise<void> {
+  const role = typeof flags.role === "string" ? flags.role : undefined
+  const version = typeof flags.version === "string" ? parseInt(flags.version, 10) : undefined
+
+  if (!role) {
+    console.error("Error: --role is required")
+    process.exit(1)
+  }
+
+  if (version === undefined || isNaN(version)) {
+    console.error("Error: --version <number> is required")
+    process.exit(1)
+  }
+
+  try {
+    const convex = getConvexClient()
+
+    // Find the version by role+version
+    const promptVersion = await convex.query(api.promptVersions.getByVersion, {
+      role,
+      model: undefined,
+      version,
+    }) as PromptVersion | null
+
+    if (!promptVersion) {
+      console.error(`Version ${version} not found for role: ${role}`)
+      process.exit(1)
+    }
+
+    // Activate it
+    await apiPatch(`/prompts/${promptVersion.id}/activate`, {})
+
+    console.log(`* Activated version ${version} for role: ${role}`)
+    console.log(`  ID: ${promptVersion.id}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Failed to activate prompt: ${message}`)
+    process.exit(1)
+  }
+}
+
+async function cmdPromptsDiff(flags: Record<string, string | boolean>): Promise<void> {
+  const role = typeof flags.role === "string" ? flags.role : undefined
+  const v1 = typeof flags.v1 === "string" ? parseInt(flags.v1, 10) : undefined
+  const v2 = typeof flags.v2 === "string" ? parseInt(flags.v2, 10) : undefined
+
+  if (!role) {
+    console.error("Error: --role is required")
+    process.exit(1)
+  }
+
+  if (v1 === undefined || isNaN(v1)) {
+    console.error("Error: --v1 <number> is required")
+    process.exit(1)
+  }
+
+  if (v2 === undefined || isNaN(v2)) {
+    console.error("Error: --v2 <number> is required")
+    process.exit(1)
+  }
+
+  try {
+    const convex = getConvexClient()
+
+    // Get both versions
+    const [version1, version2] = await Promise.all([
+      convex.query(api.promptVersions.getByVersion, { role, model: undefined, version: v1 }),
+      convex.query(api.promptVersions.getByVersion, { role, model: undefined, version: v2 }),
+    ]) as [PromptVersion | null, PromptVersion | null]
+
+    if (!version1) {
+      console.error(`Version ${v1} not found for role: ${role}`)
+      process.exit(1)
+    }
+
+    if (!version2) {
+      console.error(`Version ${v2} not found for role: ${role}`)
+      process.exit(1)
+    }
+
+    // Generate diff
+    const diff = createTwoFilesPatch(
+      `${role}-v${v1}.md`,
+      `${role}-v${v2}.md`,
+      version1.content,
+      version2.content,
+      `Version ${v1}`,
+      `Version ${v2}`
+    )
+
+    console.log(`\nDiff: ${role} v${v1} → v${v2}\n`)
+    console.log(diff)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Failed to diff prompts: ${message}`)
+    process.exit(1)
+  }
+}
+
+async function cmdPromptsValidate(flags: Record<string, string | boolean>): Promise<void> {
+  const role = typeof flags.role === "string" ? flags.role : undefined
+  const file = typeof flags.file === "string" ? flags.file : undefined
+
+  if (!role) {
+    console.error("Error: --role is required")
+    process.exit(1)
+  }
+
+  if (!file) {
+    console.error("Error: --file <path> is required")
+    process.exit(1)
+  }
+
+  try {
+    const content = readFileSync(file, "utf-8")
+
+    const result = await apiPost("/prompts/validate", { role, content }) as {
+      valid: boolean
+      syntaxErrors: string[]
+      undefinedVariables: string[]
+      unusedVariables: string[]
+      schema: Array<{ name: string; type: string; required: boolean; description: string }>
+    }
+
+    console.log(`\nValidation Result for ${file} (role: ${role})\n`)
+    console.log(`Valid: ${result.valid ? "✓ Yes" : "✗ No"}`)
+
+    if (result.syntaxErrors.length > 0) {
+      console.log("\nSyntax Errors:")
+      for (const err of result.syntaxErrors) {
+        console.log(`  - ${err}`)
+      }
+    }
+
+    if (result.undefinedVariables.length > 0) {
+      console.log("\nUndefined Variables:")
+      for (const err of result.undefinedVariables) {
+        console.log(`  - ${err}`)
+      }
+    }
+
+    if (result.unusedVariables.length > 0) {
+      console.log("\nUnused Variables (defined in schema but not used):")
+      for (const v of result.unusedVariables) {
+        console.log(`  - ${v}`)
+      }
+    }
+
+    if (result.valid) {
+      console.log("\n✓ Template is valid and can be saved.")
+    } else {
+      console.log("\n✗ Template has errors and cannot be saved.")
+      process.exit(1)
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes("ENOENT")) {
+      console.error(`File not found: ${file}`)
+    } else {
+      console.error(`Failed to validate prompt: ${message}`)
+    }
+    process.exit(1)
+  }
+}
+
+async function cmdPromptsRollback(flags: Record<string, string | boolean>): Promise<void> {
+  const role = typeof flags.role === "string" ? flags.role : undefined
+
+  if (!role) {
+    console.error("Error: --role is required")
+    process.exit(1)
+  }
+
+  try {
+    const convex = getConvexClient()
+
+    // Get all versions for this role
+    const versions = await convex.query(api.promptVersions.listByRole, {
+      role,
+      model: undefined,
+    }) as PromptVersion[]
+
+    if (versions.length < 2) {
+      console.error(`No previous version to rollback to for role: ${role}`)
+      process.exit(1)
+    }
+
+    // Find current active
+    const activeVersion = versions.find((v) => v.active)
+    if (!activeVersion) {
+      console.error(`No active version found for role: ${role}`)
+      process.exit(1)
+    }
+
+    // Find previous version (highest version number that's not active)
+    const previousVersions = versions.filter((v) => v.version < activeVersion.version)
+    if (previousVersions.length === 0) {
+      console.error(`No previous version found for role: ${role}`)
+      process.exit(1)
+    }
+
+    const rollbackTarget = previousVersions.sort((a, b) => b.version - a.version)[0]
+
+    // Confirm
+    console.log(`Current active: version ${activeVersion.version}`)
+    console.log(`Rollback to: version ${rollbackTarget.version}`)
+    console.log("\nPress Ctrl+C to cancel, or wait 3 seconds to confirm...")
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+
+    // Activate previous version
+    await apiPatch(`/prompts/${rollbackTarget.id}/activate`, {})
+
+    console.log(`* Rolled back to version ${rollbackTarget.version} for role: ${role}`)
+    console.log(`  ID: ${rollbackTarget.id}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Failed to rollback prompt: ${message}`)
+    process.exit(1)
+  }
+}
+
+// ============================================
 // Main Entry Point
 // ============================================
 
@@ -1928,6 +2510,32 @@ async function main(): Promise<void> {
       break
     case command === "deploy check":
       await cmdDeployCheck(convex, project!)
+      break
+
+    // Prompt commands
+    case command === "prompts list":
+      await cmdPromptsList(flags)
+      break
+    case command === "prompts get":
+      await cmdPromptsGet(flags)
+      break
+    case command === "prompts edit":
+      await cmdPromptsEdit(flags)
+      break
+    case command === "prompts create":
+      await cmdPromptsCreate(flags)
+      break
+    case command === "prompts activate":
+      await cmdPromptsActivate(flags)
+      break
+    case command === "prompts diff":
+      await cmdPromptsDiff(flags)
+      break
+    case command === "prompts validate":
+      await cmdPromptsValidate(flags)
+      break
+    case command === "prompts rollback":
+      await cmdPromptsRollback(flags)
       break
 
     default:
