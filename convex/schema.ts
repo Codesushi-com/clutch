@@ -345,6 +345,8 @@ export default defineSchema({
     created_by: v.string(), // "seed", "human", "analyzer"
     active: v.boolean(), // is this the current active version?
     created_at: v.number(),
+    // Template variables - JSON schema of expected variables for this template
+    template_variables: v.optional(v.string()), // JSON string of VariableSchema[]
     // A/B testing fields
     ab_status: v.optional(v.union(
       v.literal("control"),

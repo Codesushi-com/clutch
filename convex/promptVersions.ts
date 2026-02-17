@@ -17,10 +17,187 @@ type PromptVersion = {
   created_by: string
   active: boolean
   created_at: number
+  template_variables?: string // JSON string of VariableSchema[]
   ab_status?: 'control' | 'challenger' | 'none'
   ab_split_percent?: number
   ab_started_at?: number
   ab_min_tasks?: number
+}
+
+// Variable schema definition
+interface VariableSchema {
+  name: string
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object'
+  required: boolean
+  description: string
+}
+
+// ============================================
+// Variable Schema Definitions (inline for Convex compatibility)
+// ============================================
+
+const COMMON_VARIABLES: VariableSchema[] = [
+  { name: 'taskId', type: 'string', required: true, description: 'Unique task identifier' },
+  { name: 'taskTitle', type: 'string', required: true, description: 'Task title' },
+  { name: 'taskDescription', type: 'string', required: true, description: 'Task description' },
+  { name: 'projectSlug', type: 'string', required: true, description: 'Project slug for CLI commands' },
+  { name: 'repoDir', type: 'string', required: true, description: 'Repository directory path' },
+  { name: 'comments', type: 'array', required: false, description: 'Task comments from previous work' },
+]
+
+const DEV_VARIABLES: VariableSchema[] = [
+  ...COMMON_VARIABLES,
+  { name: 'branchName', type: 'string', required: true, description: 'Git branch name' },
+  { name: 'worktreeDir', type: 'string', required: true, description: 'Worktree directory path' },
+]
+
+const REVIEWER_VARIABLES: VariableSchema[] = [
+  ...COMMON_VARIABLES,
+  { name: 'prNumber', type: 'number', required: false, description: 'Pull request number' },
+  { name: 'branchName', type: 'string', required: true, description: 'Git branch name' },
+  { name: 'worktreeDir', type: 'string', required: true, description: 'Worktree directory path' },
+]
+
+const CONFLICT_RESOLVER_VARIABLES: VariableSchema[] = REVIEWER_VARIABLES
+
+const PM_VARIABLES: VariableSchema[] = [
+  ...COMMON_VARIABLES,
+  { name: 'imageUrls', type: 'array', required: false, description: 'Attached image URLs' },
+  { name: 'signalResponses', type: 'array', required: false, description: 'Signal Q&A responses' },
+]
+
+const RESEARCH_VARIABLES: VariableSchema[] = COMMON_VARIABLES
+
+const ROLE_VARIABLE_SCHEMAS: Record<string, VariableSchema[]> = {
+  dev: DEV_VARIABLES,
+  reviewer: REVIEWER_VARIABLES,
+  conflict_resolver: CONFLICT_RESOLVER_VARIABLES,
+  pm: PM_VARIABLES,
+  research: RESEARCH_VARIABLES,
+  researcher: RESEARCH_VARIABLES, // Backwards compatibility
+}
+
+function getVariableNamesForRole(role: string): Set<string> {
+  const schema = ROLE_VARIABLE_SCHEMAS[role] || COMMON_VARIABLES
+  return new Set(schema.map((v) => v.name))
+}
+
+// ============================================
+// Template Validation (lightweight for Convex)
+// ============================================
+
+interface ValidationResult {
+  valid: boolean
+  syntaxErrors: string[]
+  undefinedVariables: string[]
+}
+
+/**
+ * Extract variable references from a Handlebars template
+ * Uses simple regex parsing since we can't import Handlebars in Convex
+ */
+function extractTemplateVariables(template: string): Set<string> {
+  const variables = new Set<string>()
+  const regex = /\{\{\{?[#/]?(\w+)(?:\.[\w.]+)?\}?\}?/g
+  let match
+
+  while ((match = regex.exec(template)) !== null) {
+    const varName = match[1]
+    // Skip Handlebars built-in helpers
+    if (varName && !['if', 'unless', 'each', 'with', 'this'].includes(varName)) {
+      variables.add(varName)
+    }
+  }
+
+  return variables
+}
+
+/**
+ * Validate Handlebars template syntax using regex
+ * This is a lightweight check - full parsing happens in the worker
+ */
+function checkTemplateSyntax(template: string): string[] {
+  const errors: string[] = []
+
+  // Check for unclosed blocks
+  const openBlockRegex = /\{\{#(\w+)/g
+  const closeBlockRegex = /\{\{\/(\w+)/g
+
+  const openBlocks: string[] = []
+  let match
+
+  while ((match = openBlockRegex.exec(template)) !== null) {
+    if (!['else'].includes(match[1])) {
+      openBlocks.push(match[1])
+    }
+  }
+
+  while ((match = closeBlockRegex.exec(template)) !== null) {
+    const index = openBlocks.lastIndexOf(match[1])
+    if (index !== -1) {
+      openBlocks.splice(index, 1)
+    } else {
+      errors.push(`Unexpected closing block: {{/${match[1]}}}`)
+    }
+  }
+
+  if (openBlocks.length > 0) {
+    errors.push(`Unclosed blocks: ${openBlocks.join(', ')}`)
+  }
+
+  // Check for malformed mustaches (unmatched braces)
+  const openCount = (template.match(/\{\{/g) || []).length
+  const closeCount = (template.match(/\}\}/g) || []).length
+
+  if (openCount !== closeCount) {
+    errors.push(`Mismatched braces: ${openCount} opening, ${closeCount} closing`)
+  }
+
+  return errors
+}
+
+/**
+ * Validate a template for syntax errors and undefined variables
+ */
+export function validateTemplate(template: string, role: string): ValidationResult {
+  const result: ValidationResult = {
+    valid: true,
+    syntaxErrors: [],
+    undefinedVariables: [],
+  }
+
+  // Check syntax
+  const syntaxErrors = checkTemplateSyntax(template)
+  if (syntaxErrors.length > 0) {
+    result.valid = false
+    result.syntaxErrors = syntaxErrors
+  }
+
+  // Only check variables if syntax is OK
+  if (result.valid) {
+    const referencedVars = extractTemplateVariables(template)
+    const allowedVars = getVariableNamesForRole(role)
+
+    for (const varName of referencedVars) {
+      if (!allowedVars.has(varName)) {
+        result.undefinedVariables.push(varName)
+      }
+    }
+
+    if (result.undefinedVariables.length > 0) {
+      result.valid = false
+    }
+  }
+
+  return result
+}
+
+/**
+ * Generate variable schema for a role as JSON string
+ */
+export function generateVariableSchema(role: string): string {
+  const schema = ROLE_VARIABLE_SCHEMAS[role] || COMMON_VARIABLES
+  return JSON.stringify(schema)
 }
 
 // ============================================
@@ -193,6 +370,32 @@ export const getActive = query({
   },
 })
 
+/**
+ * Get variable schema for a role.
+ */
+export const getVariableSchema = query({
+  args: {
+    role: v.string(),
+  },
+  handler: async (_ctx, args): Promise<{ role: string; schema: VariableSchema[] }> => {
+    const schema = ROLE_VARIABLE_SCHEMAS[args.role] || COMMON_VARIABLES
+    return { role: args.role, schema }
+  },
+})
+
+/**
+ * Validate a template without saving it.
+ */
+export const validate = query({
+  args: {
+    role: v.string(),
+    content: v.string(),
+  },
+  handler: async (_ctx, args): Promise<ValidationResult> => {
+    return validateTemplate(args.content, args.role)
+  },
+})
+
 // ============================================
 // Mutations
 // ============================================
@@ -200,6 +403,7 @@ export const getActive = query({
 /**
  * Create a new prompt version.
  * Auto-increments version number for the role+model combo.
+ * Validates template syntax and variables.
  */
 export const create = mutation({
   args: {
@@ -209,9 +413,22 @@ export const create = mutation({
     change_summary: v.optional(v.string()),
     parent_version_id: v.optional(v.string()),
     created_by: v.string(),
+    skip_validation: v.optional(v.boolean()), // Allow override for edge cases
   },
   handler: async (ctx, args): Promise<PromptVersion> => {
-    const { role, content, model, change_summary, parent_version_id, created_by } = args
+    const { role, content, model, change_summary, parent_version_id, created_by, skip_validation } = args
+
+    // Validate template unless explicitly skipped
+    if (!skip_validation) {
+      const validation = validateTemplate(content, role)
+      if (!validation.valid) {
+        const errors = [
+          ...validation.syntaxErrors.map((e) => `Syntax: ${e}`),
+          ...validation.undefinedVariables.map((v) => `Undefined variable: ${v}`),
+        ].join('; ')
+        throw new Error(`Template validation failed: ${errors}`)
+      }
+    }
 
     // Get the latest version for this role+model to determine next version number
     let latestVersion = 0
@@ -260,6 +477,9 @@ export const create = mutation({
       }
     }
 
+    // Generate variable schema for this role
+    const templateVariables = generateVariableSchema(role)
+
     // Create the new version as active
     const id = generateId()
     const now = Date.now()
@@ -275,6 +495,7 @@ export const create = mutation({
       created_by,
       active: true,
       created_at: now,
+      template_variables: templateVariables,
     }
 
     await ctx.db.insert('promptVersions', promptVersion)
@@ -341,12 +562,14 @@ export const setActive = mutation({
 
 /**
  * Update the content of a version (rarely used - prefer creating new versions).
+ * Re-validates the template.
  */
 export const update = mutation({
   args: {
     id: v.string(),
     content: v.optional(v.string()),
     change_summary: v.optional(v.string()),
+    skip_validation: v.optional(v.boolean()), // Allow override for edge cases
   },
   handler: async (ctx, args): Promise<void> => {
     // Find the version by its UUID (id field)
@@ -357,6 +580,20 @@ export const update = mutation({
 
     if (versions.length === 0) {
       throw new Error(`Prompt version ${args.id} not found`)
+    }
+
+    const version = versions[0]
+
+    // Validate template if content is being updated
+    if (args.content !== undefined && !args.skip_validation) {
+      const validation = validateTemplate(args.content, version.role)
+      if (!validation.valid) {
+        const errors = [
+          ...validation.syntaxErrors.map((e) => `Syntax: ${e}`),
+          ...validation.undefinedVariables.map((v) => `Undefined variable: ${v}`),
+        ].join('; ')
+        throw new Error(`Template validation failed: ${errors}`)
+      }
     }
 
     const updates: Partial<Pick<PromptVersion, 'content' | 'change_summary'>> = {}
