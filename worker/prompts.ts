@@ -540,6 +540,18 @@ function isTemplate(template: string): boolean {
   return /\{\{\{?[#/]?[\w.]/.test(template)
 }
 
+/**
+ * Check if the template engine feature flag is enabled
+ *
+ * Feature flag: PROMPT_TEMPLATE_ENGINE
+ * - "enabled" | "1" | "true" = Use template engine (new behavior)
+ * - unset | "disabled" | "0" | "false" = Use legacy hardcoded context
+ */
+function isTemplateEngineEnabled(): boolean {
+  const flag = process.env.PROMPT_TEMPLATE_ENGINE?.toLowerCase()
+  return flag === "enabled" || flag === "1" || flag === "true"
+}
+
 // ============================================
 // Main Prompt Builder
 // ============================================
@@ -599,6 +611,14 @@ export async function buildPromptAsync(
     // Render the SOUL template with variables
     try {
       const renderedSoul = renderTemplate(soulTemplate, variables)
+
+      // If template engine is enabled, the template is self-contained (includes task context)
+      // Return only the rendered template without additional context sections
+      if (isTemplateEngineEnabled()) {
+        return renderedSoul
+      }
+
+      // Feature flag disabled: include marker for debugging during migration
       return `${renderedSoul}\n\n---\n\nTask context rendered via template engine`
     } catch (error) {
       logError?.(`[PromptBuilder] Template rendering failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -606,7 +626,7 @@ export async function buildPromptAsync(
     }
   }
 
-  // Legacy: Use static task context
+  // Legacy: Use static task context (for roles not yet migrated to templates)
   const taskContext = buildTaskContext(params)
   return `${soulTemplate}\n\n---\n\n${taskContext}`
 }
