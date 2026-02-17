@@ -174,10 +174,10 @@ ${params.taskDescription}${commentsSection}
 5. If issues found → leave rejection feedback in TWO places, then send the task back to dev:
    - GitHub PR comment (so humans see it): \`gh pr comment ${prNumber} --body "<feedback>"\`
    - OpenClutch task comment (so agents see it on retry):
-     \`curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "REVIEW REJECTED (PR #${prNumber}): <feedback>", "author": "reviewer", "author_type": "agent"}'\`
+     \`clutch tasks comment ${params.taskId} --project ${projectSlug} "REVIEW REJECTED (PR #${prNumber}): <feedback>" --author reviewer\`
 
    After posting feedback, move the task back to \`ready\` so a dev agent re-picks it up with the feedback in context:
-   \`curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "ready"}'\`
+   \`clutch tasks move ${params.taskId} --project ${projectSlug} ready\`
 
 You do NOT have browser access. If UI changes need visual verification, note it in your review comment.
 
@@ -278,8 +278,8 @@ ${params.taskDescription}${commentsSection}
 
 7. **Post success comment and move to in_review (so a reviewer can verify and merge):**
    \`\`\`bash
-   curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Resolved merge conflicts. Branch rebased onto main and force-pushed. PR is now ready for review.", "author": "agent", "author_type": "agent"}'
-   curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "in_review"}'
+   clutch tasks comment ${params.taskId} --project ${params.projectSlug ?? "clutch"} "Resolved merge conflicts. Branch rebased onto main and force-pushed. PR is now ready for review."
+   clutch tasks move ${params.taskId} --project ${params.projectSlug ?? "clutch"} in_review
    \`\`\`
    ⚠️ **NEVER move tasks to done.** Your job is conflict resolution only — a reviewer must review and merge the PR.
 
@@ -299,8 +299,8 @@ If the conflicts are too complex or you're unsure about the correct resolution:
 
 3. **Post comment explaining the blocker and move to blocked:**
    \`\`\`bash
-   curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Cannot resolve conflicts automatically. Conflicting files: <list files here>. Reason: <specific explanation>", "author": "agent", "author_type": "agent"}'
-   curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "blocked"}'
+   clutch tasks comment ${params.taskId} --project ${params.projectSlug ?? "clutch"} "Cannot resolve conflicts automatically. Conflicting files: <list files here>. Reason: <specific explanation>"
+   clutch tasks move ${params.taskId} --project ${params.projectSlug ?? "clutch"} blocked
    \`\`\``
 }
 
@@ -333,10 +333,10 @@ cd ${params.worktreeDir}
 pnpm install
 
 # Record the branch name on the task
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"branch": "${branchName}"}'
+clutch tasks update ${params.taskId} --project ${params.projectSlug ?? "clutch"} --branch ${branchName}
 
 # Post progress comment
-curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Started work. Branch: \`${branchName}\`, worktree: \`${params.worktreeDir}\`", "author": "agent", "author_type": "agent"}'
+clutch tasks comment ${params.taskId} --project ${params.projectSlug ?? "clutch"} "Started work. Branch: ${branchName}, worktree: ${params.worktreeDir}"
 \`\`\`
 
 ## Pre-commit Rules (MANDATORY)
@@ -350,8 +350,8 @@ curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Conte
 **If the work is already done** (e.g., completed by another PR already merged to main):
 - Move the task directly to \`done\` with a comment explaining what you found:
   \`\`\`bash
-  curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d '{"content": "Work already completed in PR #XXX (commit abc123). Verified: <what you checked>. Moving to done — no new PR needed.", "author": "agent", "author_type": "agent"}'
-  curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "done"}'
+  clutch tasks comment ${params.taskId} --project ${params.projectSlug ?? "clutch"} "Work already completed in PR #XXX (commit abc123). Verified: <what you checked>. Moving to done — no new PR needed."
+  clutch tasks move ${params.taskId} --project ${params.projectSlug ?? "clutch"} done
   \`\`\`
 - Do NOT move to \`in_review\` — there is no PR for a reviewer to check. Moving to \`in_review\` without a PR will cause an infinite retry loop.
 
@@ -383,13 +383,13 @@ PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
 if [ -z "$PR_NUMBER" ]; then echo "ERROR: PR creation failed"; exit 1; fi
 
 # Step 6: Record PR number on the task
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d "{\"pr_number\": $PR_NUMBER}"
+clutch tasks update ${params.taskId} --project ${params.projectSlug ?? "clutch"} --pr-number $PR_NUMBER
 
 # Step 7: Post comment
-curl -X POST http://localhost:3002/api/tasks/${params.taskId}/comments -H 'Content-Type: application/json' -d "{\"content\": \"Implementation complete. PR #$PR_NUMBER opened.\", \"author\": \"agent\", \"author_type\": \"agent\"}"
+clutch tasks comment ${params.taskId} --project ${params.projectSlug ?? "clutch"} "Implementation complete. PR #$PR_NUMBER opened."
 
 # Step 8: LAST — move to in_review (only after PR number is recorded)
-curl -X PATCH http://localhost:3002/api/tasks/${params.taskId} -H 'Content-Type: application/json' -d '{"status": "in_review"}'
+clutch tasks move ${params.taskId} --project ${params.projectSlug ?? "clutch"} in_review
 \`\`\`
 
 **CRITICAL: Do NOT set status to \`in_review\` unless steps 1-7 succeeded. If any step fails, leave the task in its current status — the loop will retry.**`
