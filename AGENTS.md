@@ -177,3 +177,79 @@ Task descriptions may contain special characters including:
 - Command examples with variables: `PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')`
 
 These are preserved in task specifications and should be handled correctly by agents.
+
+---
+
+## Prompt Editing Workflow
+
+Agent prompts are stored as Handlebars templates in the Convex `promptVersions` table. They can be edited via the Observatory UI or API.
+
+### Viewing Current Prompts
+
+1. Open the Observatory at `http://localhost:3002/work-loop`
+2. Click the **Prompts** tab
+3. Select a role to view its active template
+
+### Creating a New Prompt Version
+
+1. In the Prompts tab, select the role to edit
+2. Click **New Version**
+3. Edit the Handlebars template
+4. Add a change summary describing what changed and why
+5. Toggle **Active** to make it the current version
+6. (Optional) Enable **A/B Test** to run a controlled experiment
+
+### Template Syntax
+
+Templates use Handlebars syntax:
+
+```handlebars
+## Task: {{taskTitle}}
+
+{{#if hasComments}}
+### Comments:
+{{#each comments}}
+- [{{timestamp}}] {{author}}: {{content}}
+{{/each}}
+{{/if}}
+```
+
+See `docs/prompt-templates.md` for full documentation.
+
+### Available Variables by Role
+
+| Variable | dev | reviewer | conflict_resolver | pm | research |
+|----------|-----|----------|-------------------|-----|----------|
+| `taskId` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `taskTitle` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `taskDescription` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `projectSlug` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `repoDir` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `comments` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `branchName` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `worktreeDir` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `prNumber` | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `imageUrls` | ❌ | ❌ | ❌ | ✅ | ❌ |
+| `signalResponses` | ❌ | ❌ | ❌ | ✅ | ❌ |
+
+### A/B Testing
+
+To test a prompt change:
+
+1. Create new version with **A/B Test** enabled
+2. Set traffic split (default: 50/50)
+3. Monitor metrics in the Prompts tab:
+   - Success rate per variant
+   - Average completion time
+   - Cost per task
+4. After sufficient data, promote winner to 100%
+
+### Seeding Default Prompts
+
+If prompts are missing (fresh install or new role):
+
+```bash
+curl -X POST http://localhost:3002/api/prompts/seed
+```
+
+This creates default templates for all roles.

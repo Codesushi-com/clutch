@@ -47,11 +47,6 @@ export interface PromptParams {
   branch?: string | null
   /** Optional task comments for context (from previous work / triage) */
   comments?: TaskComment[]
-  /**
-   * The SOUL template content for the role.
-   * @deprecated Only used by legacy buildPrompt(). Use buildPromptAsync() instead.
-   */
-  soulTemplate?: string
 }
 
 export interface BuildPromptOptions {
@@ -116,6 +111,8 @@ function buildReviewerTemplateVariables(params: PromptParams): Record<string, un
     prNumber: params.prNumber,
     branchName,
     worktreeDir: params.worktreeDir,
+    hasPrNumber: params.prNumber != null,
+    hasComments: (params.comments?.length ?? 0) > 0,
   }
 }
 
@@ -134,6 +131,8 @@ function buildConflictResolverTemplateVariables(params: PromptParams): Record<st
     prNumber: params.prNumber,
     branchName,
     worktreeDir: params.worktreeDir,
+    hasPrNumber: params.prNumber != null,
+    hasComments: (params.comments?.length ?? 0) > 0,
   }
 }
 
@@ -176,340 +175,6 @@ function buildTemplateVariables(params: PromptParams): Record<string, unknown> {
 }
 
 // ============================================
-// Legacy Task Context Builders (for backwards compatibility)
-// ============================================
-
-/**
- * Format task comments for inclusion in prompts
- * Filters out automated status-change noise and formats chronologically
- */
-function formatCommentsSection(comments: TaskComment[] | undefined): string {
-  if (!comments || comments.length === 0) {
-    return ""
-  }
-
-  const formattedComments = comments
-    .map((c) => `[${c.timestamp}] ${c.author}: ${c.content}`)
-    .join("\n")
-
-  return `
-## Task Comments (context from previous work / triage)
-
-${formattedComments}
-`
-}
-
-/**
- * Build task context section for Reviewer role
- */
-function buildReviewerTaskContext(params: PromptParams): string {
-  const commentsSection = formatCommentsSection(params.comments)
-  const prNumber = params.prNumber ?? "<number>"
-  const projectSlug = params.projectSlug ?? "clutch"
-
-  return `## Task: ${params.taskTitle}
-
-**Read ${params.repoDir}/AGENTS.md first.**
-
-Ticket ID: \`${params.taskId}\`
-Role: \`reviewer\`
-
-${params.taskDescription}${commentsSection}
-
----
-
-**Your job:** Review the PR for this ticket.
-
-**Worktree Path:** ${params.worktreeDir}
-**PR Number:** #${prNumber}
-**Project:** ${projectSlug}
-
-**Review steps:**
-1. Read the ticket description above
-2. Check the diff: \`gh pr diff ${prNumber}\`
-3. Install deps + run verification commands from AGENTS.md: \`cd ${params.worktreeDir}\` then follow the project's build/lint/typecheck instructions
-4. If all checks pass → MERGE: \`gh pr merge ${prNumber} --squash --delete-branch\`
-5. If issues found → leave rejection feedback in TWO places, then send the task back to dev:
-   - GitHub PR comment (so humans see it): \`gh pr comment ${prNumber} --body "<feedback>"\`
-   - OpenClutch task comment (so agents see it on retry):
-     \`clutch tasks comment ${params.taskId} --project ${projectSlug} "REVIEW REJECTED (PR #${prNumber}): <feedback>" --author reviewer\`
-
-   After posting feedback, move the task back to \`ready\` so a dev agent re-picks it up with the feedback in context:
-   \`clutch tasks move ${params.taskId} --project ${projectSlug} ready\`
-
-You do NOT have browser access. If UI changes need visual verification, note it in your review comment.
-
-**Your session MUST end with either step 4 (merge) or step 5 (rejection feedback + move to ready).
-Finishing without either will block the task and waste a triage cycle.**
-
-## Creating Follow-up Tickets (for non-blocking feedback)
-
-If you find non-blocking improvements (style, small refactors, tech-debt, "would be nicer if..."), create follow-up tickets so they don't get lost.
-
-**Use this CLI command:**
-\`\`\`bash
-clutch tasks create --project ${projectSlug} --title "Follow-up: <short summary>" --description '<context and suggested change>' --status ready --priority medium --role dev --tags 'follow-up,<area>'
-\`\`\`
-
-**Example:**
-\`\`\`bash
-clutch tasks create --project ${projectSlug} --title "Follow-up: Extract validation logic into shared utility" --description '- Context: Found during review of PR #'${prNumber}'
-- Why: The validation logic is duplicated across 3 files
-- Suggested change: Extract into a shared validateTask() function in lib/validation.ts
-
-**Acceptance Criteria:**
-- [ ] Validation logic extracted into shared utility
-- [ ] All existing validation sites updated to use the new utility
-- [ ] Tests pass' --status ready --priority medium --role dev --tags 'follow-up,refactor'
-\`\`\`
-
-**Important:**
-- Use SINGLE QUOTES for --description (double quotes let zsh interpret backticks)
-- Always include the \`follow-up\` tag
-- Include the PR number in the description for context
-- Create one ticket per distinct improvement area (avoid mega-tickets)`
-}
-
-/**
- * Build task context section for Conflict Resolver role
- */
-function buildConflictResolverTaskContext(params: PromptParams): string {
-  const commentsSection = formatCommentsSection(params.comments)
-
-  return `## Task: ${params.taskTitle}
-
-**Read ${params.repoDir}/AGENTS.md first.**
-
-Ticket ID: \`${params.taskId}\`
-Role: \`conflict_resolver\`
-
-${params.taskDescription}${commentsSection}
-
----
-
-**Your job:** Resolve merge conflicts on this PR so it can be reviewed and merged.
-
-**PR Number:** #${params.prNumber}
-**Branch:** ${params.branch}
-**Worktree Path:** ${params.worktreeDir}
-
-## Conflict Resolution Steps (Headless-Safe)
-
-1. **Navigate to the worktree (should already exist):**
-   \`\`\`bash
-   cd ${params.worktreeDir}
-   git status
-   \`\`\`
-
-2. **Fetch latest main and attempt rebase:**
-   \`\`\`bash
-   git fetch origin main
-   GIT_SEQUENCE_EDITOR=true git rebase origin/main
-   \`\`\`
-   **IMPORTANT:** Never use \`git rebase -i\` (interactive). There is no TTY — interactive rebase will hang and stall the task.
-
-3. **If conflicts occur, analyze them carefully:**
-   - Check which files have conflicts: \`git diff --name-only --diff-filter=U\`
-   - Read conflict markers and understand both sides
-   - Resolve conflicts preserving the intended functionality
-   - Prefer the incoming changes from main for structural/deps changes
-   - Prefer the branch changes for feature logic
-
-4. **After resolving conflicts:**
-   \`\`\`bash
-   git add -A
-   # Headless-safe: avoid editor prompts (no TTY)
-   GIT_EDITOR=true EDITOR=true GIT_SEQUENCE_EDITOR=true git rebase --continue
-   \`\`\`
-   
-   If rebase shows "No changes - did you forget to use 'git add'?", use:
-   \`\`\`bash
-   GIT_EDITOR=true EDITOR=true GIT_SEQUENCE_EDITOR=true git rebase --skip
-   \`\`\`
-
-5. **Verify the resolution** (use the project's verification commands from AGENTS.md — e.g. \`pnpm typecheck && pnpm lint\` for JS, \`uv run pyright && uv run ruff check\` for Python, etc.)
-
-6. **Push the resolved branch (force push required after rebase):**
-   \`\`\`bash
-   git push --force-with-lease
-   \`\`\`
-
-7. **Post success comment and move to in_review (so a reviewer can verify and merge):**
-   \`\`\`bash
-   clutch tasks comment ${params.taskId} --project ${params.projectSlug ?? "clutch"} "Resolved merge conflicts. Branch rebased onto main and force-pushed. PR is now ready for review."
-   clutch tasks move ${params.taskId} --project ${params.projectSlug ?? "clutch"} in_review
-   \`\`\`
-   ⚠️ **NEVER move tasks to done.** Your job is conflict resolution only — a reviewer must review and merge the PR.
-
-## If Conflicts Cannot Be Resolved
-
-If the conflicts are too complex or you're unsure about the correct resolution:
-
-1. **Abort the rebase:**
-   \`\`\`bash
-   git rebase --abort
-   \`\`\`
-
-2. **Identify conflicting files:**
-   \`\`\`bash
-   git diff --name-only origin/main...HEAD
-   \`\`\`
-
-3. **Post comment explaining the blocker and move to blocked:**
-   \`\`\`bash
-   clutch tasks comment ${params.taskId} --project ${params.projectSlug ?? "clutch"} "Cannot resolve conflicts automatically. Conflicting files: <list files here>. Reason: <specific explanation>"
-   clutch tasks move ${params.taskId} --project ${params.projectSlug ?? "clutch"} blocked
-   \`\`\``
-}
-
-/**
- * Build task context section for Dev role
- */
-function buildDevTaskContext(params: PromptParams): string {
-  const branchName = `fix/${params.taskId.slice(0, 8)}`
-  const commentsSection = formatCommentsSection(params.comments)
-
-  return `## Task: ${params.taskTitle}
-
-**Read ${params.repoDir}/AGENTS.md first.**
-
-Ticket ID: \`${params.taskId}\`
-Role: \`dev\`
-
-${params.taskDescription}${commentsSection}
-
----
-
-**Setup worktree and record branch:**
-\`\`\`bash
-cd ${params.repoDir}
-git fetch origin main
-git worktree add ${params.worktreeDir} origin/main -b ${branchName}
-cd ${params.worktreeDir}
-
-# Install dependencies (worktrees don't inherit node_modules)
-pnpm install
-
-# Record the branch name on the task
-clutch tasks update ${params.taskId} --project ${params.projectSlug ?? "clutch"} --branch ${branchName}
-
-# Post progress comment
-clutch tasks comment ${params.taskId} --project ${params.projectSlug ?? "clutch"} "Started work. Branch: ${branchName}, worktree: ${params.worktreeDir}"
-\`\`\`
-
-## Pre-commit Rules (MANDATORY)
-- **NEVER use \`--no-verify\` on git commit.** Pre-commit hooks exist for a reason.
-- If pre-commit checks fail (lint, typecheck, tests), **fix the errors** before committing.
-- If a pre-commit failure is in code you didn't touch, fix it anyway — leave the codebase cleaner than you found it.
-- Do NOT skip, disable, or work around pre-commit hooks under any circumstances.
-
-## Work Already Completed
-
-**If the work is already done** (e.g., completed by another PR already merged to main):
-- Move the task directly to \`done\` with a comment explaining what you found:
-  \`\`\`bash
-  clutch tasks comment ${params.taskId} --project ${params.projectSlug ?? "clutch"} "Work already completed in PR #XXX (commit abc123). Verified: <what you checked>. Moving to done — no new PR needed."
-  clutch tasks move ${params.taskId} --project ${params.projectSlug ?? "clutch"} done
-  \`\`\`
-- Do NOT move to \`in_review\` — there is no PR for a reviewer to check. Moving to \`in_review\` without a PR will cause an infinite retry loop.
-
-**After implementation, push and create PR (follow this EXACT sequence):**
-
-\`\`\`bash
-# Step 1: Commit (fix any pre-commit failures before retrying — NEVER use --no-verify)
-cd ${params.worktreeDir}
-git add -A
-git commit -m "feat: <description>"
-
-# Step 2: Validate merge-base (prevent stale-branch conflicts)
-# Fetches latest main and checks if origin/main is an ancestor of HEAD
-# If not, the branch is stale and needs rebasing before PR creation
-git fetch origin main
-if ! git merge-base --is-ancestor origin/main HEAD; then
-  echo "Branch is stale, rebasing onto origin/main..."
-  git rebase origin/main || { echo "Rebase failed, aborting."; git rebase --abort; exit 1; }
-fi
-
-# Step 3: Push
-git push -u origin ${branchName}
-
-# Step 4: Create PR and capture the number
-PR_URL=$(gh pr create --title "<title>" --body "Ticket: ${params.taskId}")
-PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
-
-# Step 5: Verify PR_NUMBER is set (MUST be a number, not empty)
-if [ -z "$PR_NUMBER" ]; then echo "ERROR: PR creation failed"; exit 1; fi
-
-# Step 6: Record PR number on the task
-clutch tasks update ${params.taskId} --project ${params.projectSlug ?? "clutch"} --pr-number $PR_NUMBER
-
-# Step 7: Post comment
-clutch tasks comment ${params.taskId} --project ${params.projectSlug ?? "clutch"} "Implementation complete. PR #$PR_NUMBER opened."
-
-# Step 8: LAST — move to in_review (only after PR number is recorded)
-clutch tasks move ${params.taskId} --project ${params.projectSlug ?? "clutch"} in_review
-\`\`\`
-
-**CRITICAL: Do NOT set status to \`in_review\` unless steps 1-7 succeeded. If any step fails, leave the task in its current status — the loop will retry.**`
-}
-
-/**
- * Build the task context section based on role (legacy fallback)
- *
- * Note: PM and Research roles have been migrated to DB templates (Phase 4a).
- * These roles should never reach this fallback path. If they do, it indicates
- * a problem with the template engine or missing DB templates.
- */
-function buildTaskContext(params: PromptParams): string {
-  switch (params.role) {
-    case "pm":
-      throw new Error(
-        "PM role has been migrated to DB templates (Phase 4a). " +
-          "Legacy hardcoded context is no longer available. " +
-          "Ensure PROMPT_TEMPLATE_ENGINE is enabled and a v2+ PM template exists in the database."
-      )
-    case "research":
-    case "researcher": // Backwards compatibility
-      throw new Error(
-        "Research role has been migrated to DB templates (Phase 4a). " +
-          "Legacy hardcoded context is no longer available. " +
-          "Ensure PROMPT_TEMPLATE_ENGINE is enabled and a v2+ Research template exists in the database."
-      )
-    case "reviewer":
-      return buildReviewerTaskContext(params)
-    case "conflict_resolver":
-      return buildConflictResolverTaskContext(params)
-    case "dev":
-    default:
-      return buildDevTaskContext(params)
-  }
-}
-
-// ============================================
-// Template Detection
-// ============================================
-
-/**
- * Check if a template uses Handlebars syntax
- */
-function isTemplate(template: string): boolean {
-  // Look for {{variable}} or {{#helper}} patterns
-  return /\{\{\{?[#/]?[\w.]/.test(template)
-}
-
-/**
- * Check if the template engine feature flag is enabled
- *
- * Feature flag: PROMPT_TEMPLATE_ENGINE
- * - "enabled" | "1" | "true" = Use template engine (new behavior)
- * - unset | "disabled" | "0" | "false" = Use legacy hardcoded context
- */
-function isTemplateEngineEnabled(): boolean {
-  const flag = process.env.PROMPT_TEMPLATE_ENGINE?.toLowerCase()
-  return flag === "enabled" || flag === "1" || flag === "true"
-}
-
-// ============================================
 // Main Prompt Builder
 // ============================================
 
@@ -526,6 +191,9 @@ function isTemplateEngineEnabled(): boolean {
  * - {{variable}} for simple substitution
  * - {{#if condition}}...{{/if}} for conditionals
  * - {{#each items}}...{{/each}} for loops
+ *
+ * Templates are compiled once and cached for performance. The cache key is derived
+ * from template content, so identical templates reuse the compiled function.
  *
  * @param params - Task and role parameters
  * @param options - Convex client and options
@@ -560,32 +228,16 @@ export async function buildPromptAsync(
     }
   }
 
-  // Check if the SOUL template uses Handlebars syntax
-  if (isTemplate(soulTemplate)) {
-    // Build template variables for the role
-    const variables = buildTemplateVariables(params)
+  // Build template variables for the role
+  const variables = buildTemplateVariables(params)
 
-    // Render the SOUL template with variables
-    try {
-      const renderedSoul = renderTemplate(soulTemplate, variables)
-
-      // If template engine is enabled, the template is self-contained (includes task context)
-      // Return only the rendered template without additional context sections
-      if (isTemplateEngineEnabled()) {
-        return renderedSoul
-      }
-
-      // Feature flag disabled: include marker for debugging during migration
-      return `${renderedSoul}\n\n---\n\nTask context rendered via template engine`
-    } catch (error) {
-      logError?.(`[PromptBuilder] Template rendering failed: ${error instanceof Error ? error.message : String(error)}`)
-      // Fall through to legacy method on error
-    }
+  // Render the SOUL template with variables (uses template cache internally)
+  try {
+    return renderTemplate(soulTemplate, variables)
+  } catch (error) {
+    logError?.(`[PromptBuilder] Template rendering failed: ${error instanceof Error ? error.message : String(error)}`)
+    throw error
   }
-
-  // Legacy: Use static task context (for roles not yet migrated to templates)
-  const taskContext = buildTaskContext(params)
-  return `${soulTemplate}\n\n---\n\n${taskContext}`
 }
 
 /**
@@ -599,32 +251,12 @@ export function validatePromptTemplate(template: string, role: string): Validati
   return validateTemplate(template, role)
 }
 
-/**
- * Legacy synchronous prompt builder.
- *
- * ⚠️ DEPRECATED: This function uses hardcoded SOUL templates instead of
- * fetching from Convex promptVersions. Use buildPromptAsync instead.
- *
- * Kept for backwards compatibility during migration.
- *
- * @param params - Task and role parameters including soulTemplate
- * @returns The complete prompt string
- * @deprecated Use buildPromptAsync instead
- */
-export function buildPrompt(params: PromptParams): string {
-  // Use the provided soulTemplate (loaded from disk by caller)
-  const taskContext = buildTaskContext(params)
-  return `${params.soulTemplate}\n\n---\n\n${taskContext}`
-}
-
 // ============================================
-// Backwards Compatibility Exports
+// Re-exports
 // ============================================
 
-// Re-export for convenience
 export { PromptNotFoundError } from "./prompt-fetcher"
 
-// Re-export template engine types and functions
 export {
   renderTemplate,
   renderTemplateSafe,
@@ -632,6 +264,8 @@ export {
   getVariableNamesForRole,
   generateVariableSchema,
   registerPromptHelpers,
+  clearTemplateCache,
+  getTemplateCacheStats,
   ROLE_VARIABLE_SCHEMAS,
   COMMON_VARIABLES,
   DEV_VARIABLES,
