@@ -2067,6 +2067,7 @@ async function cmdPromptsCreate(flags: Record<string, string | boolean>): Promis
   const role = typeof flags.role === "string" ? flags.role : undefined
   const fromFile = typeof flags["from-file"] === "string" ? flags["from-file"] : undefined
   const summary = typeof flags.summary === "string" ? flags.summary : undefined
+  const skipValidation = flags["skip-validation"] === true
 
   if (!role) {
     console.error("Error: --role is required")
@@ -2087,29 +2088,33 @@ async function cmdPromptsCreate(flags: Record<string, string | boolean>): Promis
     // Read file
     const content = readFileSync(fromFile, "utf-8")
 
-    // Validate first
-    console.log("Validating template...")
-    const validation = await apiPost("/prompts/validate", { role, content }) as {
-      valid: boolean
-      syntaxErrors: string[]
-      undefinedVariables: string[]
-      unusedVariables: string[]
-    }
-
-    if (!validation.valid) {
-      console.error("\nValidation failed:")
-      for (const err of validation.syntaxErrors) {
-        console.error(`  - Syntax: ${err}`)
+    // Validate first (unless skipped)
+    if (!skipValidation) {
+      console.log("Validating template...")
+      const validation = await apiPost("/prompts/validate", { role, content }) as {
+        valid: boolean
+        syntaxErrors: string[]
+        undefinedVariables: string[]
+        unusedVariables: string[]
       }
-      for (const err of validation.undefinedVariables) {
-        console.error(`  - Undefined variable: ${err}`)
-      }
-      console.error("\nTemplate NOT saved. Fix errors or use --skip-validation flag.")
-      process.exit(1)
-    }
 
-    if (validation.unusedVariables.length > 0) {
-      console.log(`Warnings (unused variables): ${validation.unusedVariables.join(", ")}`)
+      if (!validation.valid) {
+        console.error("\nValidation failed:")
+        for (const err of validation.syntaxErrors) {
+          console.error(`  - Syntax: ${err}`)
+        }
+        for (const err of validation.undefinedVariables) {
+          console.error(`  - Undefined variable: ${err}`)
+        }
+        console.error("\nTemplate NOT saved. Fix errors or use --skip-validation flag.")
+        process.exit(1)
+      }
+
+      if (validation.unusedVariables.length > 0) {
+        console.log(`Warnings (unused variables): ${validation.unusedVariables.join(", ")}`)
+      }
+    } else {
+      console.log("Skipping validation (--skip-validation flag set)")
     }
 
     // Create version
@@ -2118,6 +2123,7 @@ async function cmdPromptsCreate(flags: Record<string, string | boolean>): Promis
       content,
       change_summary: summary,
       created_by: "human",
+      skip_validation: skipValidation,
     }) as { version: PromptVersion }
 
     console.log(`* Created new version ${result.version.version} for role: ${role}`)

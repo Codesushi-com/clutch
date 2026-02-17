@@ -336,6 +336,52 @@ Worktree: {{worktreeDir}}
       expect(result.undefinedVariables).toHaveLength(0)
     })
 
+    it("should NOT flag else as undefined variable", () => {
+      // Use hasComments (a valid variable) instead of condition
+      const template = "{{#if hasComments}}yes{{else}}no{{/if}}"
+      const result = validateTemplate(template, "pm")
+      expect(result.valid).toBe(true)
+      expect(result.undefinedVariables).toHaveLength(0)
+    })
+
+    it("should NOT flag variables inside #each blocks as undefined (they resolve against iterator)", () => {
+      // Variables inside #each blocks resolve against the iterator item, not root context
+      const template = "{{#each comments}}{{author}}{{/each}}"
+      const result = validateTemplate(template, "dev")
+      expect(result.valid).toBe(true)
+      expect(result.undefinedVariables).toHaveLength(0)
+    })
+
+    it("should validate PM template with signalResponses", () => {
+      const template = `{{#each signalResponses}}
+Question: {{question}}
+Response: {{response}}
+{{/each}}`
+      const result = validateTemplate(template, "pm")
+      expect(result.valid).toBe(true)
+      expect(result.undefinedVariables).toHaveLength(0)
+    })
+
+    it("should validate nested #each blocks", () => {
+      const template = `{{#each comments}}
+{{author}}
+{{#each comments}}
+{{content}}
+{{/each}}
+{{/each}}`
+      const result = validateTemplate(template, "dev")
+      expect(result.valid).toBe(true)
+      expect(result.undefinedVariables).toHaveLength(0)
+    })
+
+    it("should still validate the collection variable for #each", () => {
+      // The collection variable (undefinedCollection) should still be validated
+      const template = "{{#each undefinedCollection}}{{item}}{{/each}}"
+      const result = validateTemplate(template, "dev")
+      expect(result.valid).toBe(false)
+      expect(result.undefinedVariables).toContain("undefinedCollection")
+    })
+
     it("should detect multiple undefined variables", () => {
       const template = "{{foo}} {{bar}} {{taskId}}"
       const result = validateTemplate(template, "dev")
