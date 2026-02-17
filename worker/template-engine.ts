@@ -202,7 +202,7 @@ export function getTemplateCacheStats(): { size: number; keys: string[] } {
 /**
  * Handlebars built-in helpers and special variables
  */
-const HANDLEBARS_HELPERS = new Set(["if", "unless", "each", "with", "lookup", "log", "helperMissing", "blockHelperMissing"])
+const HANDLEBARS_HELPERS = new Set(["if", "unless", "each", "with", "lookup", "log", "helperMissing", "blockHelperMissing", "else"])
 
 /**
  * Extract variable references from a Handlebars template AST
@@ -273,6 +273,9 @@ function extractTemplateVariables(template: string): Set<string> {
       return original
     }
 
+    // Track if we're inside an #each block (variables resolve against iterator item)
+    let eachDepth = 0
+
     // Walk the AST to find all variable references
     function walkNode(node: unknown): void {
       if (!node || typeof node !== "object") return
@@ -295,6 +298,10 @@ function extractTemplateVariables(template: string): Set<string> {
           }
         } else {
           // Regular variable reference
+          // Skip if inside #each block (variables resolve against iterator item, not root)
+          if (eachDepth > 0) {
+            return
+          }
           const root = extractRootVariable(path)
           if (root) variables.add(root)
         }
@@ -315,8 +322,10 @@ function extractTemplateVariables(template: string): Set<string> {
         const path = nodeObj.path as Record<string, unknown> | undefined
         const params = nodeObj.params as unknown[] | undefined
         const helperName = path?.original as string
+        const isEachBlock = helperName === "each"
 
         // For {{#each items}} or {{#if condition}}, extract the collection/condition variable
+        // Always extract the collection/condition variable (it's at the current context level)
         if (params && params.length > 0) {
           const root = extractRootVariable(params[0] as Record<string, unknown>)
           if (root) variables.add(root)
@@ -330,7 +339,13 @@ function extractTemplateVariables(template: string): Set<string> {
           if (blockParams && blockParams.length > 0) {
             blockParamStack.push(blockParams)
           }
+          if (isEachBlock) {
+            eachDepth++
+          }
           walkNode(program)
+          if (isEachBlock) {
+            eachDepth--
+          }
           if (blockParams && blockParams.length > 0) {
             blockParamStack.pop()
           }
@@ -343,7 +358,13 @@ function extractTemplateVariables(template: string): Set<string> {
           if (inverseBlockParams && inverseBlockParams.length > 0) {
             blockParamStack.push(inverseBlockParams)
           }
+          if (isEachBlock) {
+            eachDepth++
+          }
           walkNode(inverse)
+          if (isEachBlock) {
+            eachDepth--
+          }
           if (inverseBlockParams && inverseBlockParams.length > 0) {
             blockParamStack.pop()
           }
@@ -406,6 +427,7 @@ const HANDLEBARS_BUILTINS = new Set([
   "@key",
   "@root",
   "@level",
+  "else",
 ])
 
 /**
