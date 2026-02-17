@@ -118,12 +118,18 @@ export const PM_VARIABLES: VariableSchema[] = [
   ...COMMON_VARIABLES,
   { name: "imageUrls", type: "array", required: false, description: "Attached image URLs" },
   { name: "signalResponses", type: "array", required: false, description: "Signal Q&A responses" },
+  { name: "hasImages", type: "boolean", required: false, description: "Whether images are attached" },
+  { name: "hasSignalResponses", type: "boolean", required: false, description: "Whether signal Q&A exists" },
+  { name: "hasComments", type: "boolean", required: false, description: "Whether task comments exist" },
 ]
 
 /**
- * Research role variable schema (same as common)
+ * Research role variable schema
  */
-export const RESEARCH_VARIABLES: VariableSchema[] = COMMON_VARIABLES
+export const RESEARCH_VARIABLES: VariableSchema[] = [
+  ...COMMON_VARIABLES,
+  { name: "hasComments", type: "boolean", required: false, description: "Whether task comments exist" },
+]
 
 /**
  * Map of role to variable schema
