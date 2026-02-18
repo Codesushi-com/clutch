@@ -970,12 +970,55 @@ interface RebaseResult {
 }
 
 /**
+ * Find the actual worktree path for a branch using `git worktree list`.
+ * Handles both short-id (fix/abc123) and full-UUID (fix/abc123-def...) naming conventions.
+ */
+function findWorktreePath(branchName: string, repoDir: string): string | null {
+  try {
+    const result = execFileSync(
+      "git",
+      ["worktree", "list", "--porcelain"],
+      { encoding: "utf-8", timeout: 10_000, cwd: repoDir }
+    )
+
+    // Parse porcelain output to find worktree path for the branch
+    // Format: worktree <path>\nHEAD <sha>\nbranch <ref>\n\n
+    const entries = result.split("\n\n")
+    for (const entry of entries) {
+      const lines = entry.split("\n")
+      let worktreePath: string | null = null
+      let branchRef: string | null = null
+
+      for (const line of lines) {
+        if (line.startsWith("worktree ")) {
+          worktreePath = line.slice(9)
+        } else if (line.startsWith("branch ")) {
+          branchRef = line.slice(7)
+        }
+      }
+
+      // Match branch by ref (refs/heads/branchName) or by path ending
+      if (worktreePath && branchRef) {
+        const expectedRef = `refs/heads/${branchName}`
+        if (branchRef === expectedRef) {
+          return worktreePath
+        }
+      }
+    }
+
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Rebase a PR branch onto origin/main before spawning a reviewer.
  *
  * This is a cheap shell operation (not an agent session). Steps:
  * 1. git fetch origin main (ensure we have latest)
  * 2. git fetch origin <branch> (ensure branch is up-to-date)
- * 3. Create or reuse a worktree for the branch
+ * 3. Find or create a worktree for the branch
  * 4. git rebase origin/main
  * 5. If success → git push --force-with-lease → return success
  * 6. If fail → git rebase --abort → return failure
@@ -984,8 +1027,10 @@ interface RebaseResult {
  */
 function rebaseBranch(branchName: string, project: ProjectInfo): RebaseResult {
   const repoDir = project.local_path!
+
+  // Find actual worktree path (handles both short-id and full-UUID conventions)
+  let worktreePath = findWorktreePath(branchName, repoDir)
   const worktreesBase = `${repoDir}-worktrees`
-  const worktreePath = `${worktreesBase}/${branchName}`
 
   try {
     // Fetch latest main and the PR branch
@@ -1006,16 +1051,24 @@ function rebaseBranch(branchName: string, project: ProjectInfo): RebaseResult {
     return { success: true }
   }
 
-  // Ensure worktree exists
-  try {
-    execFileSync("git", ["worktree", "add", worktreePath, branchName], {
-      encoding: "utf-8",
-      timeout: 15_000,
-      cwd: repoDir,
-      stdio: "pipe",
-    })
-  } catch {
-    // Worktree may already exist — that's fine
+  // Ensure worktree exists (create if not found via git worktree list)
+  if (!worktreePath) {
+    worktreePath = `${worktreesBase}/${branchName}`
+    try {
+      execFileSync("git", ["worktree", "add", worktreePath, branchName], {
+        encoding: "utf-8",
+        timeout: 15_000,
+        cwd: repoDir,
+        stdio: "pipe",
+      })
+      console.log(`[ReviewPhase] Created worktree for ${branchName} at ${worktreePath}`)
+    } catch (createError) {
+      // Worktree may already exist — that's fine, but check if path now exists
+      const message = createError instanceof Error ? createError.message : String(createError)
+      if (!message.includes("already registered")) {
+        console.warn(`[ReviewPhase] Failed to create worktree for ${branchName}: ${message}`)
+      }
+    }
   }
 
   // Check if branch is already up-to-date with main
@@ -1035,6 +1088,16 @@ function rebaseBranch(branchName: string, project: ProjectInfo): RebaseResult {
     }
   } catch {
     // If merge-base check fails, proceed with rebase anyway
+  }
+
+  // Verify worktree path exists before attempting rebase
+  try {
+    execFileSync("test", ["-d", worktreePath], { encoding: "utf-8", timeout: 5_000 })
+  } catch {
+    return {
+      success: false,
+      error: `Worktree path does not exist: ${worktreePath}`,
+    }
   }
 
   // Attempt rebase
