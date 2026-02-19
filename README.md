@@ -266,27 +266,143 @@ OpenClutch requires a running OpenClaw gateway for agent execution:
 
 ### Convex Setup
 
-**Self-hosted (Docker):**
+OpenClutch uses [Convex](https://convex.dev) as its reactive data layer. You can use either **self-hosted** (recommended for local development) or **Convex Cloud**.
+
+#### Option 1: Self-Hosted with Docker (Recommended)
+
+This gives you a local Convex instance with full control and no external dependencies.
+
+**Step 1: Generate an admin key**
 
 ```bash
-# Start Convex
-docker run -d --name convex-local -p 3210:3210 -p 3211:3211 \
-  -v convex-data:/data ghcr.io/get-convex/convex-local:latest
-
-# Deploy schema
-npx convex deploy --url http://localhost:3210 --admin-key <admin-key>
+docker run --rm ghcr.io/get-convex/convex-backend:latest generate-key
 ```
 
-**Note:** Role prompts are stored externally (configure via `ROLES_DIR` env var, defaults to `../clawd/roles/` relative to this repo):
-- `dev.md` - Developer agent prompt
-- `reviewer.md` - Reviewer agent prompt
-- `pm.md` - Product manager prompt
-- `research.md` - Researcher prompt
-- `conflict_resolver.md` - Conflict resolver prompt
-- `qa.md` - QA agent prompt
-- `pe.md` - Prompt engineer prompt
+Save this key — you'll need it for deployment.
 
-Set `CONVEX_URL` to your deployment URL and remove self-hosted variables.
+**Step 2: Start Convex**
+
+```bash
+# Run the Convex backend
+docker run -d --name openclutch-convex -p 3210:3210 -p 3211:3211 \
+  -v convex-data:/convex/data \
+  -e CONVEX_ADMIN_KEY="your-admin-key-here" \
+  ghcr.io/get-convex/convex-backend:latest
+```
+
+Or use Docker Compose (includes health checks and restart policy):
+
+```bash
+# Start just the Convex service
+docker compose up -d convex
+```
+
+**Step 3: Update your environment**
+
+Add these to your `.env.local`:
+
+```bash
+CONVEX_SELF_HOSTED_URL=http://localhost:3210
+CONVEX_URL=http://localhost:3210
+NEXT_PUBLIC_CONVEX_URL=http://localhost:3210
+NEXT_PUBLIC_CONVEX_SELF_HOSTED_URL=http://localhost:3210
+```
+
+**Step 4: Deploy the schema**
+
+```bash
+npx convex deploy --url http://localhost:3210 --admin-key <your-admin-key> --yes
+```
+
+Or use the convenience script:
+
+```bash
+pnpm convex:deploy
+```
+
+**Step 5: Seed default prompts**
+
+Role prompts are stored in the database and must be seeded before running the work loop:
+
+```bash
+pnpm seed:prompts
+```
+
+This creates default templates for all agent roles (dev, reviewer, pm, research, conflict_resolver, qa, pe).
+
+#### Option 2: Convex Cloud
+
+For a managed Convex instance:
+
+1. Sign up at [convex.dev](https://convex.dev) and create a project
+2. Run `npx convex dev` to authenticate and deploy
+3. Set `CONVEX_URL` to your cloud deployment URL
+4. Remove the `CONVEX_SELF_HOSTED_*` variables from your environment
+
+#### Full Docker Compose Stack
+
+For running the entire stack (app, Convex, and workers) in Docker:
+
+```bash
+# 1. Copy and configure environment
+cp .env.example .env.local
+# Edit .env.local with your admin key and OpenClaw token
+
+# 2. Generate admin key (if not already done)
+docker run --rm ghcr.io/get-convex/convex-backend:latest generate-key
+
+# 3. Start all services
+docker compose up -d
+
+# 4. Deploy schema (first time only)
+docker compose exec app npx convex deploy --yes
+
+# 5. Seed prompts
+docker compose exec app pnpm seed:prompts
+```
+
+Services included:
+- `convex` — Self-hosted Convex backend (ports 3210/3211)
+- `app` — Next.js application (port 3002)
+- `worker-loop` — Work loop orchestration
+- `worker-bridge` — OpenClaw WebSocket bridge
+- `worker-watcher` — Session file watcher
+
+#### Convex Dashboard
+
+Access the dashboard at:
+- **Self-hosted**: http://localhost:3211
+- **Demo instance**: http://localhost:3231 (if using demo environment)
+- **Convex Cloud**: https://dashboard.convex.dev
+
+The dashboard lets you inspect data, run queries, and view function logs.
+
+#### Troubleshooting
+
+**Port already in use:**
+```bash
+lsof -ti:3210 | xargs kill -9
+lsof -ti:3211 | xargs kill -9
+```
+
+**Schema deployment fails:**
+- Verify Convex is running: `curl http://localhost:3210/version`
+- Check your admin key is correct
+- Ensure `CONVEX_URL` matches your deployment URL
+
+**Data persistence:**
+Convex data is stored in a Docker volume (`convex-data`). It persists across container restarts but can be wiped:
+
+```bash
+# Reset all data
+docker compose down -v
+docker volume rm openclutch_convex-data
+```
+
+**Connection errors:**
+- Verify `NEXT_PUBLIC_CONVEX_URL` is set correctly for client-side access
+- Check that `CONVEX_URL` and `CONVEX_SELF_HOSTED_URL` match
+- Ensure firewall rules allow traffic on ports 3210/3211
 
 ## Work Loop
 
