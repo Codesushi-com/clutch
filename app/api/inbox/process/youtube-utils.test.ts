@@ -6,6 +6,19 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+
+// Create mock controller that will be hoisted and accessible to both mock factory and tests
+const mockController = {
+  execFileImpl: vi.fn(),
+}
+
+// Mock child_process module - factory is hoisted but references mockController
+vi.mock("child_process", () => ({
+  __esModule: true,
+  default: { execFile: (...args: unknown[]) => mockController.execFileImpl(...args) },
+  execFile: (...args: unknown[]) => mockController.execFileImpl(...args),
+}))
+
 import {
   isYouTubeUrl,
   extractVideoId,
@@ -14,6 +27,7 @@ import {
   cleanText,
   extractHighlights,
   generateMarkdown,
+  checkYtDlpAvailable,
   YouTubeMetadata,
   TranscriptSegment,
 } from "./youtube-utils"
@@ -568,5 +582,55 @@ Today we will learn about clean code practices`
     expect(markdown).toContain("source: youtube")
 
     vi.useRealTimers()
+  })
+})
+
+describe("checkYtDlpAvailable", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("should return true when yt-dlp is installed", async () => {
+    mockController.execFileImpl.mockImplementation(
+      (_cmd: string, _args: string[], _opts: object, callback: (err: null, result: { stdout: string; stderr: string }) => void) => {
+        callback(null, { stdout: "2024.01.01\n", stderr: "" })
+      }
+    )
+
+    const result = await checkYtDlpAvailable()
+
+    expect(result).toBe(true)
+    expect(mockController.execFileImpl).toHaveBeenCalledWith(
+      "yt-dlp",
+      ["--version"],
+      { timeout: 5000 },
+      expect.any(Function)
+    )
+  })
+
+  it("should return false when yt-dlp is not found", async () => {
+    mockController.execFileImpl.mockImplementation(
+      (_cmd: string, _args: string[], _opts: object, callback: (err: Error, result: { stdout: string; stderr: string }) => void) => {
+        const error = new Error("spawn yt-dlp ENOENT")
+        callback(error, { stdout: "", stderr: "" })
+      }
+    )
+
+    const result = await checkYtDlpAvailable()
+
+    expect(result).toBe(false)
+  })
+
+  it("should return false when yt-dlp command fails", async () => {
+    mockController.execFileImpl.mockImplementation(
+      (_cmd: string, _args: string[], _opts: object, callback: (err: Error, result: { stdout: string; stderr: string }) => void) => {
+        const error = new Error("Command failed")
+        callback(error, { stdout: "", stderr: "error: unknown flag" })
+      }
+    )
+
+    const result = await checkYtDlpAvailable()
+
+    expect(result).toBe(false)
   })
 })
