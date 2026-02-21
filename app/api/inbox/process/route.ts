@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { exec, execFile } from "child_process"
+import { execFile } from "child_process"
 import { promisify } from "util"
-import { writeFile, mkdir, rm } from "fs/promises"
+import { writeFile, mkdir, rm, readdir, readFile } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
 
-const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
 
 interface ProcessRequest {
@@ -41,26 +40,57 @@ function extractVideoId(url: string): string | null {
   return match ? match[1] : null
 }
 
+async function checkYtDlpAvailable(): Promise<boolean> {
+  try {
+    await execFileAsync("yt-dlp", ["--version"], { timeout: 5000 })
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function processYouTubeVideo(url: string): Promise<{
   metadata: YouTubeMetadata
   transcript: TranscriptSegment[]
   highlights: string[]
 }> {
+  // Check yt-dlp is installed before attempting execution
+  const ytDlpAvailable = await checkYtDlpAvailable()
+  if (!ytDlpAvailable) {
+    throw new Error(
+      "yt-dlp is not installed or not in PATH. " +
+      "Please install yt-dlp: https://github.com/yt-dlp/yt-dlp#installation"
+    )
+  }
+
   const tempDir = join(tmpdir(), `yt-process-${Date.now()}`)
   await mkdir(tempDir, { recursive: true })
 
   try {
-    // Download auto-generated subtitles and info
-    await execAsync(
-      `yt-dlp --write-auto-sub --write-info-json --skip-download --sub-langs en -o "%(id)s" "${url}"`,
+    // Download auto-generated subtitles and info using execFile with args array
+    // This prevents shell injection compared to string interpolation
+    await execFileAsync(
+      "yt-dlp",
+      [
+        "--write-auto-sub",
+        "--write-info-json",
+        "--skip-download",
+        "--sub-langs", "en",
+        "-o", "%(id)s",
+        url,
+      ],
       { cwd: tempDir, timeout: 120000 }
     )
 
-    // Read info JSON
-    const infoFiles = await execAsync(`ls *.info.json`, { cwd: tempDir })
-    const infoFile = infoFiles.stdout.trim().split("\n")[0]
-    const infoContent = await execAsync(`cat "${infoFile}"`, { cwd: tempDir })
-    const info = JSON.parse(infoContent.stdout)
+    // Read info JSON file
+    const files = await readdir(tempDir)
+    const infoFile = files.find(f => f.endsWith(".info.json"))
+    if (!infoFile) {
+      throw new Error("Failed to download video info: no info.json file found")
+    }
+
+    const infoContent = await readFile(join(tempDir, infoFile), "utf-8")
+    const info = JSON.parse(infoContent)
 
     const metadata: YouTubeMetadata = {
       title: info.title || "Unknown",
@@ -72,16 +102,15 @@ async function processYouTubeVideo(url: string): Promise<{
     }
 
     // Find and parse VTT subtitle file
-    const vttFiles = await execAsync(`ls *.vtt *.en.vtt 2>/dev/null || echo ""`, { cwd: tempDir })
-    const vttFile = vttFiles.stdout.trim().split("\n")[0]
-    
+    const vttFile = files.find(f => f.endsWith(".vtt") || f.endsWith(".en.vtt"))
+
     let transcript: TranscriptSegment[] = []
     if (vttFile) {
-      const vttContent = await execAsync(`cat "${vttFile}"`, { cwd: tempDir })
-      transcript = parseVtt(vttContent.stdout)
+      const vttContent = await readFile(join(tempDir, vttFile), "utf-8")
+      transcript = parseVtt(vttContent)
     }
 
-    // Extract highlights (first segment of each minute + segments mentioning GitHub/projects)
+    // Extract highlights (first segment of each 5-minute interval)
     const highlights = extractHighlights(transcript)
 
     return { metadata, transcript, highlights }
@@ -163,13 +192,13 @@ function cleanText(text: string): string {
 function extractHighlights(segments: TranscriptSegment[]): string[] {
   const highlights: string[] = []
   const seenTimes = new Set<string>()
-  
+
   // Add first segment of each 5-minute interval
   for (const segment of segments) {
     const [hours, mins] = segment.start.split(":").map(Number)
     const totalMins = hours * 60 + mins
     const intervalKey = `${Math.floor(totalMins / 5) * 5}`
-    
+
     if (!seenTimes.has(intervalKey) && segment.text.length > 20) {
       seenTimes.add(intervalKey)
       highlights.push(`**${segment.start}** - ${segment.text}`)
@@ -233,11 +262,11 @@ ${highlights.length > 0 ? highlights.join("\n\n") : "*No transcript highlights a
 async function saveToInbox(content: string, videoId: string): Promise<string> {
   const inboxDir = join(process.env.HOME || "/home/dan", "notes", "inbox")
   await mkdir(inboxDir, { recursive: true })
-  
+
   const date = new Date().toISOString().split("T")[0]
   const filename = `${date}-youtube-${videoId}.md`
   const filepath = join(inboxDir, filename)
-  
+
   await writeFile(filepath, content, "utf-8")
   return filepath
 }
@@ -256,7 +285,7 @@ async function postDiscordReaction(channelId: string, messageId: string, emoji: 
 
 export async function POST(request: NextRequest) {
   let body: ProcessRequest
-  
+
   try {
     body = await request.json()
   } catch {
@@ -285,13 +314,13 @@ export async function POST(request: NextRequest) {
 
   try {
     console.log(`[InboxProcessor] Processing YouTube URL: ${url}`)
-    
+
     // Process the YouTube video
     const { metadata, highlights } = await processYouTubeVideo(url)
-    
+
     // Generate markdown content
     const markdown = generateMarkdown(url, metadata, highlights, author || "unknown", timestamp || new Date().toISOString())
-    
+
     // Save to inbox
     const videoId = extractVideoId(url) || "unknown"
     const filepath = await saveToInbox(markdown, videoId)
@@ -315,7 +344,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error("[InboxProcessor] Error processing URL:", error)
-    
+
     // Post failure reaction to Discord
     try {
       await postDiscordReaction(channelId, messageId, "❌")
