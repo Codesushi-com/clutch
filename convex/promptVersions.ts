@@ -74,6 +74,16 @@ const RESEARCH_VARIABLES: VariableSchema[] = [
   { name: 'hasComments', type: 'boolean', required: false, description: 'Whether task comments exist' },
 ]
 
+const VERIFY_VARIABLES: VariableSchema[] = [
+  ...COMMON_VARIABLES,
+  { name: 'prNumber', type: 'number', required: false, description: 'Pull request number' },
+  { name: 'branch', type: 'string', required: false, description: 'Git branch name' },
+  { name: 'postMergeSteps', type: 'string', required: false, description: 'Post-merge verification steps' },
+  { name: 'timestamp', type: 'string', required: false, description: 'Comment timestamp' },
+  { name: 'author', type: 'string', required: false, description: 'Comment author' },
+  { name: 'content', type: 'string', required: false, description: 'Comment content' },
+]
+
 const ROLE_VARIABLE_SCHEMAS: Record<string, VariableSchema[]> = {
   dev: DEV_VARIABLES,
   reviewer: REVIEWER_VARIABLES,
@@ -81,6 +91,7 @@ const ROLE_VARIABLE_SCHEMAS: Record<string, VariableSchema[]> = {
   pm: PM_VARIABLES,
   research: RESEARCH_VARIABLES,
   researcher: RESEARCH_VARIABLES, // Backwards compatibility
+  verify: VERIFY_VARIABLES,
 }
 
 function getVariableNamesForRole(role: string): Set<string> {
