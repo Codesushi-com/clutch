@@ -7,7 +7,9 @@
  */
 
 import WebSocket from "ws"
-import { randomUUID } from "node:crypto"
+import { randomUUID, createPublicKey, createPrivateKey, createHash, sign, generateKeyPairSync } from "node:crypto"
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
+import { join, dirname } from "node:path"
 
 // ============================================
 // Types
@@ -46,6 +48,68 @@ interface AgentResult {
 }
 
 // ============================================
+// Device Identity (Ed25519)
+// ============================================
+
+interface DeviceIdentity {
+  deviceId: string
+  publicKeyPem: string
+  privateKeyPem: string
+}
+
+function base64UrlEncode(buf: Buffer): string {
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
+
+function derivePublicKeyRaw(publicKeyPem: string): Buffer {
+  const key = createPublicKey(publicKeyPem)
+  const spki = key.export({ type: "spki", format: "der" })
+  return spki.subarray(spki.length - 32)
+}
+
+function fingerprintPublicKey(publicKeyPem: string): string {
+  const raw = derivePublicKeyRaw(publicKeyPem)
+  return createHash("sha256").update(raw).digest("hex")
+}
+
+function signPayload(privateKeyPem: string, payload: string): string {
+  const key = createPrivateKey(privateKeyPem)
+  const sig = sign(null, Buffer.from(payload, "utf8"), key)
+  return base64UrlEncode(sig)
+}
+
+function buildDeviceAuthPayload(params: {
+  deviceId: string; clientId: string; clientMode: string
+  role: string; scopes: string[]; signedAtMs: number; token?: string; nonce: string
+}): string {
+  return [
+    "v2", params.deviceId, params.clientId, params.clientMode,
+    params.role, params.scopes.join(","), String(params.signedAtMs),
+    params.token || "", params.nonce,
+  ].join("|")
+}
+
+function loadOrCreateDeviceIdentity(filePath: string): DeviceIdentity {
+  try {
+    const data = readFileSync(filePath, "utf8")
+    const parsed = JSON.parse(data)
+    if (parsed.deviceId && parsed.publicKeyPem && parsed.privateKeyPem) {
+      return { deviceId: parsed.deviceId, publicKeyPem: parsed.publicKeyPem, privateKeyPem: parsed.privateKeyPem }
+    }
+  } catch { /* generate new */ }
+
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519")
+  const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }) as string
+  const privateKeyPem = privateKey.export({ type: "pkcs8", format: "pem" }) as string
+  const deviceId = fingerprintPublicKey(publicKeyPem)
+
+  mkdirSync(dirname(filePath), { recursive: true })
+  writeFileSync(filePath, JSON.stringify({ version: 1, deviceId, publicKeyPem, privateKeyPem, createdAtMs: Date.now() }, null, 2), { mode: 0o600 })
+  console.log(`[GatewayClient] Generated new device identity: ${deviceId.slice(0, 12)}…`)
+  return { deviceId, publicKeyPem, privateKeyPem }
+}
+
+// ============================================
 // Constants
 // ============================================
 
@@ -66,10 +130,20 @@ export class GatewayRpcClient {
   private closed = false
   private config: GatewayClientConfig
   private requestTimeoutMs: number
+  private deviceIdentity: DeviceIdentity | null = null
 
   constructor(config: GatewayClientConfig) {
     this.config = config
     this.requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+
+    // Load shared device identity
+    try {
+      const identityFile = join(process.env.HOME || "/tmp", ".openclutch", "identity", "device.json")
+      this.deviceIdentity = loadOrCreateDeviceIdentity(identityFile)
+      console.log(`[GatewayClient] Device identity loaded: ${this.deviceIdentity.deviceId.slice(0, 12)}…`)
+    } catch (err) {
+      console.warn("[GatewayClient] Failed to load device identity:", err)
+    }
   }
 
   // ---- Connection Management ----
@@ -105,44 +179,90 @@ export class GatewayRpcClient {
       }, CONNECT_TIMEOUT_MS)
 
       socket.on("open", () => {
-        const connectId = randomUUID()
-        const connectFrame = {
-          type: "req",
-          id: connectId,
-          method: "connect",
-          params: {
-            minProtocol: PROTOCOL_VERSION,
-            maxProtocol: PROTOCOL_VERSION,
-            client: {
-              id: "gateway-client",
-              displayName: "OpenClutch Work Loop",
-              version: "1.0.0",
-              platform: "linux",
-              mode: "backend",
+        const role = "operator"
+        const scopes = ["operator.admin", "operator.read", "operator.write"]
+        const clientId = "gateway-client"
+        const clientMode = "backend"
+        let connectSent = false
+
+        const sendConnect = (nonce: string) => {
+          if (connectSent) return
+          connectSent = true
+
+          const connectId = randomUUID()
+
+          // Build device identity block if available
+          let device: Record<string, unknown> | undefined
+          if (this.deviceIdentity) {
+            const signedAtMs = Date.now()
+            const publicKeyRaw = base64UrlEncode(derivePublicKeyRaw(this.deviceIdentity.publicKeyPem))
+            const payload = buildDeviceAuthPayload({
+              deviceId: this.deviceIdentity.deviceId,
+              clientId, clientMode, role, scopes, signedAtMs,
+              token: this.config.token || undefined, nonce,
+            })
+            const signature = signPayload(this.deviceIdentity.privateKeyPem, payload)
+            device = {
+              id: this.deviceIdentity.deviceId,
+              publicKey: publicKeyRaw,
+              signature,
+              signedAt: signedAtMs,
+              nonce,
+            }
+          }
+
+          const connectFrame = {
+            type: "req",
+            id: connectId,
+            method: "connect",
+            params: {
+              minProtocol: PROTOCOL_VERSION,
+              maxProtocol: PROTOCOL_VERSION,
+              client: {
+                id: clientId,
+                displayName: "OpenClutch Work Loop",
+                version: "1.0.0",
+                platform: "linux",
+                mode: clientMode,
+              },
+              caps: [],
+              auth: this.config.token ? { token: this.config.token } : undefined,
+              role,
+              scopes,
+              device,
             },
-            caps: [],
-            auth: this.config.token ? { token: this.config.token } : undefined,
-            role: "operator",
-            scopes: ["operator.admin"],
-          },
+          }
+
+          this.pending.set(connectId, {
+            resolve: () => {
+              clearTimeout(connectTimeout)
+              this.wsReady = true
+              this.connectPromise = null
+              resolve()
+            },
+            reject: (err) => {
+              clearTimeout(connectTimeout)
+              this.connectPromise = null
+              reject(err)
+            },
+            timer: connectTimeout,
+          })
+
+          socket.send(JSON.stringify(connectFrame))
         }
 
-        this.pending.set(connectId, {
-          resolve: () => {
-            clearTimeout(connectTimeout)
-            this.wsReady = true
-            this.connectPromise = null
-            resolve()
-          },
-          reject: (err) => {
-            clearTimeout(connectTimeout)
-            this.connectPromise = null
-            reject(err)
-          },
-          timer: connectTimeout,
-        })
-
-        socket.send(JSON.stringify(connectFrame))
+        // Wait for connect.challenge event with nonce, fallback after 2s
+        const challengeTimeout = setTimeout(() => sendConnect(""), 2000)
+        const earlyMessageHandler = (raw: WebSocket.Data) => {
+          try {
+            const msg = JSON.parse(raw.toString())
+            if (msg.type === "event" && msg.event === "connect.challenge" && typeof msg.payload?.nonce === "string") {
+              clearTimeout(challengeTimeout)
+              sendConnect(msg.payload.nonce.trim())
+            }
+          } catch { /* ignore */ }
+        }
+        socket.on("message", earlyMessageHandler)
       })
 
       socket.on("message", (data) => {

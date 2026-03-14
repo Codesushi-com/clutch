@@ -71,17 +71,12 @@ function formatAbsoluteTime(timestamp: number): string {
  */
 async function getGitCommit(): Promise<string | null> {
   try {
-    // Try to read from .git/HEAD
-    const headPath = join(process.cwd(), ".git", "HEAD")
-    const headContent = await readFile(headPath, "utf-8")
-    const ref = headContent.trim().replace("ref: ", "")
-
-    // Read the actual commit from the ref file
-    const refPath = join(process.cwd(), ".git", ref)
-    const commit = await readFile(refPath, "utf-8")
-    return commit.trim().slice(0, 7)
+    // Use exec to avoid Turbopack tracing .git/ directory (12K+ files)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { execSync } = require("node:child_process")
+    const hash = execSync("git rev-parse --short HEAD", { cwd: process.cwd(), encoding: "utf-8", timeout: 3000 })
+    return hash.trim() || null
   } catch {
-    // Fallback: try to read from packed-refs or return null
     return null
   }
 }

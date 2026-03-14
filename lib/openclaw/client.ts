@@ -1,9 +1,14 @@
 /**
  * OpenClaw Backend WebSocket Client
  * Persistent connection from OpenClutch server to OpenClaw for reliable message handling
+ *
+ * Uses device identity (Ed25519 keypair) for gateway authentication with full operator scopes.
+ * Shares identity file with the work loop at ~/.openclutch/identity/device.json.
  */
 
 import WebSocket from 'ws'
+
+const PROTOCOL_VERSION = 3
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
@@ -30,6 +35,108 @@ interface PendingRequest {
   timeout: ReturnType<typeof setTimeout>
 }
 
+// --- Device Identity (Ed25519 keypair for gateway auth) ---
+// Using require() to avoid Next.js bundler pulling node builtins into client chunks
+
+interface DeviceIdentity {
+  deviceId: string
+  publicKeyPem: string
+  privateKeyPem: string
+}
+
+function getNodeCrypto(): typeof import('node:crypto') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('node:crypto')
+}
+
+function getNodeFs(): typeof import('node:fs') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('node:fs')
+}
+
+function getNodePath(): typeof import('node:path') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('node:path')
+}
+
+function derivePublicKeyRaw(publicKeyPem: string): Buffer {
+  const crypto = getNodeCrypto()
+  const key = crypto.createPublicKey(publicKeyPem)
+  const spki = key.export({ type: 'spki', format: 'der' })
+  // Ed25519 SPKI is 44 bytes; raw key is last 32
+  return spki.subarray(spki.length - 32)
+}
+
+function fingerprintPublicKey(publicKeyPem: string): string {
+  const crypto = getNodeCrypto()
+  const raw = derivePublicKeyRaw(publicKeyPem)
+  return crypto.createHash('sha256').update(raw).digest('hex')
+}
+
+function signPayload(privateKeyPem: string, payload: string): string {
+  const crypto = getNodeCrypto()
+  const key = crypto.createPrivateKey(privateKeyPem)
+  const sig = crypto.sign(null, Buffer.from(payload, 'utf8'), key)
+  return base64UrlEncode(sig)
+}
+
+function base64UrlEncode(buf: Buffer): string {
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function loadOrCreateDeviceIdentity(filePath: string): DeviceIdentity {
+  const fs = getNodeFs()
+  const path = getNodePath()
+  const crypto = getNodeCrypto()
+
+  try {
+    const data = fs.readFileSync(filePath, 'utf8')
+    const parsed = JSON.parse(data)
+    if (parsed.deviceId && parsed.publicKeyPem && parsed.privateKeyPem) {
+      return { deviceId: parsed.deviceId, publicKeyPem: parsed.publicKeyPem, privateKeyPem: parsed.privateKeyPem }
+    }
+  } catch {
+    // File doesn't exist or is invalid — generate new identity
+  }
+
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
+  const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }) as string
+  const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+  const deviceId = fingerprintPublicKey(publicKeyPem)
+
+  const identity = { version: 1, deviceId, publicKeyPem, privateKeyPem, createdAtMs: Date.now() }
+  const dir = path.dirname(filePath)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(filePath, JSON.stringify(identity, null, 2), { mode: 0o600 })
+  console.log(`[OpenClaw] Generated new device identity: ${deviceId.slice(0, 12)}…`)
+  return { deviceId, publicKeyPem, privateKeyPem }
+}
+
+function buildDeviceAuthPayload(params: {
+  deviceId: string
+  clientId: string
+  clientMode: string
+  role: string
+  scopes: string[]
+  signedAtMs: number
+  token?: string
+  nonce: string
+}): string {
+  return [
+    'v2',
+    params.deviceId,
+    params.clientId,
+    params.clientMode,
+    params.role,
+    params.scopes.join(','),
+    String(params.signedAtMs),
+    params.token || '',
+    params.nonce,
+  ].join('|')
+}
+
+// --- OpenClaw WebSocket Client ---
+
 class OpenClawClient {
   private ws: WebSocket | null = null
   private status: ConnectionStatus = 'disconnected'
@@ -42,14 +149,32 @@ class OpenClawClient {
   
   private wsUrl: string
   private authToken: string
+  private deviceIdentity: DeviceIdentity | null = null
   
   private pendingRequests = new Map<string, PendingRequest>()
   private eventCallbacks = new Set<EventCallback>()
   private heartbeatInterval: NodeJS.Timeout | null = null
+  private connectChallengeHandler: ((nonce: string) => void) | null = null
+  private connectChallengeTimeout: NodeJS.Timeout | null = null
   
   constructor() {
     this.wsUrl = process.env.OPENCLAW_WS_URL || 'ws://127.0.0.1:4440/ws'
     this.authToken = process.env.OPENCLAW_TOKEN || ''
+
+    // Load or create device identity (shared with work loop at ~/.openclutch/identity/device.json)
+    try {
+      const path = getNodePath()
+      const identityFile = path.join(
+        process.env.HOME || '/tmp',
+        '.openclutch',
+        'identity',
+        'device.json'
+      )
+      this.deviceIdentity = loadOrCreateDeviceIdentity(identityFile)
+      console.log(`[OpenClaw] Device identity loaded: ${this.deviceIdentity.deviceId.slice(0, 12)}…`)
+    } catch (err) {
+      console.warn('[OpenClaw] Failed to load device identity, connecting without:', err)
+    }
   }
 
   /**
@@ -69,53 +194,108 @@ class OpenClawClient {
       })
 
       this.ws.on('open', () => {
-        console.log('[OpenClaw] WebSocket open, sending connect handshake')
-        
-        // Send proper OpenClaw connect handshake
-        const connectId = this.generateId()
-        this.ws!.send(JSON.stringify({
-          type: 'req',
-          id: connectId,
-          method: 'connect',
-          params: {
-            minProtocol: 3,
-            maxProtocol: 3,
-            client: {
-              id: 'gateway-client',
-              displayName: 'OpenClutch Backend',
-              version: '1.0.0',
-              platform: 'nodejs',
-              mode: 'backend',
-            },
-            auth: this.authToken ? { token: this.authToken } : undefined,
-            scopes: ['operator.read', 'operator.write', 'chat', 'operator.admin']
+        console.log('[OpenClaw] WebSocket open, waiting for challenge…')
+
+        let connectSent = false
+        const role = 'operator'
+        const scopes = ['operator.admin', 'operator.read', 'operator.write']
+        const clientId = 'gateway-client'   // Must match GATEWAY_CLIENT_IDS enum
+        const clientMode = 'backend'
+
+        const sendConnect = (nonce: string) => {
+          if (connectSent) return
+          connectSent = true
+          this.connectChallengeHandler = null
+          if (this.connectChallengeTimeout) {
+            clearTimeout(this.connectChallengeTimeout)
+            this.connectChallengeTimeout = null
           }
-        }))
-        
-        // Wait for connect response before marking connected
-        this.pendingRequests.set(connectId, {
-          resolve: (payload: unknown) => {
-            this.status = 'connected'
-            this.reconnectAttempts = 0
-            const p = payload as { server?: { version?: string; host?: string }; snapshot?: { uptimeMs?: number } } | undefined
-            this.serverInfo = {
-              version: p?.server?.version,
-              host: p?.server?.host,
-              uptimeMs: p?.snapshot?.uptimeMs,
+
+          const connectId = this.generateId()
+
+          // Build device identity block if available
+          let device: Record<string, unknown> | undefined
+          if (this.deviceIdentity) {
+            const signedAtMs = Date.now()
+            const publicKeyRaw = base64UrlEncode(derivePublicKeyRaw(this.deviceIdentity.publicKeyPem))
+            const payload = buildDeviceAuthPayload({
+              deviceId: this.deviceIdentity.deviceId,
+              clientId,
+              clientMode,
+              role,
+              scopes,
+              signedAtMs,
+              token: this.authToken || undefined,
+              nonce,
+            })
+            const signature = signPayload(this.deviceIdentity.privateKeyPem, payload)
+            device = {
+              id: this.deviceIdentity.deviceId,
+              publicKey: publicKeyRaw,
+              signature,
+              signedAt: signedAtMs,
+              nonce,
             }
-            console.log(`[OpenClaw] Connected successfully (v${this.serverInfo.version ?? '?'}, host=${this.serverInfo.host ?? '?'})`)
-            this.startHeartbeat()
-          },
-          reject: (error) => {
-            console.error('[OpenClaw] Connect handshake failed:', error.message)
-            this.ws?.close()
-          },
-          timeout: setTimeout(() => {
-            this.pendingRequests.delete(connectId)
-            console.error('[OpenClaw] Connect handshake timeout')
-            this.ws?.close()
-          }, 10000)
-        })
+          }
+
+          this.ws!.send(JSON.stringify({
+            type: 'req',
+            id: connectId,
+            method: 'connect',
+            params: {
+              minProtocol: PROTOCOL_VERSION,
+              maxProtocol: PROTOCOL_VERSION,
+              client: {
+                id: clientId,
+                displayName: 'OpenClutch Backend',
+                version: '1.0.0',
+                platform: 'linux',
+                mode: clientMode,
+              },
+              caps: [],
+              auth: this.authToken ? { token: this.authToken } : undefined,
+              role,
+              scopes,
+              device,
+            }
+          }))
+
+          // Wait for connect response before marking connected
+          this.pendingRequests.set(connectId, {
+            resolve: (payload: unknown) => {
+              this.status = 'connected'
+              this.reconnectAttempts = 0
+              const p = payload as { server?: { version?: string; host?: string }; snapshot?: { uptimeMs?: number } } | undefined
+              this.serverInfo = {
+                version: p?.server?.version,
+                host: p?.server?.host,
+                uptimeMs: p?.snapshot?.uptimeMs,
+              }
+              console.log(`[OpenClaw] Connected successfully (v${this.serverInfo.version ?? '?'}, host=${this.serverInfo.host ?? '?'})`)
+              this.startHeartbeat()
+            },
+            reject: (error) => {
+              console.error('[OpenClaw] Connect handshake failed:', error.message)
+              this.ws?.close()
+            },
+            timeout: setTimeout(() => {
+              this.pendingRequests.delete(connectId)
+              console.error('[OpenClaw] Connect handshake timeout')
+              this.ws?.close()
+            }, 10000)
+          })
+        }
+
+        // Set up challenge handler — gateway sends connect.challenge with nonce after WS open
+        this.connectChallengeHandler = (nonce: string) => {
+          console.log('[OpenClaw] Received challenge nonce')
+          sendConnect(nonce)
+        }
+
+        // Fallback: if no challenge received within 2s, connect without nonce (backwards compat)
+        this.connectChallengeTimeout = setTimeout(() => {
+          sendConnect('')
+        }, 2000)
       })
 
       this.ws.on('message', (data) => {
@@ -143,6 +323,11 @@ class OpenClawClient {
   disconnect(): void {
     this.status = 'disconnected'
     this.stopHeartbeat()
+    this.connectChallengeHandler = null
+    if (this.connectChallengeTimeout) {
+      clearTimeout(this.connectChallengeTimeout)
+      this.connectChallengeTimeout = null
+    }
     
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout)
@@ -241,8 +426,6 @@ class OpenClawClient {
 
   // --- Private methods ---
 
-  // Authentication is now handled in the connect handshake
-
   private startHeartbeat(): void {
     this.stopHeartbeat()
     this.heartbeatInterval = setInterval(() => {
@@ -266,6 +449,11 @@ class OpenClawClient {
   private handleDisconnect(): void {
     this.status = 'disconnected'
     this.stopHeartbeat()
+    this.connectChallengeHandler = null
+    if (this.connectChallengeTimeout) {
+      clearTimeout(this.connectChallengeTimeout)
+      this.connectChallengeTimeout = null
+    }
     this.ws = null
     
     // Clear pending requests
@@ -320,6 +508,15 @@ class OpenClawClient {
       
       // Handle events (type: "event")
       if (message.type === 'event') {
+        // Handle connect.challenge during handshake
+        if (message.event === 'connect.challenge') {
+          const nonce = typeof message.payload?.nonce === 'string' ? message.payload.nonce.trim() : ''
+          if (nonce && this.connectChallengeHandler) {
+            this.connectChallengeHandler(nonce)
+          }
+          return
+        }
+
         // Map event names to our ChatEvent types
         if (message.event === 'chat') {
           const payload = message.payload || {}
