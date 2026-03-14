@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
   // Enable standalone output for Docker deployment
   output: 'standalone',
 
+  // Exclude heavy directories from standalone file tracing
+  outputFileTracingExcludes: {
+    '*': ['./backups/**', './.git/**'],
+  },
+
   // Instrumentation hook is enabled by default in Next.js 15+
   // The instrumentation.ts file will be auto-detected
 };
