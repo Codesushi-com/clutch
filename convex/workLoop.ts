@@ -328,17 +328,19 @@ export const clearRuns = mutation({
   args: {
     project_id: v.string(),
     older_than_days: v.number(),
+    batch_size: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<{ deleted: number }> => {
+  handler: async (ctx, args): Promise<{ deleted: number; hasMore: boolean }> => {
     const now = Date.now()
     const cutoff = now - (args.older_than_days * 24 * 60 * 60 * 1000)
+    const limit = args.batch_size ?? 500
 
     const runs = await ctx.db
       .query('workLoopRuns')
       .withIndex('by_project_created', (q) =>
         q.eq('project_id', args.project_id).lt('created_at', cutoff)
       )
-      .collect()
+      .take(limit)
 
     let deleted = 0
     for (const run of runs) {
@@ -346,6 +348,6 @@ export const clearRuns = mutation({
       deleted++
     }
 
-    return { deleted }
+    return { deleted, hasMore: deleted === limit }
   },
 })

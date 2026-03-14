@@ -1691,3 +1691,25 @@ export const getByAgentSessionKey = query({
     return null
   },
 })
+
+/**
+ * Check if a project has any actionable tasks (ready, in_progress, or in_review).
+ * Used by the work loop to skip idle projects and avoid unnecessary logging.
+ */
+export const hasActionableTasks = query({
+  args: {
+    projectId: v.string(),
+  },
+  handler: async (ctx, args): Promise<boolean> => {
+    for (const status of ['ready', 'in_progress', 'in_review'] as const) {
+      const task = await ctx.db
+        .query('tasks')
+        .withIndex('by_project_status', (q) =>
+          q.eq('project_id', args.projectId).eq('status', status)
+        )
+        .first()
+      if (task) return true
+    }
+    return false
+  },
+})

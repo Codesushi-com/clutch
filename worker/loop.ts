@@ -1134,9 +1134,14 @@ async function runProjectCycle(
     })
   }
 
-  // Calculate cycle duration and log completion
+  // Calculate cycle duration and log completion (only if there were actions)
   const cycleDurationMs = Date.now() - cycleStart
   const totalActions = cleanupResult.actions + reviewResult.actions + verifyResult.actions + workResult.actions + triageResult.sentCount + triageResult.escalatedCount
+
+  if (totalActions === 0) {
+    // Skip logging no-op cycles to prevent DB bloat
+    return
+  }
 
   await logCycleComplete(convex, {
     projectId: project.id,
@@ -1299,11 +1304,22 @@ async function runLoop(): Promise<void> {
     if (projects.length === 0) {
       console.log(`[WorkLoop] No enabled projects found, skipping cycle ${cycle}`)
     } else {
-      console.log(`[WorkLoop] Running cycle ${cycle} for ${projects.length} project(s):`,
-        projects.map((p) => p.slug).join(", "))
-
-      // Run cycle for each project
+      // Filter to projects with actionable tasks (ready/in_progress/in_review)
+      const activeProjects: ProjectInfo[] = []
       for (const project of projects) {
+        const hasWork = await convex.query(api.tasks.hasActionableTasks, { projectId: project.id })
+        if (hasWork) activeProjects.push(project)
+      }
+
+      if (activeProjects.length === 0) {
+        console.log(`[WorkLoop] Cycle ${cycle}: ${projects.length} enabled projects, none have actionable tasks — skipping`)
+      } else {
+        console.log(`[WorkLoop] Running cycle ${cycle} for ${activeProjects.length}/${projects.length} active project(s):`,
+          activeProjects.map((p) => p.slug).join(", "))
+      }
+
+      // Run cycle for active projects only
+      for (const project of activeProjects) {
         if (!running) {
           console.log(`[WorkLoop] Shutdown requested, stopping after current project`)
           break
