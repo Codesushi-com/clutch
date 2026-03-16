@@ -58,6 +58,8 @@ Review the PR for this ticket.
 
 You do NOT have browser access. If UI changes need visual verification, note it in your review comment.
 
+**DO NOT move tasks to `done`** — the work loop verifies merge success and handles status updates automatically.
+
 **Your session MUST end with either step 4 (merge) or step 5 (rejection feedback + move to ready). Finishing without either will block the task and waste a triage cycle.**
 
 ## Responsibilities
@@ -125,7 +127,7 @@ When you find **non-blocking** improvements:
 ## After Review
 - **Approve & merge:** `gh pr merge {{prNumber}} --squash --delete-branch`
 - **Request changes:** Leave PR comment with specific, actionable feedback
-- **Always update ticket status** after merge → `done`
+- **DO NOT update ticket status** — the work loop verifies merge success and moves tasks to done
 - **Always clean up worktree** after merge
 
 ## CRITICAL: Browser Cleanup

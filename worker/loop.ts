@@ -20,6 +20,7 @@ import { runWork } from "./phases/work"
 import { runTriage } from "./phases/triage"
 import { runVerify } from "./phases/verify"
 import { handleSelfDeploy } from "./phases/self-deploy"
+import { isPRMerged } from "./phases/github"
 import { sessionFileReader } from "./session-file-reader"
 import { verifyPromptsExist, V2_ROLES } from "./prompt-fetcher"
 import * as fs from "node:fs"
@@ -624,42 +625,70 @@ async function runProjectCycle(
                 console.log(`[WorkLoop] PR #${prNumber} is approved and mergeable — attempting auto-merge`)
                 const mergeSuccess = autoMergePR(prNumber, project)
                 if (mergeSuccess) {
-                  await convex.mutation(api.tasks.move, {
-                    id: outcome.taskId,
-                    status: "done",
-                    reason: `Auto-merged approved PR #${prNumber} (reviewer finished without merging)`
-                  })
-                  // Clear agent fields since task is done
-                  await convex.mutation(api.tasks.update, {
-                    id: outcome.taskId,
-                    agent_session_key: undefined,
-                    agent_spawned_at: undefined,
-                  })
-                  await convex.mutation(api.comments.create, {
-                    taskId: outcome.taskId,
-                    author: "work-loop",
-                    authorType: "coordinator",
-                    content: `Reviewer finished without merging, but PR #${prNumber} was approved and mergeable — auto-merged successfully.`,
-                    type: "status_change",
-                  })
-                  await convex.mutation(api.task_events.logPRMerged, {
-                    taskId: outcome.taskId,
-                    prNumber: prNumber,
-                    mergedBy: "work-loop (auto-merge fallback)",
-                  })
-                  console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} auto-merged PR #${prNumber} and marked done`)
-                  await logRun(convex, {
-                    projectId: project.id,
-                    cycle,
-                    phase: "cleanup",
-                    action: "task_auto_merged",
-                    taskId: outcome.taskId,
-                    details: { reason: "reviewer_no_merge_but_approved", prNumber, role: outcome.role },
-                  })
-                  // Self-deploy: pull + rebuild + restart if clutch project
-                  // MUST be last — restarts the loop process
-                  await handleSelfDeploy(project, prNumber)
-                  autoMerged = true
+                  // Verify the PR was actually merged (not just that the command succeeded)
+                  const isActuallyMerged = isPRMerged(prNumber, project)
+                  if (isActuallyMerged) {
+                    await convex.mutation(api.tasks.move, {
+                      id: outcome.taskId,
+                      status: "done",
+                      reason: `Auto-merged approved PR #${prNumber} (reviewer finished without merging)`
+                    })
+                    // Clear agent fields since task is done
+                    await convex.mutation(api.tasks.update, {
+                      id: outcome.taskId,
+                      agent_session_key: undefined,
+                      agent_spawned_at: undefined,
+                    })
+                    await convex.mutation(api.comments.create, {
+                      taskId: outcome.taskId,
+                      author: "work-loop",
+                      authorType: "coordinator",
+                      content: `Reviewer finished without merging, but PR #${prNumber} was approved and mergeable — auto-merged successfully.`,
+                      type: "status_change",
+                    })
+                    await convex.mutation(api.task_events.logPRMerged, {
+                      taskId: outcome.taskId,
+                      prNumber: prNumber,
+                      mergedBy: "work-loop (auto-merge fallback)",
+                    })
+                    console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} auto-merged PR #${prNumber} and marked done`)
+                    await logRun(convex, {
+                      projectId: project.id,
+                      cycle,
+                      phase: "cleanup",
+                      action: "task_auto_merged",
+                      taskId: outcome.taskId,
+                      details: { reason: "reviewer_no_merge_but_approved", prNumber, role: outcome.role },
+                    })
+                    // Self-deploy: pull + rebuild + restart if clutch project
+                    // MUST be last — restarts the loop process
+                    await handleSelfDeploy(project, prNumber)
+                    autoMerged = true
+                  } else {
+                    // Merge command succeeded but PR not merged (conflicts, checks, etc.)
+                    console.log(`[WorkLoop] Auto-merge command succeeded but PR #${prNumber} not merged — moving to blocked`)
+                    await convex.mutation(api.tasks.move, {
+                      id: outcome.taskId,
+                      status: "blocked",
+                      reason: `Merge failed for PR #${prNumber} — possible conflicts or checks failing`,
+                    })
+                    await convex.mutation(api.comments.create, {
+                      taskId: outcome.taskId,
+                      author: "work-loop",
+                      authorType: "coordinator",
+                      content: `Auto-merge was attempted for PR #${prNumber}, but the PR was not actually merged. This may be due to merge conflicts, failing CI checks, or branch protection rules. Please investigate and merge manually.`,
+                      type: "status_change",
+                    })
+                    await logRun(convex, {
+                      projectId: project.id,
+                      cycle,
+                      phase: "cleanup",
+                      action: "task_blocked",
+                      taskId: outcome.taskId,
+                      details: { reason: "merge_verification_failed", prNumber, role: outcome.role },
+                    })
+                    autoMerged = true // Mark as handled to prevent retry loop
+                  }
                 } else {
                   console.log(`[WorkLoop] Auto-merge failed for PR #${prNumber} — will check for retry eligibility`)
                 }
@@ -668,42 +697,70 @@ async function runProjectCycle(
                 console.log(`[WorkLoop] PR #${prNumber} eligible for expanded auto-merge: no_changes_requested=${noChangesReq}, ci_passes=${ciPasses}, sentiment=${reviewerSentiment}`)
                 const mergeSuccess = autoMergePR(prNumber, project)
                 if (mergeSuccess) {
-                  await convex.mutation(api.tasks.move, {
-                    id: outcome.taskId,
-                    status: "done",
-                    reason: `Auto-merged PR #${prNumber} via expanded criteria (positive review, CI passing)`
-                  })
-                  // Clear agent fields since task is done
-                  await convex.mutation(api.tasks.update, {
-                    id: outcome.taskId,
-                    agent_session_key: undefined,
-                    agent_spawned_at: undefined,
-                  })
-                  await convex.mutation(api.comments.create, {
-                    taskId: outcome.taskId,
-                    author: "work-loop",
-                    authorType: "coordinator",
-                    content: `Reviewer finished without merging, but their review was positive (no issues found, CI passing). Auto-merged PR #${prNumber}.`,
-                    type: "status_change",
-                  })
-                  await convex.mutation(api.task_events.logPRMerged, {
-                    taskId: outcome.taskId,
-                    prNumber: prNumber,
-                    mergedBy: "work-loop (expanded auto-merge)",
-                  })
-                  console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} auto-merged PR #${prNumber} via expanded criteria and marked done`)
-                  await logRun(convex, {
-                    projectId: project.id,
-                    cycle,
-                    phase: "cleanup",
-                    action: "task_auto_merged",
-                    taskId: outcome.taskId,
-                    details: { reason: "reviewer_positive_but_forgot_merge", prNumber, role: outcome.role, sentiment: reviewerSentiment },
-                  })
-                  // Self-deploy: pull + rebuild + restart if clutch project
-                  // MUST be last — restarts the loop process
-                  await handleSelfDeploy(project, prNumber)
-                  autoMerged = true
+                  // Verify the PR was actually merged (not just that the command succeeded)
+                  const isActuallyMerged = isPRMerged(prNumber, project)
+                  if (isActuallyMerged) {
+                    await convex.mutation(api.tasks.move, {
+                      id: outcome.taskId,
+                      status: "done",
+                      reason: `Auto-merged PR #${prNumber} via expanded criteria (positive review, CI passing)`
+                    })
+                    // Clear agent fields since task is done
+                    await convex.mutation(api.tasks.update, {
+                      id: outcome.taskId,
+                      agent_session_key: undefined,
+                      agent_spawned_at: undefined,
+                    })
+                    await convex.mutation(api.comments.create, {
+                      taskId: outcome.taskId,
+                      author: "work-loop",
+                      authorType: "coordinator",
+                      content: `Reviewer finished without merging, but their review was positive (no issues found, CI passing). Auto-merged PR #${prNumber}.`,
+                      type: "status_change",
+                    })
+                    await convex.mutation(api.task_events.logPRMerged, {
+                      taskId: outcome.taskId,
+                      prNumber: prNumber,
+                      mergedBy: "work-loop (expanded auto-merge)",
+                    })
+                    console.log(`[WorkLoop] Task ${outcome.taskId.slice(0, 8)} auto-merged PR #${prNumber} via expanded criteria and marked done`)
+                    await logRun(convex, {
+                      projectId: project.id,
+                      cycle,
+                      phase: "cleanup",
+                      action: "task_auto_merged",
+                      taskId: outcome.taskId,
+                      details: { reason: "reviewer_positive_but_forgot_merge", prNumber, role: outcome.role, sentiment: reviewerSentiment },
+                    })
+                    // Self-deploy: pull + rebuild + restart if clutch project
+                    // MUST be last — restarts the loop process
+                    await handleSelfDeploy(project, prNumber)
+                    autoMerged = true
+                  } else {
+                    // Merge command succeeded but PR not merged (conflicts, checks, etc.)
+                    console.log(`[WorkLoop] Expanded auto-merge command succeeded but PR #${prNumber} not merged — moving to blocked`)
+                    await convex.mutation(api.tasks.move, {
+                      id: outcome.taskId,
+                      status: "blocked",
+                      reason: `Merge failed for PR #${prNumber} — possible conflicts or checks failing`,
+                    })
+                    await convex.mutation(api.comments.create, {
+                      taskId: outcome.taskId,
+                      author: "work-loop",
+                      authorType: "coordinator",
+                      content: `Auto-merge was attempted for PR #${prNumber}, but the PR was not actually merged. This may be due to merge conflicts, failing CI checks, or branch protection rules. Please investigate and merge manually.`,
+                      type: "status_change",
+                    })
+                    await logRun(convex, {
+                      projectId: project.id,
+                      cycle,
+                      phase: "cleanup",
+                      action: "task_blocked",
+                      taskId: outcome.taskId,
+                      details: { reason: "merge_verification_failed", prNumber, role: outcome.role, sentiment: reviewerSentiment },
+                    })
+                    autoMerged = true // Mark as handled to prevent retry loop
+                  }
                 } else {
                   console.log(`[WorkLoop] Expanded auto-merge failed for PR #${prNumber} — will check for retry eligibility`)
                 }

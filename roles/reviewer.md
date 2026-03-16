@@ -65,7 +65,7 @@ When you find **non-blocking** improvements:
 ## After Review
 - **Approve & merge:** `gh pr merge <number> --squash --delete-branch`
 - **Request changes:** Leave PR comment with specific, actionable feedback
-- **Always update ticket status** after merge → `done`
+- **DO NOT update ticket status** — the work loop verifies merge success and moves tasks to done
 - **Always clean up worktree** after merge
 
 ## CRITICAL: Browser Cleanup
