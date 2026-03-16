@@ -204,7 +204,52 @@ export function isPRClosedWithoutMerge(prNumber: number, project: ProjectInfo): 
   if (!prDetails) {
     return false
   }
-  
+
   // PR is closed without merge if state is CLOSED and mergedAt is null
   return prDetails.state === "CLOSED" && prDetails.mergedAt === null
+}
+
+/**
+ * Check if a PR has merge conflicts.
+ * Uses gh pr view to check the mergeStateStatus field.
+ *
+ * @param prNumber - The PR number to check
+ * @param project - The project containing the repo
+ * @returns object with hasConflicts flag and optional error message
+ */
+export function checkPRMergeConflicts(
+  prNumber: number,
+  project: ProjectInfo
+): { hasConflicts: boolean; stateStatus?: string; error?: string } {
+  try {
+    const result = execFileSync(
+      "gh",
+      ["pr", "view", String(prNumber), "--json", "state,mergeStateStatus,mergeable"],
+      {
+        encoding: "utf-8",
+        timeout: 10_000,
+        cwd: project.local_path!,
+      }
+    )
+
+    const pr = JSON.parse(result) as {
+      state: string
+      mergeStateStatus: string
+      mergeable: string
+    }
+
+    // Common conflict states: "DIRTY" (conflicts), "BLOCKED" (required checks failing)
+    const hasConflicts =
+      pr.mergeStateStatus === "DIRTY" ||
+      pr.mergeable === "CONFLICTING" ||
+      pr.state === "CLOSED"
+
+    return {
+      hasConflicts,
+      stateStatus: pr.mergeStateStatus,
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { hasConflicts: false, error: message }
+  }
 }

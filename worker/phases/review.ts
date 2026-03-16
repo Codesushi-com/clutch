@@ -7,7 +7,7 @@ import type { Task } from "../../lib/types"
 import { buildPromptAsync } from "../prompts"
 import { handlePostMergeDeploy } from "./convex-deploy"
 import { handleSelfDeploy } from "./self-deploy"
-import { isPRMerged, findOpenPR, getPRByNumber, type ProjectInfo } from "./github"
+import { isPRMerged, findOpenPR, getPRByNumber, checkPRMergeConflicts, type ProjectInfo } from "./github"
 import { getModelForRole } from "./work"
 
 // ============================================
@@ -255,6 +255,43 @@ async function processTask(
         taskId: task.id,
         sessionKey: task.agent_session_key,
       },
+    }
+  }
+
+  // ── Post-Review Merge Verification ────────────────────────────────
+  // If task has a PR but no active agent, check if merge was attempted but failed.
+  // This handles cases where the reviewer tried to merge but hit conflicts.
+  if (task.pr_number) {
+    const conflictCheck = checkPRMergeConflicts(task.pr_number, project)
+
+    if (conflictCheck.hasConflicts) {
+      console.log(`[ReviewPhase] Task ${task.id.slice(0, 8)} PR #${task.pr_number} has merge conflicts — moving to blocked`)
+      try {
+        await convex.mutation(api.comments.create, {
+          taskId: task.id,
+          author: "work-loop",
+          authorType: "coordinator",
+          content: `PR #${task.pr_number} has merge conflicts that prevented automatic merge. Status: ${conflictCheck.stateStatus ?? "unknown"}. Manual resolution required.`,
+          type: "status_change",
+        })
+        await convex.mutation(api.tasks.move, {
+          id: task.id,
+          status: "blocked",
+          reason: "merge_conflicts",
+        })
+      } catch (err) {
+        console.error(`[ReviewPhase] Failed to move conflicted task to blocked:`, err)
+      }
+
+      return {
+        spawned: false,
+        details: {
+          reason: "merge_conflicts_detected",
+          taskId: task.id,
+          prNumber: task.pr_number,
+          stateStatus: conflictCheck.stateStatus,
+        },
+      }
     }
   }
 
