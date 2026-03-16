@@ -8,6 +8,16 @@
 import { execFileSync } from "node:child_process"
 
 // ============================================
+// GitHub CLI Command
+// ============================================
+
+/**
+ * The gh CLI command to use for all GitHub operations.
+ * Uses gh-as-ada (GitHub App auth) when available, falls back to bare gh.
+ */
+export const GH_CMD = process.env.GH_CMD ?? "gh-as-ada"
+
+// ============================================
 // Types
 // ============================================
 
@@ -47,7 +57,7 @@ export interface PRInfo {
 export function isPRMerged(prNumber: number, project: ProjectInfo): boolean {
   try {
     const result = execFileSync(
-      "gh",
+      GH_CMD,
       ["pr", "view", String(prNumber), "--json", "state,mergedAt"],
       {
         encoding: "utf-8",
@@ -104,7 +114,7 @@ export function findOpenPR(branchName: string, project: ProjectInfo): PRInfo | n
     // Use --json with all open PRs and filter by prefix, since dev agents
     // may append descriptive suffixes to branch names
     const result = execFileSync(
-      "gh",
+      GH_CMD,
       ["pr", "list", "--state", "open", "--json", "number,title,headRefName"],
       {
         encoding: "utf-8",
@@ -142,7 +152,7 @@ export function findOpenPR(branchName: string, project: ProjectInfo): PRInfo | n
 export function getPRByNumber(prNumber: number, project: ProjectInfo): PRInfo | null {
   try {
     const result = execFileSync(
-      "gh",
+      GH_CMD,
       ["pr", "view", String(prNumber), "--json", "number,title,state"],
       {
         encoding: "utf-8",
@@ -179,7 +189,7 @@ export function getPRDetails(
 ): { state: string; mergedAt: string | null } | null {
   try {
     const result = execFileSync(
-      "gh",
+      GH_CMD,
       ["pr", "view", String(prNumber), "--json", "state,mergedAt"],
       { encoding: "utf-8", timeout: 10_000, cwd: project.local_path! }
     )

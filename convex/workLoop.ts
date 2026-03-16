@@ -351,3 +351,26 @@ export const clearRuns = mutation({
     return { deleted, hasMore: deleted === limit }
   },
 })
+
+/**
+ * Truncate all workLoopRuns. Deletes up to a batch per call.
+ * Call repeatedly until hasMore is false.
+ */
+export const truncateRuns = mutation({
+  args: {
+    batch_size: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{ deleted: number; hasMore: boolean }> => {
+    const limit = args.batch_size ?? 2000
+    const runs = await ctx.db
+      .query('workLoopRuns')
+      .order('asc')
+      .take(limit)
+
+    for (const run of runs) {
+      await ctx.db.delete(run._id)
+    }
+
+    return { deleted: runs.length, hasMore: runs.length === limit }
+  },
+})

@@ -25,7 +25,7 @@ import { execFileSync } from "node:child_process"
 import type { ConvexHttpClient } from "convex/browser"
 import { api } from "../../convex/_generated/api"
 import type { Task } from "../../lib/types"
-import { isPRMerged, isPRClosedWithoutMerge, type ProjectInfo } from "./github"
+import { isPRMerged, isPRClosedWithoutMerge, GH_CMD, type ProjectInfo } from "./github"
 import { handleSelfDeploy } from "./self-deploy"
 import {
   cleanMergedLocalBranches,
@@ -706,7 +706,7 @@ async function cleanMergedRemoteBranches(ctx: BranchCleanupContext): Promise<Bra
     try {
       // Check if PR was merged
       const prResult = execFileSync(
-        "gh",
+        GH_CMD,
         ["pr", "view", String(prNumber), "--json", "state,mergedAt"],
         { encoding: "utf-8", timeout: 10_000, cwd: repoPath }
       )

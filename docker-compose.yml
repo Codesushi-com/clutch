@@ -48,12 +48,12 @@ services:
       - CONVEX_SQLITE_PATH=${CONVEX_SQLITE_PATH:-/convex/data/convex.db}
       # Logging
       - RUST_LOG=${RUST_LOG:-info}
+    deploy:
+      resources:
+        limits:
+          memory: 32g
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      disable: true
     networks:
       - openclutch-network
 

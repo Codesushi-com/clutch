@@ -7,7 +7,7 @@ import type { Task } from "../../lib/types"
 import { buildPromptAsync } from "../prompts"
 import { handlePostMergeDeploy } from "./convex-deploy"
 import { handleSelfDeploy } from "./self-deploy"
-import { isPRMerged, findOpenPR, getPRByNumber, type ProjectInfo } from "./github"
+import { isPRMerged, findOpenPR, getPRByNumber, GH_CMD, type ProjectInfo } from "./github"
 import { getModelForRole } from "./work"
 
 // ============================================
@@ -917,7 +917,7 @@ function checkBranchOnRemote(branchName: string, repoDir: string): boolean {
 function createPR(branchName: string, task: Task, project: ProjectInfo): PRInfo | null {
   try {
     const result = execFileSync(
-      "gh",
+      GH_CMD,
       [
         "pr", "create",
         "--head", branchName,

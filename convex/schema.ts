@@ -306,10 +306,9 @@ export default defineSchema({
   })
     .index("by_uuid", ["id"])
     .index("by_project", ["project_id"])
-    .index("by_cycle", ["cycle"])
-    .index("by_phase", ["phase"])
-    .index("by_created", ["created_at"])
-    .index("by_project_created", ["project_id", "created_at"]),
+    .index("by_project_created", ["project_id", "created_at"])
+    .index("by_task", ["task_id"])
+    .index("by_created", ["created_at"]),
 
   // Work Loop State - current state of each project loop
   workLoopState: defineTable({

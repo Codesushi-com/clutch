@@ -199,19 +199,43 @@ async function fetchChannels(
       channels?: Record<string, {
         configured?: boolean
         running?: boolean
+        connected?: boolean
         lastError?: string | null
       }>
+      channelAccounts?: Record<string, Array<{
+        accountId?: string
+        enabled?: boolean
+        configured?: boolean
+        running?: boolean
+        connected?: boolean
+        lastError?: string | null
+      }>>
       channelLabels?: Record<string, string>
+      channelDefaultAccountId?: Record<string, string>
     }>("channels.status")
 
     const channels = result.channels ?? {}
+    const channelAccounts = result.channelAccounts ?? {}
+    const defaultAccountIds = result.channelDefaultAccountId ?? {}
     const labels = result.channelLabels ?? {}
-    const channelList = Object.entries(channels).map(([id, ch]) => ({
-      id,
-      label: labels[id] ?? id,
-      connected: ch.running ?? ch.configured ?? false,
-      accountId: undefined,
-    }))
+
+    const channelList = Object.entries(channels).map(([id, ch]) => {
+      // Prefer the default account's runtime snapshot from channelAccounts —
+      // it has accurate running/connected state. The channels summary may
+      // only contain { configured } for channels without buildChannelSummary.
+      const accounts = channelAccounts[id] ?? []
+      const defaultId = defaultAccountIds[id]
+      const defaultAccount = accounts.find(a => a.accountId === defaultId) ?? accounts[0]
+      const connected = defaultAccount
+        ? (defaultAccount.connected ?? defaultAccount.running ?? false)
+        : (ch.connected ?? ch.running ?? ch.configured ?? false)
+      return {
+        id,
+        label: labels[id] ?? id,
+        connected,
+        accountId: defaultAccount?.accountId,
+      }
+    })
     // Override clutch channel status — it's a hook-based plugin without
     // gateway.startAccount, so channels.status never reports it as running.
     // Use the WS client connection status instead.

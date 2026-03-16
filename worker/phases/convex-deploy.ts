@@ -7,6 +7,7 @@
 import { execFileSync } from "node:child_process"
 import type { ConvexHttpClient } from "convex/browser"
 import { api } from "../../convex/_generated/api"
+import { GH_CMD } from "./github"
 
 // ============================================
 // Types
@@ -47,7 +48,7 @@ export function prTouchesConvex(
   try {
     // Get the PR diff
     const diffOutput = execFileSync(
-      "gh",
+      GH_CMD,
       ["pr", "diff", String(prNumber)],
       {
         encoding: "utf-8",

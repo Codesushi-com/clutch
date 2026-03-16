@@ -14,6 +14,7 @@ import { logRun, logCycleComplete } from "./logger"
 import { agentManager } from "./agent-manager"
 import { runCleanup } from "./phases/cleanup"
 import { runReview } from "./phases/review"
+import { GH_CMD } from "./phases/github"
 import type { Project, WorkLoopPhase } from "../lib/types"
 import { runWork } from "./phases/work"
 import { runTriage } from "./phases/triage"
@@ -109,7 +110,7 @@ interface PRExpandedStatus {
 function getPRStatus(prNumber: number, project: ProjectInfo): PRStatus | null {
   try {
     const result = execFileSync(
-      "gh",
+      GH_CMD,
       ["pr", "view", String(prNumber), "--json", "mergeable,reviewDecision,state"],
       {
         encoding: "utf-8",
@@ -132,7 +133,7 @@ function getPRStatus(prNumber: number, project: ProjectInfo): PRStatus | null {
 function getPRExpandedStatus(prNumber: number, project: ProjectInfo): PRExpandedStatus | null {
   try {
     const result = execFileSync(
-      "gh",
+      GH_CMD,
       ["pr", "view", String(prNumber), "--json", "mergeable,reviewDecision,state,statusCheckRollup,reviews"],
       {
         encoding: "utf-8",
@@ -155,7 +156,7 @@ function getPRExpandedStatus(prNumber: number, project: ProjectInfo): PRExpanded
 function autoMergePR(prNumber: number, project: ProjectInfo): boolean {
   try {
     execFileSync(
-      "gh",
+      GH_CMD,
       ["pr", "merge", String(prNumber), "--squash", "--delete-branch"],
       {
         encoding: "utf-8",
