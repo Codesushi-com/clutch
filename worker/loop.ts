@@ -986,7 +986,7 @@ async function runProjectCycle(
   const projectActiveAgents = activeTasks.filter((t) => t.project_id === project.id)
   const activeAgentCount = projectActiveAgents.length
 
-  // Update state to show we're starting a cycle
+  // Update state once at cycle start (not per-phase to reduce writes)
   await convex.mutation(api.workLoop.upsertState, {
     project_id: project.id,
     status,
@@ -1013,16 +1013,6 @@ async function runProjectCycle(
     }
   )
 
-  // Update state to review phase
-  await convex.mutation(api.workLoop.upsertState, {
-    project_id: project.id,
-    status,
-    current_phase: "review",
-    current_cycle: cycle,
-    active_agents: activeAgentCount,
-    max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
-  })
-
   // Phase 3: Review
   const reviewResult = await runPhase(
     convex,
@@ -1039,16 +1029,6 @@ async function runProjectCycle(
       return { success: true, actions: result.spawnedCount }
     }
   )
-
-  // Update state to verify phase
-  await convex.mutation(api.workLoop.upsertState, {
-    project_id: project.id,
-    status,
-    current_phase: "verify",
-    current_cycle: cycle,
-    active_agents: activeAgentCount,
-    max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
-  })
 
   // Phase 4: Verify (post-merge verification)
   const verifyResult = await runPhase(
@@ -1069,16 +1049,6 @@ async function runProjectCycle(
       }
     }
   )
-
-  // Update state to work phase
-  await convex.mutation(api.workLoop.upsertState, {
-    project_id: project.id,
-    status,
-    current_phase: "work",
-    current_cycle: cycle,
-    active_agents: activeAgentCount,
-    max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
-  })
 
   // Phase 5: Work
   const workResult = await runPhase(
@@ -1101,16 +1071,6 @@ async function runProjectCycle(
       }
     }
   )
-
-  // Update state to triage phase (runs after work + review)
-  await convex.mutation(api.workLoop.upsertState, {
-    project_id: project.id,
-    status,
-    current_phase: "triage",
-    current_cycle: cycle,
-    active_agents: activeAgentCount,
-    max_agents: project.work_loop_max_agents ?? config.maxAgentsPerProject,
-  })
 
   // Phase 4: Triage (runs after work + review to process blocked tasks)
   const triageResult = await runTriage({
@@ -1341,6 +1301,26 @@ async function runLoop(): Promise<void> {
             details: { error: message },
           })
         }
+      }
+    }
+
+    // Prune old workLoopRuns every 10 cycles (keep last 7 days)
+    if (cycle % 10 === 0) {
+      try {
+        const projects = await getEnabledProjects(convex)
+        for (const project of projects) {
+          const result = await convex.mutation(api.workLoop.clearRuns, {
+            project_id: project.id,
+            older_than_days: 7,
+            batch_size: 500,
+          })
+          if (result.deleted > 0) {
+            console.log(`[WorkLoop] Pruned ${result.deleted} old runs for ${project.slug}${result.hasMore ? " (more remaining)" : ""}`)
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[WorkLoop] Prune failed: ${message}`)
       }
     }
 

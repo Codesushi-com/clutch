@@ -65,10 +65,34 @@ export function generateId(): string {
  * This is the primary logging function - every significant action
  * in the work loop should be logged via this function.
  */
+/**
+ * Actions that always get logged regardless of phase/action.
+ * Everything else only gets logged if it represents a real action (not routine phase lifecycle).
+ */
+const ALWAYS_LOG_ACTIONS = new Set([
+  "phase_error", "phase_failed", "cycle_complete",
+  "agent_reaped", "agent_spawned", "pr_check_failed", "pr_number_cleared_invalid",
+  "task_moved", "task_escalated", "task_unblocked", "task_blocked",
+  "triage_sent", "triage_escalated",
+  "pr_merge_attempted", "pr_merged", "pr_merge_failed",
+  "review_approved", "review_changes_requested",
+])
+
 export async function logRun(
   convex: ConvexHttpClient,
   params: LogRunParams
 ): Promise<void> {
+  // Skip routine phase lifecycle noise (phase_start, phase_complete with 0 actions)
+  // to prevent DB bloat. Only log meaningful events.
+  if (!ALWAYS_LOG_ACTIONS.has(params.action)) {
+    if (params.action === "phase_start") return
+    if (params.action === "phase_complete") {
+      const actions = params.details?.actions
+      if (typeof actions === "number" && actions === 0) return
+    }
+    if (params.action === "tasks_found" || params.action === "no_ready_tasks") return
+  }
+
   try {
     await convex.mutation(api.workLoop.logRun, {
       project_id: params.projectId,
