@@ -22,6 +22,39 @@ type PageProps = {
   params: Promise<{ slug: string }>
 }
 
+/**
+ * Convert relative image URLs to absolute URLs for agent consumption.
+ * Agents running in OpenClaw can't access relative URLs like /uploads/images/xxx.jpg
+ * because they run in a different context. This ensures images are viewable.
+ */
+function makeImageUrlsAbsolute(content: string): string {
+  // Match markdown image syntax: ![alt](url)
+  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
+
+  return content.replace(imageRegex, (match, alt, url) => {
+    // If already absolute, leave as-is
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+      return match
+    }
+
+    // Convert relative URL to absolute
+    let baseUrl: string
+    if (typeof window !== 'undefined') {
+      // Client-side: use current location
+      baseUrl = `${window.location.protocol}//${window.location.host}`
+    } else {
+      // Server-side: use environment variable or fallback
+      baseUrl = process.env.NEXT_PUBLIC_CLUTCH_URL || 'http://localhost:3002'
+    }
+
+    // Ensure the relative URL starts with /
+    const normalizedUrl = url.startsWith('/') ? url : `/${url}`
+    const absoluteUrl = `${baseUrl}${normalizedUrl}`
+
+    return `![${alt}](${absoluteUrl})`
+  })
+}
+
 interface ProjectInfo {
   id: string
   slug: string
@@ -282,9 +315,11 @@ export default function ChatPage({ params }: PageProps) {
     })
 
     // Build message for OpenClaw (include project context on first message)
-    let openClawMessage = messageContent
+    // Convert relative image URLs to absolute so agents can view them
+    const openClawMessageContent = makeImageUrlsAbsolute(messageContent)
+    let openClawMessage = openClawMessageContent
     if (isFirstMessage && projectContext) {
-      openClawMessage = `[Project Context]\n\n${projectContext}\n\n---\n\n[User Message]\n\n${messageContent}`
+      openClawMessage = `[Project Context]\n\n${projectContext}\n\n---\n\n[User Message]\n\n${openClawMessageContent}`
     }
 
     // Send to OpenClaw via HTTP POST
