@@ -10,6 +10,10 @@ import WebSocket from 'ws'
 
 const PROTOCOL_VERSION = 3
 
+// Heartbeat configuration
+const HEARTBEAT_INTERVAL_MS = 30000      // Send ping every 30s
+const HEARTBEAT_TIMEOUT_MS = 60000       // Force close if no activity for 60s
+
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
 type ChatMessage = {
@@ -154,6 +158,8 @@ class OpenClawClient {
   private pendingRequests = new Map<string, PendingRequest>()
   private eventCallbacks = new Set<EventCallback>()
   private heartbeatInterval: NodeJS.Timeout | null = null
+  private heartbeatTimeout: NodeJS.Timeout | null = null
+  private lastActivityTime: number = 0
   private connectChallengeHandler: ((nonce: string) => void) | null = null
   private connectChallengeTimeout: NodeJS.Timeout | null = null
   
@@ -299,7 +305,12 @@ class OpenClawClient {
       })
 
       this.ws.on('message', (data) => {
+        this.updateActivity()
         this.handleMessage(data.toString())
+      })
+
+      this.ws.on('pong', () => {
+        this.updateActivity()
       })
 
       this.ws.on('close', (code, reason) => {
@@ -428,15 +439,32 @@ class OpenClawClient {
 
   private startHeartbeat(): void {
     this.stopHeartbeat()
+    this.lastActivityTime = Date.now()
+    
+    // Send ping every HEARTBEAT_INTERVAL_MS
     this.heartbeatInterval = setInterval(() => {
       if (this.ws && this.status === 'connected') {
         try {
           this.ws.ping()
         } catch {
-          // Ignore ping errors
+          // Ignore ping errors - timeout check will catch failures
         }
       }
-    }, 30000)
+    }, HEARTBEAT_INTERVAL_MS)
+    
+    // Check for timeout every HEARTBEAT_INTERVAL_MS
+    this.heartbeatTimeout = setInterval(() => {
+      if (this.status !== 'connected') return
+      
+      const now = Date.now()
+      const timeSinceLastActivity = now - this.lastActivityTime
+      
+      if (timeSinceLastActivity > HEARTBEAT_TIMEOUT_MS) {
+        console.error(`[OpenClaw] Heartbeat timeout: no activity for ${timeSinceLastActivity}ms, forcing reconnect`)
+        this.ws?.terminate()
+        this.handleDisconnect()
+      }
+    }, HEARTBEAT_INTERVAL_MS)
   }
 
   private stopHeartbeat(): void {
@@ -444,6 +472,14 @@ class OpenClawClient {
       clearInterval(this.heartbeatInterval)
       this.heartbeatInterval = null
     }
+    if (this.heartbeatTimeout) {
+      clearInterval(this.heartbeatTimeout)
+      this.heartbeatTimeout = null
+    }
+  }
+  
+  private updateActivity(): void {
+    this.lastActivityTime = Date.now()
   }
 
   private handleDisconnect(): void {
